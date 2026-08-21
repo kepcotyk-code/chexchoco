@@ -118,6 +118,27 @@ const buildMonthGrid = (year, month) => {
   return cells;
 };
 
+// 벌칙 규정: 월~목 4일이 모두 독서일인 "정상 주"에만, 그 4일 중 결석한 날짜가 벌칙 대상이 됨.
+// 공휴일 등으로 월~목 중 하루라도 독서일이 아니면 그 주 전체는 벌칙 계산에서 제외.
+const isMonToThu = (dateStr) => { const day = new Date(`${dateStr}T00:00:00`).getDay(); return day >= 1 && day <= 4; };
+const getMonday = (dateStr) => {
+  const d = new Date(`${dateStr}T00:00:00`);
+  const diff = d.getDay() === 0 ? -6 : 1 - d.getDay();
+  d.setDate(d.getDate() + diff);
+  return d;
+};
+const weekQualifiesForPenalty = (dateStr, calendarDays) => {
+  const monday = getMonday(dateStr);
+  for (let i = 0; i < 4; i++) {
+    const d = new Date(monday); d.setDate(monday.getDate() + i);
+    const ds = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    if (calendarDays.find((c) => c.date === ds)?.type !== '독서일') return false;
+  }
+  return true;
+};
+const filterPenaltyEligibleSessions = (sessions, calendarDays) =>
+  sessions.filter((s) => isMonToThu(s.date) && weekQualifiesForPenalty(s.date, calendarDays));
+
 /* ---------- Supabase data layer ---------- */
 const TABLES = ['members', 'notices', 'notice_views', 'sessions', 'checkins', 'penalty_completions', 'calendar_days', 'settings', 'photos'];
 
@@ -316,7 +337,7 @@ export default function App() {
         {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} />}
         {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} />}
         {tab === 'users' && <UsersScreen members={members} sortedMembers={sortedMembers} currentUserId={currentUserId} setIdentity={setIdentity} canManage={canManageUsers} notices={notices} sessions={sessions} checkins={checkins} reload={reload} />}
-        {tab === 'admin' && canManageAttendance && <AdminScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} setPenaltyRule={setPenaltyRule} penaltyCompletions={penaltyCompletions} reload={reload} />}
+        {tab === 'admin' && canManageAttendance && <AdminScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} setPenaltyRule={setPenaltyRule} penaltyCompletions={penaltyCompletions} reload={reload} calendarDays={calendarDays} />}
       </div>
     </div>
   );
@@ -827,7 +848,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   }).sort((a, b) => b.totalMin - a.totalMin);
   const maxReadingMin = Math.max(1, ...totalReadingRows.map((r) => r.totalMin));
 
-  const pastSessions = sessions.filter((s) => s.date < todayStr());
+  const pastSessions = filterPenaltyEligibleSessions(sessions.filter((s) => s.date < todayStr()), calendarDays);
   const penaltyByMember = {};
   members.forEach((m) => { penaltyByMember[m.id] = { pending: 0 }; });
   pastSessions.forEach((s) => members.forEach((m) => {
@@ -1160,7 +1181,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
 }
 
 /* ---------------- 출석관리 (간사 전용) ---------------- */
-function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule, penaltyCompletions, reload }) {
+function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule, penaltyCompletions, reload, calendarDays }) {
   const [date, setDate] = useState(todayStr());
   const session = sessions.find((s) => s.date === date);
   const dayCheckins = session ? checkins.filter((c) => c.session_id === session.id) : [];
@@ -1185,7 +1206,7 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
   const updateCheckin = async (id, field, timeVal) => { if (!timeVal) return; await updateRow('checkins', 'id', id, { [field]: new Date(`${date}T${timeVal}`).toISOString() }); await reload(); };
   const removeCheckin = async (id) => { await deleteRow('checkins', 'id', id); await reload(); };
   const saveRule = () => { setPenaltyRule(ruleInput.trim()); setEditingRule(false); };
-  const pastSessions = sessions.filter((s) => s.date < todayStr()).sort((a, b) => b.date.localeCompare(a.date));
+  const pastSessions = filterPenaltyEligibleSessions(sessions.filter((s) => s.date < todayStr()), calendarDays).sort((a, b) => b.date.localeCompare(a.date));
   const isCompleted = (sessionId, memberId) => penaltyCompletions.some((p) => p.session_id === sessionId && p.member_id === memberId);
   const toggleCompletion = async (sessionId, memberId) => {
     if (isCompleted(sessionId, memberId)) {
