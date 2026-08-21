@@ -235,8 +235,8 @@ export default function App() {
     { key: 'gallery', label: '포토', icon: ImageIcon },
     { key: 'qr', label: '출석', icon: QrCode },
     { key: 'dashboard', label: '대시보드', icon: BarChart3 },
-    { key: 'users', label: '사용자관리', icon: Users },
-    ...(canManageAttendance ? [{ key: 'admin', label: '출석관리', icon: Settings2 }] : []),
+    { key: 'users', label: '멤버', icon: Users },
+    ...(canManageAttendance ? [{ key: 'admin', label: '설정', icon: Settings2 }] : []),
   ];
 
   if (!loaded) {
@@ -1186,6 +1186,7 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
   const session = sessions.find((s) => s.date === date);
   const dayCheckins = session ? checkins.filter((c) => c.session_id === session.id) : [];
   const [manualMemberId, setManualMemberId] = useState(''); const [manualIn, setManualIn] = useState(''); const [manualOut, setManualOut] = useState('');
+  const [manualSelectedIds, setManualSelectedIds] = useState([]);
   const [editingRule, setEditingRule] = useState(false); const [ruleInput, setRuleInput] = useState(penaltyRule || '');
   const [expandedPenaltyId, setExpandedPenaltyId] = useState(null);
 
@@ -1202,6 +1203,21 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
     await insertRow('checkins', { id: uid('c'), session_id: s.id, member_id: manualMemberId, check_in_at: inIso, check_out_at: outIso });
     await reload();
     setManualMemberId(''); setManualIn(''); setManualOut('');
+  };
+  const toggleManualSelect = (id) => setManualSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  const addManualBulk = async () => {
+    if (manualSelectedIds.length === 0 || !manualIn) return;
+    const s = await ensureSession();
+    const inIso = new Date(`${date}T${manualIn}`).toISOString();
+    const outIso = manualOut ? new Date(`${date}T${manualOut}`).toISOString() : null;
+    const dayC = checkins.filter((c) => c.session_id === s.id);
+    for (const id of manualSelectedIds) {
+      const existing = dayC.find((c) => c.member_id === id);
+      if (existing) await updateRow('checkins', 'id', existing.id, { check_in_at: inIso, check_out_at: outIso });
+      else await insertRow('checkins', { id: uid('c'), session_id: s.id, member_id: id, check_in_at: inIso, check_out_at: outIso });
+    }
+    await reload();
+    setManualSelectedIds([]); setManualIn(''); setManualOut('');
   };
   const updateCheckin = async (id, field, timeVal) => { if (!timeVal) return; await updateRow('checkins', 'id', id, { [field]: new Date(`${date}T${timeVal}`).toISOString() }); await reload(); };
   const removeCheckin = async (id) => { await deleteRow('checkins', 'id', id); await reload(); };
@@ -1266,6 +1282,24 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
         </select>
         <div className="flex gap-2"><input type="time" value={manualIn} onChange={(e) => setManualIn(e.target.value)} className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /><input type="time" value={manualOut} onChange={(e) => setManualOut(e.target.value)} className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
         <PrimaryBtn onClick={addManual} icon={Plus}>등록</PrimaryBtn>
+
+        <div className="pt-3 mt-1" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+          <div className="text-xs mb-2" style={{ color: MUTE }}>일괄 체크 — 여러 명을 한 번에 같은 시간으로 등록해요</div>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {members.map((m) => {
+              const checked = manualSelectedIds.includes(m.id);
+              return (
+                <button key={m.id} onClick={() => toggleManualSelect(m.id)}
+                  className="flex items-center gap-1.5 rounded-full border pl-1 pr-2.5 py-1"
+                  style={{ borderColor: checked ? '#7FDCCF' : LINE, background: checked ? '#12302C' : 'transparent' }}>
+                  <Stamp role={m.role} size={20} tilt={0} />
+                  <span className="text-xs" style={{ color: checked ? '#7FDCCF' : INK }}>{m.name}</span>
+                </button>
+              );
+            })}
+          </div>
+          <PrimaryBtn onClick={addManualBulk} disabled={manualSelectedIds.length === 0 || !manualIn} icon={Check}>{manualSelectedIds.length}명 일괄 등록</PrimaryBtn>
+        </div>
       </Card>
       <Card>
         <div className="flex items-center justify-between mb-2">
