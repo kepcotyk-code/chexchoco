@@ -1041,12 +1041,14 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
                     <div className="font-semibold truncate" style={{ color: INK }}>{m.name}{m.id === currentUserId && <span className="ml-1.5 text-[11px] font-normal" style={{ color: MUTE }}>(나)</span>}</div>
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <RoleChip role={m.role} />
-                      {m.job_type && <span className="hidden sm:inline text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{m.job_type}</span>}
                       {m.birthday && <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtMD(mdOf(m.birthday))}</span>}
                       {m.pin && <Lock size={11} style={{ color: MUTE }} />}
                     </div>
-                    {(m.joined_at || m.book_genre || m.note) && (
+                    {(m.department || m.job_type || m.joined_at || m.book_genre || m.note) && (
                       <div className="hidden sm:flex items-center gap-2 flex-wrap mt-1 text-[11px]" style={{ color: MUTE }}>
+                        {(m.department || m.job_type) && (
+                          <span>{m.department}{m.department && m.job_type ? `(${m.job_type})` : m.job_type}</span>
+                        )}
                         {m.joined_at && <span>가입 {fmtDate(m.joined_at)}</span>}
                         {m.book_genre && <span>{m.book_genre}</span>}
                         {m.note && <span className="italic">{m.note}</span>}
