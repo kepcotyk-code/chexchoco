@@ -1035,17 +1035,22 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
               </div>
             ) : (
               <div className="flex items-center justify-between px-4 py-3">
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
                   <Stamp role={m.role} size={36} tilt={idx % 2 === 0 ? -5 : 4} />
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="font-semibold truncate" style={{ color: INK }}>{m.name}{m.id === currentUserId && <span className="ml-1.5 text-[11px] font-normal" style={{ color: MUTE }}>(나)</span>}</div>
-                    <div className="flex items-center gap-1.5 flex-wrap"><RoleChip role={m.role} />{m.birthday && <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtMD(mdOf(m.birthday))}</span>}{m.pin && <Lock size={11} style={{ color: MUTE }} />}</div>
-                    {(m.department || m.job_type || m.joined_at || m.book_genre) && (
-                      <div className="hidden sm:flex items-center gap-2 flex-wrap mt-1 text-[11px]" style={{ color: MUTE }}>
-                        {m.department && <span>{m.department}</span>}
-                        {m.job_type && <span>· {m.job_type}</span>}
-                        {m.joined_at && <span>· 가입 {fmtDate(m.joined_at)}</span>}
-                        {m.book_genre && <span>· {m.book_genre}</span>}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <RoleChip role={m.role} />
+                      {m.birthday && <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtMD(mdOf(m.birthday))}</span>}
+                      {m.joined_at && <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>가입 {fmtDate(m.joined_at)}</span>}
+                      {m.pin && <Lock size={11} style={{ color: MUTE }} />}
+                    </div>
+                    {(m.department || m.job_type || m.book_genre || m.note) && (
+                      <div className="hidden sm:flex items-center justify-between gap-2 mt-1 text-[11px]" style={{ color: MUTE }}>
+                        <span className="truncate">
+                          {[m.department, m.job_type, m.book_genre].filter(Boolean).join(' · ')}
+                        </span>
+                        {m.note && <span className="shrink-0 truncate max-w-[35%] text-right italic">{m.note}</span>}
                       </div>
                     )}
                   </div>
