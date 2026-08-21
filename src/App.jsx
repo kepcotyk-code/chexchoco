@@ -139,6 +139,34 @@ const weekQualifiesForPenalty = (dateStr, calendarDays) => {
 const filterPenaltyEligibleSessions = (sessions, calendarDays) =>
   sessions.filter((s) => isMonToThu(s.date) && weekQualifiesForPenalty(s.date, calendarDays));
 
+const weekKeyOf = (dateStr) => {
+  const m = getMonday(dateStr);
+  return `${m.getFullYear()}-${pad(m.getMonth() + 1)}-${pad(m.getDate())}`;
+};
+
+// 주 단위 벌칙 계산: 월~목 4일이 모두 독서일이고 이미 다 지난 "완결된 주"에서,
+// 4일 전부 결석(30분 미만 포함)한 멤버만 그 주의 벌칙 대상이 됨.
+const computeWeeklyPenalties = (sessions, checkins, calendarDays, members) => {
+  const eligible = filterPenaltyEligibleSessions(sessions.filter((s) => s.date < todayStr()), calendarDays);
+  const byWeek = {};
+  eligible.forEach((s) => { const wk = weekKeyOf(s.date); (byWeek[wk] = byWeek[wk] || []).push(s); });
+  return Object.entries(byWeek)
+    .filter(([, sess]) => sess.length === 4) // 4일이 다 지나서 세션이 다 있는 주만 (진행 중인 주는 아직 판단 보류)
+    .map(([wk, sess]) => {
+      const sorted = [...sess].sort((a, b) => a.date.localeCompare(b.date));
+      const results = members.map((m) => {
+        const attendedAny = sorted.some((s) => {
+          const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
+          const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
+          return dur !== null && dur >= 30;
+        });
+        return { member: m, missedAll: !attendedAny };
+      });
+      return { weekKey: wk, sessions: sorted, results };
+    })
+    .sort((a, b) => b.weekKey.localeCompare(a.weekKey));
+};
+
 /* ---------- Supabase data layer ---------- */
 const TABLES = ['members', 'notices', 'notice_views', 'sessions', 'checkins', 'penalty_completions', 'calendar_days', 'settings', 'photos'];
 
@@ -850,13 +878,12 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   }).sort((a, b) => b.totalMin - a.totalMin);
   const maxReadingMin = Math.max(1, ...totalReadingRows.map((r) => r.totalMin));
 
-  const pastSessions = filterPenaltyEligibleSessions(sessions.filter((s) => s.date < todayStr()), calendarDays);
+  const weeklyPenalties = computeWeeklyPenalties(sessions, checkins, calendarDays, members);
+  const isWeekCompleted = (wk, memberId) => penaltyCompletions.some((p) => p.session_id === wk && p.member_id === memberId);
   const penaltyByMember = {};
   members.forEach((m) => { penaltyByMember[m.id] = { pending: 0 }; });
-  pastSessions.forEach((s) => members.forEach((m) => {
-    const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
-    const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
-    if (!(dur !== null && dur >= 30)) { const done = penaltyCompletions.some((p) => p.session_id === s.id && p.member_id === m.id); if (!done) penaltyByMember[m.id].pending += 1; }
+  weeklyPenalties.forEach((w) => w.results.forEach((r) => {
+    if (r.missedAll && !isWeekCompleted(w.weekKey, r.member.id)) penaltyByMember[r.member.id].pending += 1;
   }));
 
   const todayMd = todayStr().slice(5, 10);
@@ -1240,20 +1267,15 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
   const updateCheckin = async (id, field, timeVal) => { if (!timeVal) return; await updateRow('checkins', 'id', id, { [field]: new Date(`${date}T${timeVal}`).toISOString() }); await reload(); };
   const removeCheckin = async (id) => { await deleteRow('checkins', 'id', id); await reload(); };
   const saveRule = () => { setPenaltyRule(ruleInput.trim()); setEditingRule(false); };
-  const pastSessions = filterPenaltyEligibleSessions(sessions.filter((s) => s.date < todayStr()), calendarDays).sort((a, b) => b.date.localeCompare(a.date));
-  const isCompleted = (sessionId, memberId) => penaltyCompletions.some((p) => p.session_id === sessionId && p.member_id === memberId);
-  const toggleCompletion = async (sessionId, memberId) => {
-    if (isCompleted(sessionId, memberId)) {
-      const row = penaltyCompletions.find((p) => p.session_id === sessionId && p.member_id === memberId);
-      await deleteRow('penalty_completions', 'id', row.id);
-    } else await insertRow('penalty_completions', { id: uid('p'), session_id: sessionId, member_id: memberId, completed_at: new Date().toISOString() });
+  const weeklyPenalties = computeWeeklyPenalties(sessions, checkins, calendarDays, members);
+  const isWeekCompleted = (wk, memberId) => penaltyCompletions.some((p) => p.session_id === wk && p.member_id === memberId);
+  const toggleWeekCompletion = async (wk, memberId) => {
+    const existing = penaltyCompletions.find((p) => p.session_id === wk && p.member_id === memberId);
+    if (existing) await deleteRow('penalty_completions', 'id', existing.id);
+    else await insertRow('penalty_completions', { id: uid('p'), session_id: wk, member_id: memberId, completed_at: new Date().toISOString() });
     await reload();
   };
-  const penaltyByMember = members.map((m) => {
-    const events = [];
-    pastSessions.forEach((s) => { const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id); const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null; if (!(dur !== null && dur >= 30)) events.push({ session_id: s.id, date: s.date }); });
-    return { ...m, events, pending: events.filter((e) => !isCompleted(e.session_id, m.id)).length };
-  }).filter((m) => m.events.length > 0);
+  const weeksWithTargets = weeklyPenalties.filter((w) => w.results.some((r) => r.missedAll));
 
   const downloadMonthExcel = () => {
     const monthSessions = sessions.filter((s) => s.date.startsWith(date.slice(0, 7)));
@@ -1330,27 +1352,35 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
             <div className="flex gap-2"><PrimaryBtn onClick={saveRule} icon={Check}>저장</PrimaryBtn><GhostBtn onClick={() => setEditingRule(false)} icon={X}>취소</GhostBtn></div>
           </div>
         ) : <p className="text-sm mb-3" style={{ color: penaltyRule ? NEUTRAL_TEXT : MUTE }}>{penaltyRule || '아직 벌칙 규정이 설정되지 않았어요.'}</p>}
-        <div className="space-y-2" style={{ borderTop: `1px solid ${ROW_LINE}`, paddingTop: 10 }}>
-          {penaltyByMember.length === 0 && <p className="text-sm" style={{ color: MUTE }}>결석 기록이 없어요.</p>}
-          {penaltyByMember.map((m) => {
-            const expanded = expandedPenaltyId === m.id;
+        <div className="space-y-3" style={{ borderTop: `1px solid ${ROW_LINE}`, paddingTop: 10 }}>
+          {weeksWithTargets.length === 0 && <p className="text-sm" style={{ color: MUTE }}>4일 모두 결석한 벌칙 대상이 없어요.</p>}
+          {weeksWithTargets.map((w) => {
+            const expanded = expandedPenaltyId === w.weekKey;
+            const targets = w.results.filter((r) => r.missedAll);
+            const pendingCount = targets.filter((r) => !isWeekCompleted(w.weekKey, r.member.id)).length;
             return (
-              <div key={m.id}>
-                <button onClick={() => setExpandedPenaltyId(expanded ? null : m.id)} className="w-full flex items-center justify-between py-1.5">
-                  <div className="flex items-center gap-2"><Stamp role={m.role} size={26} tilt={0} /><span className="text-sm" style={{ color: INK }}>{m.name}</span></div>
+              <div key={w.weekKey}>
+                <button onClick={() => setExpandedPenaltyId(expanded ? null : w.weekKey)} className="w-full flex items-center justify-between py-1.5">
+                  <div>
+                    <div className="text-sm font-semibold" style={{ color: INK }}>{fmtDate(w.sessions[0].date)} ~ {fmtDate(w.sessions[3].date)}</div>
+                    <div className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>월~목 4일 모두 독서일</div>
+                  </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>결석 {m.events.length}회</span>
-                    {m.pending > 0 ? <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}>벌칙 대상 {m.pending}</span> : <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#12302C', color: '#7FDCCF' }}>완료</span>}
+                    <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>대상 {targets.length}명</span>
+                    {pendingCount > 0 ? <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}>미이행 {pendingCount}</span> : <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#12302C', color: '#7FDCCF' }}>완료</span>}
                   </div>
                 </button>
                 {expanded && (
-                  <div className="pl-9 pb-2 space-y-1.5">
-                    {m.events.map((e) => { const done = isCompleted(e.session_id, m.id); return (
-                      <div key={e.session_id} className="flex items-center justify-between text-xs">
-                        <span style={{ color: NEUTRAL_TEXT, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(e.date)}</span>
-                        <button onClick={() => toggleCompletion(e.session_id, m.id)} className="inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold" style={{ background: done ? '#12302C' : NEUTRAL_BG, color: done ? '#7FDCCF' : MUTE }}>{done ? <Check size={11} /> : null} {done ? '이행 완료' : '미이행'}</button>
-                      </div>
-                    ); })}
+                  <div className="pl-2 pb-2 space-y-1.5">
+                    {targets.map((r) => {
+                      const done = isWeekCompleted(w.weekKey, r.member.id);
+                      return (
+                        <div key={r.member.id} className="flex items-center justify-between text-xs py-1">
+                          <div className="flex items-center gap-2"><Stamp role={r.member.role} size={22} tilt={0} /><span style={{ color: NEUTRAL_TEXT }}>{r.member.name}</span></div>
+                          <button onClick={() => toggleWeekCompletion(w.weekKey, r.member.id)} className="inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold" style={{ background: done ? '#12302C' : NEUTRAL_BG, color: done ? '#7FDCCF' : MUTE }}>{done ? <Check size={11} /> : null} {done ? '이행 완료' : '미이행'}</button>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
