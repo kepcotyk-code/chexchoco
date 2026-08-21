@@ -207,11 +207,12 @@ export default function App() {
     const ro = roleOrder(a.role) - roleOrder(b.role);
     return ro !== 0 ? ro : a.name.localeCompare(b.name, 'ko');
   }), [members]);
+  const recentPhotos = useMemo(() => [...photos].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 6), [photos]);
 
   const TABS = [
-    { key: 'notice', label: '공지사항', icon: Megaphone },
-    { key: 'gallery', label: '포토로그', icon: ImageIcon },
-    { key: 'qr', label: 'QR출결', icon: QrCode },
+    { key: 'notice', label: '공지', icon: Megaphone },
+    { key: 'gallery', label: '포토', icon: ImageIcon },
+    { key: 'qr', label: '출석', icon: QrCode },
     { key: 'dashboard', label: '대시보드', icon: BarChart3 },
     { key: 'users', label: '사용자관리', icon: Users },
     ...(canManageAttendance ? [{ key: 'admin', label: '출석관리', icon: Settings2 }] : []),
@@ -239,6 +240,18 @@ export default function App() {
           </div>
           <h1 className="text-center text-4xl font-semibold" style={{ fontFamily: "'Fraunces', serif", color: INK }}>책스초코</h1>
         </div>
+
+        {recentPhotos.length > 0 && (
+          <div className="mb-4">
+            <div className="grid grid-cols-6 gap-1.5">
+              {recentPhotos.map((p) => (
+                <button key={p.id} onClick={() => setTab('gallery')} className="aspect-square rounded-lg overflow-hidden" style={{ background: NEUTRAL_BG }}>
+                  <img src={publicUrl('photos', p.file_path)} className="w-full h-full object-cover" alt="" loading="lazy" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-sm" style={{ background: '#3A2213', color: '#F0A87C' }}>
@@ -298,7 +311,7 @@ export default function App() {
           })}
         </div>
 
-        {tab === 'notice' && <NoticeScreen notices={notices} noticeViews={noticeViews} currentMember={currentMember} canManage={canManageUsers} reload={reload} photos={photos} setTab={setTab} />}
+        {tab === 'notice' && <NoticeScreen notices={notices} noticeViews={noticeViews} currentMember={currentMember} canManage={canManageUsers} reload={reload} />}
         {tab === 'gallery' && <GalleryScreen photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} />}
         {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} />}
         {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} />}
@@ -312,7 +325,7 @@ export default function App() {
 /* ---------------- 공지사항 ---------------- */
 const MAX_PDF_BYTES = 3 * 1024 * 1024;
 
-function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, photos, setTab }) {
+function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload }) {
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -327,7 +340,6 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
     if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
     return new Date(b.created_at) - new Date(a.created_at);
   });
-  const recentPhotos = [...(photos || [])].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 8);
 
   const isPdfSignature = (buf) => { const b = new Uint8Array(buf); return b.length >= 4 && b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46; };
   const handleFilePick = (e) => {
@@ -378,21 +390,6 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
 
   return (
     <div className="space-y-3">
-      {recentPhotos.length > 0 && (
-        <div>
-          <button onClick={() => setTab('gallery')} className="flex items-center justify-between w-full mb-1.5">
-            <span className="text-xs font-semibold flex items-center gap-1.5" style={{ color: MUTE }}><ImageIcon size={13} /> 최근 사진</span>
-            <span className="text-xs" style={{ color: MUTE }}>포토로그 전체 보기 →</span>
-          </button>
-          <div className="flex gap-1.5 overflow-x-auto pb-1">
-            {recentPhotos.map((p) => (
-              <button key={p.id} onClick={() => setTab('gallery')} className="shrink-0 w-16 h-16 rounded-lg overflow-hidden" style={{ background: NEUTRAL_BG }}>
-                <img src={publicUrl('photos', p.file_path)} className="w-full h-full object-cover" alt="" loading="lazy" />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
       {canManage && (
         showForm ? (
           <Card className="space-y-3">
