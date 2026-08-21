@@ -1041,16 +1041,15 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
                     <div className="font-semibold truncate" style={{ color: INK }}>{m.name}{m.id === currentUserId && <span className="ml-1.5 text-[11px] font-normal" style={{ color: MUTE }}>(나)</span>}</div>
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <RoleChip role={m.role} />
+                      {m.job_type && <span className="hidden sm:inline text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{m.job_type}</span>}
                       {m.birthday && <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtMD(mdOf(m.birthday))}</span>}
-                      {m.joined_at && <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>가입 {fmtDate(m.joined_at)}</span>}
                       {m.pin && <Lock size={11} style={{ color: MUTE }} />}
                     </div>
-                    {(m.department || m.job_type || m.book_genre || m.note) && (
-                      <div className="hidden sm:flex items-center justify-between gap-2 mt-1 text-[11px]" style={{ color: MUTE }}>
-                        <span className="truncate">
-                          {[m.department, m.job_type, m.book_genre].filter(Boolean).join(' · ')}
-                        </span>
-                        {m.note && <span className="shrink-0 truncate max-w-[35%] text-right italic">{m.note}</span>}
+                    {(m.joined_at || m.book_genre || m.note) && (
+                      <div className="hidden sm:flex items-center gap-2 flex-wrap mt-1 text-[11px]" style={{ color: MUTE }}>
+                        {m.joined_at && <span>가입 {fmtDate(m.joined_at)}</span>}
+                        {m.book_genre && <span>{m.book_genre}</span>}
+                        {m.note && <span className="italic">{m.note}</span>}
                       </div>
                     )}
                   </div>
