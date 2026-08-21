@@ -735,7 +735,13 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   const getDayType = (date) => calendarDays.find((d) => d.date === date)?.type || null;
   const setDayType = async (date, type) => {
     if (type) await upsertRow('calendar_days', { date, type }, 'date'); else await deleteRow('calendar_days', 'date', date);
-    if (type === '독서일' && !sessions.some((s) => s.date === date)) await insertRow('sessions', { id: uid('s'), date, created_at: new Date().toISOString() });
+    if (type === '독서일') {
+      if (!sessions.some((s) => s.date === date)) await insertRow('sessions', { id: uid('s'), date, created_at: new Date().toISOString() });
+    } else {
+      // 독서일이 아닌 다른 유형으로 바꾸거나 해제할 때, 체크인 기록이 없는 자동 생성 세션은 함께 정리
+      const s = sessions.find((ss) => ss.date === date);
+      if (s && !checkins.some((c) => c.session_id === s.id)) await deleteRow('sessions', 'id', s.id);
+    }
     await reload();
     setSelectedDate(null);
   };
