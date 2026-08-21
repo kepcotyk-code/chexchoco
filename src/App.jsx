@@ -487,6 +487,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [viewingId, setViewingId] = useState(null);
+  const [editingDate, setEditingDate] = useState(false);
+  const [dateInput, setDateInput] = useState('');
   const sorted = [...photos].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
   const handleFile = async (e) => {
@@ -513,6 +515,13 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     setViewingId(null);
   };
   const viewing = sorted.find((p) => p.id === viewingId);
+  const saveDate = async () => {
+    if (!viewing || !dateInput) return;
+    const time = viewing.created_at.slice(11); // 기존 시각(HH:mm:ss.sssZ)은 그대로 유지
+    await updateRow('photos', 'id', viewing.id, { created_at: `${dateInput}T${time}` });
+    await reload();
+    setEditingDate(false);
+  };
 
   const participantsFor = (photo) => {
     const date = photo.created_at.slice(0, 10);
@@ -538,7 +547,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
       ) : (
         <div className="grid grid-cols-3 gap-2">
           {sorted.map((p) => (
-            <button key={p.id} onClick={() => setViewingId(p.id)} className="relative aspect-square rounded-lg overflow-hidden" style={{ background: NEUTRAL_BG }}>
+            <button key={p.id} onClick={() => { setViewingId(p.id); setEditingDate(false); }} className="relative aspect-square rounded-lg overflow-hidden" style={{ background: NEUTRAL_BG }}>
               <img src={publicUrl('photos', p.file_path)} className="w-full h-full object-cover" alt="" loading="lazy" />
               <div className="absolute bottom-1 left-1.5 right-1.5 flex items-center justify-between text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 2px rgba(0,0,0,0.6)', fontFamily: "'IBM Plex Mono', monospace" }}>
                 <span>{p.created_at.slice(0, 10)}</span>
@@ -555,10 +564,21 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
             <div className="flex items-center gap-3 mt-3">
               <span className="text-sm" style={{ color: '#FFFFFF' }}>{viewing.uploader_name} · {fmtDate(viewing.created_at)} {fmtTime(viewing.created_at)}</span>
               {(canManage || viewing.uploader_id === currentMember?.id) && (
+                <button onClick={() => { setEditingDate(!editingDate); setDateInput(viewing.created_at.slice(0, 10)); }} className="p-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }}><Pencil size={15} /></button>
+              )}
+              {(canManage || viewing.uploader_id === currentMember?.id) && (
                 <button onClick={() => removePhoto(viewing)} className="p-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.15)', color: '#F0A87C' }}><Trash2 size={15} /></button>
               )}
               <button onClick={() => setViewingId(null)} className="p-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }}><X size={15} /></button>
             </div>
+            {editingDate && (
+              <div className="flex items-center gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+                <input type="date" value={dateInput} onChange={(e) => setDateInput(e.target.value)}
+                  className="rounded-lg border px-2 py-1.5 text-sm outline-none" style={{ background: '#17150F', borderColor: '#332F24', color: '#F2EEE3' }} />
+                <button onClick={saveDate} className="rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ background: '#F2EEE3', color: '#161410' }}>저장</button>
+                <button onClick={() => setEditingDate(false)} className="rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }}>취소</button>
+              </div>
+            )}
             {(() => {
               const people = participantsFor(viewing);
               return people.length > 0 ? (
