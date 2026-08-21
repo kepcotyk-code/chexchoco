@@ -33,7 +33,7 @@ const roleOrder = (role) => { const i = ROLES.findIndex((r) => r.key === role); 
 
 const DAY_TYPES = [
   { key: '독서일', label: '독서일', color: '#7FDCCF', bg: '#12302C' },
-  { key: '휴무일', label: '휴무일', color: '#A39B87', bg: '#2B2820' },
+  { key: '휴무일', label: '휴무일', color: '#8FA3BE', bg: '#242C36' },
   { key: '토론회', label: '토론회', color: '#EFC94C', bg: '#3A2E10' },
   { key: '회식일', label: '회식일', color: '#F0A87C', bg: '#3A2213' },
 ];
@@ -132,7 +132,7 @@ const weekQualifiesForPenalty = (dateStr, calendarDays) => {
   for (let i = 0; i < 4; i++) {
     const d = new Date(monday); d.setDate(monday.getDate() + i);
     const ds = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    if (calendarDays.find((c) => c.date === ds)?.type !== '독서일') return false;
+    if (!calendarDays.some((c) => c.date === ds && c.type === '독서일')) return false;
   }
   return true;
 };
@@ -643,7 +643,9 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
 
   const startSession = async () => {
     await insertRow('sessions', { id: uid('s'), date: today, created_at: new Date().toISOString() });
-    await upsertRow('calendar_days', { date: today, type: '독서일' }, 'date');
+    if (!calendarDays.some((d) => d.date === today && d.type === '독서일')) {
+      await insertRow('calendar_days', { id: uid('cd'), date: today, type: '독서일' });
+    }
     await reload();
   };
   const myCheckin = session ? checkins.find((c) => c.session_id === session.id && c.member_id === currentMember?.id) : null;
@@ -863,18 +865,22 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   const birthdayFolksToday = isCurrentMonth ? monthBirthdays.filter((m) => mdOf(m.birthday) === todayMd) : [];
 
   const monthGrid = buildMonthGrid(cursor.getFullYear(), cursor.getMonth());
-  const getDayType = (date) => calendarDays.find((d) => d.date === date)?.type || null;
-  const setDayType = async (date, type) => {
-    if (type) await upsertRow('calendar_days', { date, type }, 'date'); else await deleteRow('calendar_days', 'date', date);
-    if (type === '독서일') {
-      if (!sessions.some((s) => s.date === date)) await insertRow('sessions', { id: uid('s'), date, created_at: new Date().toISOString() });
+  const getDayTypes = (date) => calendarDays.filter((d) => d.date === date).map((d) => d.type);
+  const toggleDayType = async (date, type) => {
+    const existing = calendarDays.find((d) => d.date === date && d.type === type);
+    if (existing) {
+      await deleteRow('calendar_days', 'id', existing.id);
+      if (type === '독서일') {
+        const s = sessions.find((ss) => ss.date === date);
+        if (s && !checkins.some((c) => c.session_id === s.id)) await deleteRow('sessions', 'id', s.id);
+      }
     } else {
-      // 독서일이 아닌 다른 유형으로 바꾸거나 해제할 때, 체크인 기록이 없는 자동 생성 세션은 함께 정리
-      const s = sessions.find((ss) => ss.date === date);
-      if (s && !checkins.some((c) => c.session_id === s.id)) await deleteRow('sessions', 'id', s.id);
+      await insertRow('calendar_days', { id: uid('cd'), date, type });
+      if (type === '독서일' && !sessions.some((s) => s.date === date)) {
+        await insertRow('sessions', { id: uid('s'), date, created_at: new Date().toISOString() });
+      }
     }
     await reload();
-    setSelectedDate(null);
   };
 
   return (
@@ -914,12 +920,17 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               {monthGrid.map((date, idx) => {
                 if (!date) return <div key={idx} />;
                 const day = parseInt(date.slice(8, 10), 10);
-                const type = getDayType(date); const meta = type ? dayTypeMeta(type) : null;
+                const types = getDayTypes(date);
+                const metas = types.map(dayTypeMeta).filter(Boolean);
                 const isToday = date === todayStr();
+                const bgStyle = metas.length === 0 ? NEUTRAL_BG
+                  : metas.length === 1 ? metas[0].bg
+                  : `linear-gradient(135deg, ${metas.map((m, i) => `${m.bg} ${(i * 100) / metas.length}%, ${m.bg} ${((i + 1) * 100) / metas.length}%`).join(', ')})`;
+                const textColor = metas.length > 0 ? metas[0].color : MUTE;
                 return (
                   <button key={date} onClick={() => canManage && setSelectedDate(date === selectedDate ? null : date)}
                     className="aspect-square rounded-lg flex items-center justify-center text-xs"
-                    style={{ background: meta ? meta.bg : NEUTRAL_BG, color: meta ? meta.color : MUTE, border: isToday ? `1.5px solid ${INK}` : selectedDate === date ? `1.5px solid ${meta ? meta.color : MUTE}` : '1px solid transparent' }}>
+                    style={{ background: bgStyle, color: textColor, border: isToday ? `1.5px solid ${INK}` : selectedDate === date ? `1.5px solid ${textColor}` : '1px solid transparent' }}>
                     {day}
                   </button>
                 );
@@ -930,10 +941,17 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             </div>
             {canManage && selectedDate && (
               <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-                <div className="text-xs mb-2" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(selectedDate)} 유형 지정</div>
+                <div className="text-xs mb-2" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(selectedDate)} 유형 지정 (여러 개 선택 가능)</div>
                 <div className="flex flex-wrap gap-2">
-                  {DAY_TYPES.map((t) => <button key={t.key} onClick={() => setDayType(selectedDate, t.key)} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: t.bg, color: t.color }}>{t.label}</button>)}
-                  <button onClick={() => setDayType(selectedDate, null)} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: MUTE }}>지정 해제</button>
+                  {DAY_TYPES.map((t) => {
+                    const active = getDayTypes(selectedDate).includes(t.key);
+                    return (
+                      <button key={t.key} onClick={() => toggleDayType(selectedDate, t.key)} className="rounded-full px-3 py-1.5 text-xs font-semibold border-2"
+                        style={{ background: active ? t.bg : 'transparent', color: active ? t.color : MUTE, borderColor: active ? t.color : LINE }}>
+                        {active && '✓ '}{t.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -958,7 +976,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                   <div className="flex items-center justify-between text-sm mb-1">
                     <div className="flex items-center gap-2"><Stamp role={r.role} size={24} tilt={0} /><span style={{ color: INK }}>{r.name}</span></div>
                     <div className="flex items-center gap-2">
-                      {penaltyByMember[r.id]?.pending > 0 && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}><Gavel size={10} /> 미이행 {penaltyByMember[r.id].pending}</span>}
+                      {penaltyByMember[r.id]?.pending > 0 && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}><Gavel size={10} /> 벌칙 대상 {penaltyByMember[r.id].pending}</span>}
                       <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{totalDays}회 · {r.rate}%</span>
                     </div>
                   </div>
@@ -1322,7 +1340,7 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
                   <div className="flex items-center gap-2"><Stamp role={m.role} size={26} tilt={0} /><span className="text-sm" style={{ color: INK }}>{m.name}</span></div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>결석 {m.events.length}회</span>
-                    {m.pending > 0 ? <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}>미이행 {m.pending}</span> : <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#12302C', color: '#7FDCCF' }}>완료</span>}
+                    {m.pending > 0 ? <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}>벌칙 대상 {m.pending}</span> : <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#12302C', color: '#7FDCCF' }}>완료</span>}
                   </div>
                 </button>
                 {expanded && (
