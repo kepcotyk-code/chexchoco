@@ -32,10 +32,10 @@ const roleMeta = (role) => ROLES.find((r) => r.key === role) || ROLES[3];
 const roleOrder = (role) => { const i = ROLES.findIndex((r) => r.key === role); return i === -1 ? 99 : i; };
 
 const DAY_TYPES = [
-  { key: '독서일', label: '독서일', color: '#9CB380', bg: '#26301F' },
+  { key: '독서일', label: '독서일', color: '#7FA8D9', bg: '#1E2A38' },
   { key: '휴무일', label: '휴무일', color: '#E0958C', bg: '#3A2420' },
-  { key: '토론회', label: '토론회', color: '#8AA8C4', bg: '#212B36' },
-  { key: '회식일', label: '회식일', color: '#D9B04C', bg: '#332A12' },
+  { key: '토론회', label: '토론회', color: '#D9C24C', bg: '#322D12' },
+  { key: '회식일', label: '회식일', color: '#D98A5C', bg: '#332415' },
 ];
 const dayTypeMeta = (key) => DAY_TYPES.find((d) => d.key === key) || null;
 const ATTENDANCE_DAY_TYPES = ['독서일', '토론회']; // 출석일자로 산정되는 유형
@@ -261,9 +261,9 @@ export default function App() {
 
   const TABS = [
     { key: 'notice', label: '공지', icon: Megaphone },
-    { key: 'gallery', label: '포토', icon: ImageIcon },
     { key: 'qr', label: '출석', icon: QrCode },
     { key: 'dashboard', label: '대시보드', icon: BarChart3 },
+    { key: 'gallery', label: '포토', icon: ImageIcon },
     { key: 'users', label: '멤버', icon: Users },
     ...(canManageAttendance ? [{ key: 'admin', label: '설정', icon: Settings2 }] : []),
   ];
@@ -956,7 +956,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const isToday = date === todayStr();
                 const bgStyle = metas.length === 0 ? NEUTRAL_BG
                   : metas.length === 1 ? metas[0].bg
-                  : `linear-gradient(135deg, ${metas.map((m, i) => `${m.bg} ${(i * 100) / metas.length}%, ${m.bg} ${((i + 1) * 100) / metas.length}%`).join(', ')})`;
+                  : `linear-gradient(to bottom, ${metas.map((m, i) => `${m.bg} ${(i * 100) / metas.length}%, ${m.bg} ${((i + 1) * 100) / metas.length}%`).join(', ')})`;
                 const textColor = metas.length > 0 ? metas[0].color : MUTE;
                 return (
                   <button key={date} onClick={() => canManage && setSelectedDate(date === selectedDate ? null : date)}
