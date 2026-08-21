@@ -299,7 +299,7 @@ export default function App() {
         </div>
 
         {tab === 'notice' && <NoticeScreen notices={notices} noticeViews={noticeViews} currentMember={currentMember} canManage={canManageUsers} reload={reload} />}
-        {tab === 'gallery' && <GalleryScreen photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} />}
+        {tab === 'gallery' && <GalleryScreen photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} />}
         {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} />}
         {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} />}
         {tab === 'users' && <UsersScreen members={members} sortedMembers={sortedMembers} currentUserId={currentUserId} setIdentity={setIdentity} canManage={canManageUsers} notices={notices} sessions={sessions} checkins={checkins} reload={reload} />}
@@ -483,7 +483,7 @@ function compressImage(file) {
     reader.readAsDataURL(file);
   });
 }
-function GalleryScreen({ photos, currentMember, canManage, reload }) {
+function GalleryScreen({ photos, currentMember, canManage, reload, members, sessions, checkins }) {
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [viewingId, setViewingId] = useState(null);
@@ -514,6 +514,14 @@ function GalleryScreen({ photos, currentMember, canManage, reload }) {
   };
   const viewing = sorted.find((p) => p.id === viewingId);
 
+  const participantsFor = (photo) => {
+    const date = photo.created_at.slice(0, 10);
+    const session = sessions.find((s) => s.date === date);
+    if (!session) return [];
+    const ids = checkins.filter((c) => c.session_id === session.id).map((c) => c.member_id);
+    return members.filter((m) => ids.includes(m.id));
+  };
+
   return (
     <div className="space-y-4">
       <div>
@@ -532,9 +540,10 @@ function GalleryScreen({ photos, currentMember, canManage, reload }) {
           {sorted.map((p) => (
             <button key={p.id} onClick={() => setViewingId(p.id)} className="relative aspect-square rounded-lg overflow-hidden" style={{ background: NEUTRAL_BG }}>
               <img src={publicUrl('photos', p.file_path)} className="w-full h-full object-cover" alt="" loading="lazy" />
-              <span className="absolute bottom-1 left-1.5 text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 2px rgba(0,0,0,0.6)', fontFamily: "'IBM Plex Mono', monospace" }}>
-                {p.created_at.slice(0, 10)}
-              </span>
+              <div className="absolute bottom-1 left-1.5 right-1.5 flex items-center justify-between text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 2px rgba(0,0,0,0.6)', fontFamily: "'IBM Plex Mono', monospace" }}>
+                <span>{p.created_at.slice(0, 10)}</span>
+                <span className="truncate ml-1">{p.uploader_name}</span>
+              </div>
             </button>
           ))}
         </div>
@@ -542,7 +551,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload }) {
       {viewing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)' }} onClick={() => setViewingId(null)}>
           <div className="max-w-full max-h-full flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
-            <img src={publicUrl('photos', viewing.file_path)} className="max-w-full max-h-[70vh] rounded-xl" alt="" />
+            <img src={publicUrl('photos', viewing.file_path)} className="max-w-full max-h-[65vh] rounded-xl" alt="" />
             <div className="flex items-center gap-3 mt-3">
               <span className="text-sm" style={{ color: '#FFFFFF' }}>{viewing.uploader_name} · {fmtDate(viewing.created_at)} {fmtTime(viewing.created_at)}</span>
               {(canManage || viewing.uploader_id === currentMember?.id) && (
@@ -550,6 +559,19 @@ function GalleryScreen({ photos, currentMember, canManage, reload }) {
               )}
               <button onClick={() => setViewingId(null)} className="p-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }}><X size={15} /></button>
             </div>
+            {(() => {
+              const people = participantsFor(viewing);
+              return people.length > 0 ? (
+                <div className="flex flex-wrap justify-center gap-1.5 mt-3 max-w-sm">
+                  <span className="text-xs mr-1" style={{ color: 'rgba(255,255,255,0.6)' }}>그날 참석:</span>
+                  {people.map((m) => (
+                    <span key={m.id} className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs" style={{ background: 'rgba(255,255,255,0.12)', color: '#FFFFFF' }}>
+                      {m.name}
+                    </span>
+                  ))}
+                </div>
+              ) : null;
+            })()}
           </div>
         </div>
       )}
