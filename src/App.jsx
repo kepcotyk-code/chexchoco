@@ -147,7 +147,7 @@ const weekKeyOf = (dateStr) => {
 
 // 주 단위 벌칙 계산: 월~목 4일이 모두 독서일이고 이미 다 지난 "완결된 주"에서,
 // 4일 전부 결석(30분 미만 포함)한 멤버만 그 주의 벌칙 대상이 됨.
-const computeWeeklyPenalties = (sessions, checkins, calendarDays, members) => {
+const computeWeeklyPenalties = (sessions, checkins, calendarDays, members, absenceExcuses = []) => {
   const eligible = filterPenaltyEligibleSessions(sessions.filter((s) => s.date < todayStr()), calendarDays);
   const byWeek = {};
   eligible.forEach((s) => { const wk = weekKeyOf(s.date); (byWeek[wk] = byWeek[wk] || []).push(s); });
@@ -156,7 +156,10 @@ const computeWeeklyPenalties = (sessions, checkins, calendarDays, members) => {
     .map(([wk, sess]) => {
       const sorted = [...sess].sort((a, b) => a.date.localeCompare(b.date));
       const results = members.map((m) => {
-        const attendedAny = sorted.some((s) => {
+        // 출장/휴가 등 사유가 있는 날은 그 멤버에 한해 판단 대상에서 제외
+        const relevant = sorted.filter((s) => !absenceExcuses.some((e) => e.date === s.date && e.member_id === m.id));
+        if (relevant.length === 0) return { member: m, missedAll: false }; // 4일 다 사유 있으면 벌칙 대상 아님
+        const attendedAny = relevant.some((s) => {
           const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
           const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
           return dur !== null && dur >= 30;
@@ -169,7 +172,7 @@ const computeWeeklyPenalties = (sessions, checkins, calendarDays, members) => {
 };
 
 /* ---------- Supabase data layer ---------- */
-const TABLES = ['members', 'notices', 'notice_views', 'sessions', 'checkins', 'penalty_completions', 'calendar_days', 'settings', 'photos'];
+const TABLES = ['members', 'notices', 'notice_views', 'sessions', 'checkins', 'penalty_completions', 'calendar_days', 'settings', 'photos', 'absence_excuses'];
 
 async function fetchAll() {
   const results = await Promise.all(TABLES.map((t) => supabase.from(t).select('*')));
@@ -211,6 +214,7 @@ export default function App() {
   const [calendarDays, setCalendarDays] = useState([]);
   const [settings, setSettings] = useState([]);
   const [photos, setPhotos] = useState([]);
+  const [absenceExcuses, setAbsenceExcuses] = useState([]);
   const [currentUserId, setCurrentUserId] = useState(() => localStorage.getItem('chexchoco-current-user') || null);
   const [tab, setTab] = useState('notice');
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -223,7 +227,7 @@ export default function App() {
       const data = await fetchAll();
       setMembers(data.members); setNotices(data.notices); setNoticeViews(data.notice_views);
       setSessions(data.sessions); setCheckins(data.checkins); setPenaltyCompletions(data.penalty_completions);
-      setCalendarDays(data.calendar_days); setSettings(data.settings); setPhotos(data.photos);
+      setCalendarDays(data.calendar_days); setSettings(data.settings); setPhotos(data.photos); setAbsenceExcuses(data.absence_excuses);
       setError('');
     } catch (e) { setError('데이터를 불러오지 못했어요. 새로고침해 주세요.'); }
     setLoaded(true);
@@ -363,10 +367,10 @@ export default function App() {
 
         {tab === 'notice' && <NoticeScreen notices={notices} noticeViews={noticeViews} currentMember={currentMember} canManage={canManageUsers} reload={reload} />}
         {tab === 'gallery' && <GalleryScreen photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} />}
-        {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} />}
-        {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} />}
+        {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} />}
+        {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} />}
         {tab === 'users' && <UsersScreen members={members} sortedMembers={sortedMembers} currentUserId={currentUserId} setIdentity={setIdentity} canManage={canManageUsers} notices={notices} sessions={sessions} checkins={checkins} reload={reload} />}
-        {tab === 'admin' && canManageAttendance && <AdminScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} setPenaltyRule={setPenaltyRule} penaltyCompletions={penaltyCompletions} reload={reload} calendarDays={calendarDays} />}
+        {tab === 'admin' && canManageAttendance && <AdminScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} setPenaltyRule={setPenaltyRule} penaltyCompletions={penaltyCompletions} reload={reload} calendarDays={calendarDays} absenceExcuses={absenceExcuses} />}
       </div>
     </div>
   );
@@ -663,12 +667,23 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
 }
 
 /* ---------------- QR 출결 ---------------- */
-function QrScreen({ members, currentMember, sessions, checkins, canManage, canManageAttendance, calendarDays, reload }) {
+function QrScreen({ members, currentMember, sessions, checkins, canManage, canManageAttendance, calendarDays, reload, absenceExcuses }) {
   const today = todayStr();
   const session = sessions.find((s) => s.date === today);
   const [selectedIds, setSelectedIds] = useState([]);
   const [timeInInput, setTimeInInput] = useState('');
   const [timeOutInput, setTimeOutInput] = useState('');
+  const myExcuseToday = currentMember ? absenceExcuses.find((e) => e.date === today && e.member_id === currentMember.id) : null;
+  const setMyExcuse = async (reason) => {
+    if (!currentMember) return;
+    await insertRow('absence_excuses', { id: uid('ae'), date: today, member_id: currentMember.id, reason });
+    await reload();
+  };
+  const clearMyExcuse = async () => {
+    if (!myExcuseToday) return;
+    await deleteRow('absence_excuses', 'id', myExcuseToday.id);
+    await reload();
+  };
 
   const startSession = async () => {
     await insertRow('sessions', { id: uid('s'), date: today, created_at: new Date().toISOString() });
@@ -759,7 +774,12 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
             <div className="text-xs mt-2" style={{ color: MUTE }}>오늘의 출결 코드</div>
             {currentMember ? (
               <div className="mt-4 flex flex-col items-center gap-2">
-                {!myCheckin ? <PrimaryBtn onClick={checkIn} icon={LogIn}>체크인</PrimaryBtn>
+                {myExcuseToday ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm rounded-full px-3 py-1.5" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>오늘 사유: {myExcuseToday.reason}</span>
+                    <button onClick={clearMyExcuse} className="text-xs underline underline-offset-2" style={{ color: MUTE }}>취소</button>
+                  </div>
+                ) : !myCheckin ? <PrimaryBtn onClick={checkIn} icon={LogIn}>체크인</PrimaryBtn>
                   : !myCheckin.check_out_at ? (
                     <><div className="text-sm" style={{ color: '#7FDCCF' }}>체크인 {fmtTime(myCheckin.check_in_at)}</div><PrimaryBtn onClick={checkOut} icon={LogOut}>체크아웃</PrimaryBtn></>
                   ) : (
@@ -770,6 +790,13 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
                       </div>
                     </div>
                   )}
+                {!myExcuseToday && !myCheckin && (
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className="text-xs" style={{ color: MUTE }}>오늘 못 오시나요?</span>
+                    <button onClick={() => setMyExcuse('출장')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>출장</button>
+                    <button onClick={() => setMyExcuse('휴가')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>휴가</button>
+                  </div>
+                )}
               </div>
             ) : <p className="text-sm mt-3" style={{ color: MUTE }}>상단에서 본인을 먼저 선택해 주세요.</p>}
           </div>
@@ -846,7 +873,7 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
 }
 
 /* ---------------- 대시보드 ---------------- */
-function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyCompletions, canManage, calendarDays, reload }) {
+function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyCompletions, canManage, calendarDays, reload, absenceExcuses }) {
   const [cursor, setCursor] = useState(new Date());
   const [viewMode, setViewMode] = useState('month');
   const [selectedDate, setSelectedDate] = useState(null);
@@ -856,7 +883,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   const shift = (delta) => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1));
 
   const sortedSessionsInMonth = [...sessionsInMonth].sort((a, b) => a.date.localeCompare(b.date));
-  const rows = members.map((m) => {
+  const rowsUnranked = members.map((m) => {
     const flags = sortedSessionsInMonth.map((s) => {
       const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
       const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
@@ -865,6 +892,11 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     const present = flags.filter(Boolean).length;
     return { ...m, present, flags, rate: totalDays ? Math.round((present / totalDays) * 100) : 0 };
   }).sort((a, b) => b.rate - a.rate);
+  let lastRate = null; let lastRank = 0;
+  const rows = rowsUnranked.map((r, i) => {
+    if (r.rate !== lastRate) { lastRank = i + 1; lastRate = r.rate; }
+    return { ...r, rank: lastRank };
+  });
   const monthSessionIds = new Set(sessionsInMonth.map((s) => s.id));
   const monthReadingRows = members.map((m) => {
     const totalMin = checkins.filter((c) => c.member_id === m.id && monthSessionIds.has(c.session_id)).reduce((sum, c) => { const d = durationMin(c.check_in_at, c.check_out_at); return sum + (d !== null && d > 0 ? d : 0); }, 0);
@@ -884,13 +916,34 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   }).sort((a, b) => b.totalMin - a.totalMin);
   const maxReadingMin = Math.max(1, ...totalReadingRows.map((r) => r.totalMin));
 
-  const weeklyPenalties = computeWeeklyPenalties(sessions, checkins, calendarDays, members);
+  const weeklyPenalties = computeWeeklyPenalties(sessions, checkins, calendarDays, members, absenceExcuses);
   const isWeekCompleted = (wk, memberId) => penaltyCompletions.some((p) => p.session_id === wk && p.member_id === memberId);
   const penaltyByMember = {};
   members.forEach((m) => { penaltyByMember[m.id] = { pending: 0 }; });
   weeklyPenalties.forEach((w) => w.results.forEach((r) => {
     if (r.missedAll && !isWeekCompleted(w.weekKey, r.member.id)) penaltyByMember[r.member.id].pending += 1;
   }));
+
+  // 이번 주(진행 중) 3일 연속 미참석 → 벌칙 예상 경고
+  const thisWeekKey = weekKeyOf(todayStr());
+  const thisWeekSessionsSoFar = [...sessions]
+    .filter((s) => isMonToThu(s.date) && weekKeyOf(s.date) === thisWeekKey && s.date <= todayStr())
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const thisWeekQualifies = weekQualifiesForPenalty(todayStr(), calendarDays);
+  const warningMemberIds = new Set();
+  if (thisWeekQualifies) {
+    members.forEach((m) => {
+      let streak = 0; let maxStreak = 0;
+      thisWeekSessionsSoFar.forEach((s) => {
+        const excused = absenceExcuses.some((e) => e.date === s.date && e.member_id === m.id);
+        if (excused) { streak = 0; return; }
+        const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
+        const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
+        if (dur !== null && dur >= 30) streak = 0; else { streak++; maxStreak = Math.max(maxStreak, streak); }
+      });
+      if (maxStreak >= 3) warningMemberIds.add(m.id);
+    });
+  }
 
   const todayMd = todayStr().slice(5, 10);
   const isCurrentMonth = ms === monthStr(new Date());
@@ -1007,11 +1060,12 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
           <Card>
             <div className="text-sm font-semibold mb-3" style={{ color: INK }}>이번 달 출석률</div>
             <div className="space-y-3">
-              {rows.map((r, idx) => (
+              {rows.map((r) => (
                 <div key={r.id} className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-xs w-4 text-center shrink-0" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{idx === 0 && r.present > 0 ? '🏆' : idx + 1}</span>
+                    <span className="text-xs w-4 text-center shrink-0" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.rank === 1 && r.present > 0 ? '🏆' : r.rank}</span>
                     <Stamp role={r.role} size={24} tilt={0} /><span className="truncate" style={{ color: INK }}>{r.name}</span>
+                    {isCurrentMonth && warningMemberIds.has(r.id) && <span title="이번 주 3일 연속 미참석 — 벌칙 예상" className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0" style={{ background: '#3A2213', color: '#F0A87C' }}>⚠️ 벌칙 예상</span>}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {penaltyByMember[r.id]?.pending > 0 && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}><Gavel size={10} /> 벌칙 대상 {penaltyByMember[r.id].pending}</span>}
@@ -1020,7 +1074,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                         <span key={i} className="rounded-full" style={{ width: 9, height: 9, background: attended ? '#7FDCCF' : 'transparent', border: attended ? 'none' : `1.5px solid ${LINE}` }} />
                       ))}
                     </div>
-                    <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{totalDays}</span>
+                    <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{totalDays} · {r.rate}%</span>
                   </div>
                 </div>
               ))}
@@ -1240,7 +1294,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
 }
 
 /* ---------------- 출석관리 (간사 전용) ---------------- */
-function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule, penaltyCompletions, reload, calendarDays }) {
+function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule, penaltyCompletions, reload, calendarDays, absenceExcuses }) {
   const [date, setDate] = useState(todayStr());
   const session = sessions.find((s) => s.date === date);
   const dayCheckins = session ? checkins.filter((c) => c.session_id === session.id) : [];
@@ -1281,7 +1335,14 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
   const updateCheckin = async (id, field, timeVal) => { if (!timeVal) return; await updateRow('checkins', 'id', id, { [field]: new Date(`${date}T${timeVal}`).toISOString() }); await reload(); };
   const removeCheckin = async (id) => { await deleteRow('checkins', 'id', id); await reload(); };
   const saveRule = () => { setPenaltyRule(ruleInput.trim()); setEditingRule(false); };
-  const weeklyPenalties = computeWeeklyPenalties(sessions, checkins, calendarDays, members);
+  const weeklyPenalties = computeWeeklyPenalties(sessions, checkins, calendarDays, members, absenceExcuses);
+  const addExcuse = async (memberId, reason) => {
+    const existing = absenceExcuses.find((e) => e.date === date && e.member_id === memberId);
+    if (existing) await deleteRow('absence_excuses', 'id', existing.id);
+    await insertRow('absence_excuses', { id: uid('ae'), date, member_id: memberId, reason });
+    await reload();
+  };
+  const removeExcuse = async (id) => { await deleteRow('absence_excuses', 'id', id); await reload(); };
   const isWeekCompleted = (wk, memberId) => penaltyCompletions.some((p) => p.session_id === wk && p.member_id === memberId);
   const toggleWeekCompletion = async (wk, memberId) => {
     const existing = penaltyCompletions.find((p) => p.session_id === wk && p.member_id === memberId);
@@ -1324,6 +1385,31 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
                 <input type="time" defaultValue={c.check_out_at ? fmtTime(c.check_out_at) : ''} onBlur={(e) => updateCheckin(c.id, 'check_out_at', e.target.value)} className="rounded-lg border px-2 py-1 text-xs" style={inputStyle} />
                 <span className="text-xs font-semibold ml-auto" style={{ color: dur !== null && dur >= 30 ? '#7FDCCF' : '#F0A87C' }}>{dur !== null ? `${dur}분` : '—'}</span>
                 <button onClick={() => removeCheckin(c.id)} className="p-1" style={{ color: '#F0A87C' }}><Trash2 size={14} /></button>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+      <Card>
+        <div className="text-sm font-semibold mb-1" style={{ color: INK }}>불참 사유 ({fmtDate(date)})</div>
+        <p className="text-xs mb-3" style={{ color: MUTE }}>출장·휴가로 등록하면 그 날은 벌칙 판단에서 제외돼요.</p>
+        <div className="space-y-2">
+          {members.map((m) => {
+            const excuse = absenceExcuses.find((e) => e.date === date && e.member_id === m.id);
+            return (
+              <div key={m.id} className="flex items-center justify-between py-1.5" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                <div className="flex items-center gap-2 min-w-0"><Stamp role={m.role} size={24} tilt={0} /><span className="text-sm truncate" style={{ color: INK }}>{m.name}</span></div>
+                {excuse ? (
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-xs rounded-full px-2 py-1" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{excuse.reason}</span>
+                    <button onClick={() => removeExcuse(excuse.id)} className="p-1" style={{ color: MUTE }}><X size={14} /></button>
+                  </div>
+                ) : (
+                  <div className="flex gap-1.5 shrink-0">
+                    <button onClick={() => addExcuse(m.id, '출장')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>출장</button>
+                    <button onClick={() => addExcuse(m.id, '휴가')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>휴가</button>
+                  </div>
+                )}
               </div>
             );
           })}
