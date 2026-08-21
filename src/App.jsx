@@ -163,10 +163,10 @@ export default function App() {
   const [photos, setPhotos] = useState([]);
   const [currentUserId, setCurrentUserId] = useState(() => localStorage.getItem('chexchoco-current-user') || null);
   const [tab, setTab] = useState('notice');
-  const [switching, setSwitching] = useState(false);
-  const [pendingPinId, setPendingPinId] = useState(null);
-  const [pinInput, setPinInput] = useState('');
-  const [pinError, setPinError] = useState('');
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [modalSelectedId, setModalSelectedId] = useState('');
+  const [modalPinInput, setModalPinInput] = useState('');
+  const [modalPinError, setModalPinError] = useState('');
 
   const reload = async () => {
     try {
@@ -187,15 +187,15 @@ export default function App() {
     if (id) localStorage.setItem('chexchoco-current-user', id); else localStorage.removeItem('chexchoco-current-user');
     setCurrentUserId(id);
   };
-  const pickIdentity = (m) => {
-    if (m.pin) { setPendingPinId(m.id); setPinInput(''); setPinError(''); }
-    else { setIdentity(m.id); setSwitching(false); }
-  };
-  const confirmPin = () => {
-    const m = members.find((mm) => mm.id === pendingPinId);
-    if (!m) return;
-    if (pinInput === m.pin) { setIdentity(m.id); setSwitching(false); setPendingPinId(null); setPinInput(''); setPinError(''); }
-    else { setPinError('PIN이 일치하지 않아요.'); setPinInput(''); }
+  const openLogin = () => { setShowLoginModal(true); setModalSelectedId(''); setModalPinInput(''); setModalPinError(''); };
+  const closeLogin = () => { setShowLoginModal(false); setModalSelectedId(''); setModalPinInput(''); setModalPinError(''); };
+  const logout = () => { setIdentity(null); };
+  const submitLogin = () => {
+    const m = members.find((mm) => mm.id === modalSelectedId);
+    if (!m) { setModalPinError('사용자를 선택해 주세요.'); return; }
+    if (m.pin && modalPinInput !== m.pin) { setModalPinError('PIN이 일치하지 않아요.'); return; }
+    setIdentity(m.id);
+    closeLogin();
   };
 
   const currentMember = members.find((m) => m.id === currentUserId) || null;
@@ -226,7 +226,12 @@ export default function App() {
   return (
     <div className="min-h-screen" style={{ background: PAPER_BG, fontFamily: "'Inter', sans-serif" }}>
       <div className="max-w-3xl mx-auto px-4 pt-6 pb-24">
-        <div className="mb-6">
+        <div className="mb-6 relative">
+          <button onClick={() => (currentMember ? logout() : openLogin())}
+            className="absolute right-0 top-0 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold"
+            style={{ background: currentMember ? BTN_BG : NEUTRAL_BG, color: currentMember ? BTN_TEXT : NEUTRAL_TEXT }}>
+            {currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} />{currentMember.name}님 · 로그아웃</> : <>로그인</>}
+          </button>
           <div className="flex items-center gap-2 mb-1.5">
             <div className="h-px flex-1" style={{ background: LINE }} />
             <span className="text-[11px] tracking-[0.2em] uppercase" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>KEPCO Reading Club</span>
@@ -241,57 +246,43 @@ export default function App() {
           </div>
         )}
 
-        {tab === 'users' && (
-        <Card className="mb-4">
-          <div className="text-[11px] uppercase tracking-wider mb-2" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>로그인 사용자</div>
-          {currentMember && !switching ? (
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Stamp role={currentMember.role} size={34} tilt={-4} />
-                <div><div className="font-semibold" style={{ color: INK }}>{currentMember.name}</div><RoleChip role={currentMember.role} /></div>
+        {showLoginModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={closeLogin}>
+            <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl border p-5" style={{ background: CARD_BG, borderColor: LINE }}>
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-sm font-semibold" style={{ color: INK }}>로그인</div>
+                <button onClick={closeLogin}><X size={18} style={{ color: MUTE }} /></button>
               </div>
-              <button onClick={() => setSwitching(true)} className="text-xs font-semibold underline underline-offset-2" style={{ color: MUTE }}>변경</button>
-            </div>
-          ) : (
-            <div>
               {sortedMembers.length === 0 ? (
-                <p className="text-sm" style={{ color: MUTE }}>아래에서 첫 멤버를 등록해 주세요.</p>
-              ) : pendingPinId ? (
-                (() => {
-                  const m = sortedMembers.find((mm) => mm.id === pendingPinId);
-                  return (
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <Stamp role={m?.role} size={28} tilt={0} />
-                        <span className="text-sm font-medium" style={{ color: INK }}>{m?.name}님의 PIN을 입력하세요</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <input type="password" inputMode="numeric" maxLength={4} value={pinInput}
-                          onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}
-                          onKeyDown={(e) => e.key === 'Enter' && confirmPin()}
-                          className="flex-1 rounded-xl border px-3 py-2 text-sm tracking-[0.3em] outline-none" style={inputStyle} placeholder="••••" autoFocus />
-                        <PrimaryBtn onClick={confirmPin} icon={Check}>확인</PrimaryBtn>
-                        <GhostBtn onClick={() => { setPendingPinId(null); setPinInput(''); setPinError(''); }} icon={X}>취소</GhostBtn>
-                      </div>
-                      {pinError && <div className="text-xs mt-1.5" style={{ color: '#F0A87C' }}>{pinError}</div>}
-                    </div>
-                  );
-                })()
+                <p className="text-sm" style={{ color: MUTE }}>등록된 멤버가 없어요. 사용자관리에서 첫 멤버를 등록해 주세요.</p>
               ) : (
-                <div className="flex flex-wrap gap-2">
-                  {sortedMembers.map((m) => (
-                    <button key={m.id} onClick={() => pickIdentity(m)}
-                      className="flex items-center gap-2 rounded-full border pl-1.5 pr-3 py-1.5" style={{ borderColor: LINE }}>
-                      <Stamp role={m.role} size={24} tilt={0} /><span className="text-sm font-medium" style={{ color: INK }}>{m.name}</span>
-                      {m.pin && <Lock size={11} style={{ color: MUTE }} />}
-                    </button>
-                  ))}
-                  {switching && <button onClick={() => setSwitching(false)} className="text-xs self-center" style={{ color: MUTE }}>취소</button>}
+                <div className="space-y-3">
+                  <div>
+                    <div className="text-xs mb-1" style={{ color: MUTE }}>이름 선택</div>
+                    <select value={modalSelectedId} onChange={(e) => { setModalSelectedId(e.target.value); setModalPinInput(''); setModalPinError(''); }}
+                      className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none" style={inputStyle}>
+                      <option value="">— 선택하세요 —</option>
+                      {sortedMembers.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.role})</option>)}
+                    </select>
+                  </div>
+                  {modalSelectedId && (() => {
+                    const m = sortedMembers.find((mm) => mm.id === modalSelectedId);
+                    return m?.pin ? (
+                      <div>
+                        <div className="text-xs mb-1" style={{ color: MUTE }}>PIN</div>
+                        <input type="password" inputMode="numeric" maxLength={4} value={modalPinInput}
+                          onChange={(e) => setModalPinInput(e.target.value.replace(/\D/g, ''))}
+                          onKeyDown={(e) => e.key === 'Enter' && submitLogin()}
+                          className="w-full rounded-xl border px-3 py-2.5 text-sm tracking-[0.3em] outline-none" style={inputStyle} placeholder="••••" autoFocus />
+                      </div>
+                    ) : <p className="text-xs" style={{ color: MUTE }}>이 사용자는 PIN이 설정되어 있지 않아요. 바로 로그인할 수 있어요.</p>;
+                  })()}
+                  {modalPinError && <p className="text-xs" style={{ color: '#F0A87C' }}>{modalPinError}</p>}
+                  <PrimaryBtn onClick={submitLogin} icon={LogIn}>로그인</PrimaryBtn>
                 </div>
               )}
             </div>
-          )}
-        </Card>
+          </div>
         )}
 
         <div className="flex gap-1.5 mb-4 overflow-x-auto pb-1">
@@ -898,6 +889,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState(''); const [newRole, setNewRole] = useState('회원'); const [newBirthday, setNewBirthday] = useState(''); const [newPin, setNewPin] = useState('');
   const [editingId, setEditingId] = useState(null);
+  const [editMode, setEditMode] = useState('full'); // 'full' | 'self'
   const [editName, setEditName] = useState(''); const [editRole, setEditRole] = useState('회원'); const [editBirthday, setEditBirthday] = useState(''); const [editPin, setEditPin] = useState('');
 
   const handleAdd = async () => {
@@ -910,11 +902,16 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
     await reload();
     setNewName(''); setNewRole('회원'); setNewBirthday(''); setNewPin(''); setShowAddForm(false);
   };
-  const startEdit = (m) => { setEditingId(m.id); setEditName(m.name); setEditRole(m.role); setEditBirthday(m.birthday || ''); setEditPin(m.pin || ''); };
+  const startEdit = (m) => { setEditingId(m.id); setEditMode('full'); setEditName(m.name); setEditRole(m.role); setEditBirthday(m.birthday || ''); setEditPin(m.pin || ''); };
+  const startSelfEdit = (m) => { setEditingId(m.id); setEditMode('self'); setEditBirthday(m.birthday || ''); setEditPin(m.pin || ''); };
   const saveEdit = async () => {
-    if (!editName.trim()) return;
     if (editPin && !/^\d{4}$/.test(editPin)) return;
-    await updateRow('members', 'id', editingId, { name: editName.trim(), role: editRole, birthday: editBirthday || null, pin: editPin || null });
+    if (editMode === 'full') {
+      if (!editName.trim()) return;
+      await updateRow('members', 'id', editingId, { name: editName.trim(), role: editRole, birthday: editBirthday || null, pin: editPin || null });
+    } else {
+      await updateRow('members', 'id', editingId, { birthday: editBirthday || null, pin: editPin || null });
+    }
     await reload();
     setEditingId(null);
   };
@@ -950,7 +947,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
           </label>
         </div>
       )}
-      {!canManage && members.length > 0 && <div className="flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-sm" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}><Lock size={15} /> 회장·간사·총무만 사용자 정보를 수정할 수 있어요.</div>}
+      {!canManage && members.length > 0 && <div className="flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-sm" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}><Lock size={15} /> 이름·직급 변경은 회장·간사·총무만 가능해요. 본인의 생일·PIN은 각자 수정할 수 있어요.</div>}
 
       <Card className="!p-0 overflow-hidden">
         {sortedMembers.length === 0 && <div className="px-4 py-8 text-center text-sm" style={{ color: MUTE }}>등록된 멤버가 없어요.</div>}
@@ -958,8 +955,13 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
           <div key={m.id} style={{ borderTop: idx === 0 ? 'none' : `1px solid ${ROW_LINE}` }}>
             {editingId === m.id ? (
               <div className="p-4 space-y-3" style={{ background: '#1A1812' }}>
-                <input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
-                <RolePicker value={editRole} onChange={setEditRole} />
+                {editMode === 'full' && (
+                  <>
+                    <input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                    <RolePicker value={editRole} onChange={setEditRole} />
+                  </>
+                )}
+                {editMode === 'self' && <p className="text-xs" style={{ color: MUTE }}>본인의 생일과 PIN만 수정할 수 있어요.</p>}
                 <div><div className="text-xs mb-1 flex items-center gap-1" style={{ color: MUTE }}><Cake size={13} /> 생일</div><input type="date" value={editBirthday} onChange={(e) => setEditBirthday(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
                 <div><div className="text-xs mb-1 flex items-center gap-1" style={{ color: MUTE }}><Lock size={13} /> 본인 확인 PIN (4자리, 선택)</div><input type="password" inputMode="numeric" maxLength={4} value={editPin} onChange={(e) => setEditPin(e.target.value.replace(/\D/g, ''))} className="w-full rounded-xl border px-3 py-2 text-sm tracking-[0.3em] outline-none" style={inputStyle} placeholder="설정 안 함" /></div>
                 <div className="flex gap-2 pt-1"><PrimaryBtn onClick={saveEdit} icon={Check}>저장</PrimaryBtn><GhostBtn onClick={() => setEditingId(null)} icon={X}>취소</GhostBtn></div>
@@ -973,7 +975,11 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
                     <div className="flex items-center gap-1.5 flex-wrap"><RoleChip role={m.role} />{m.birthday && <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtMD(mdOf(m.birthday))}</span>}{m.pin && <Lock size={11} style={{ color: MUTE }} />}</div>
                   </div>
                 </div>
-                {canManage && <div className="flex items-center gap-1 shrink-0"><button onClick={() => startEdit(m)} className="p-2 rounded-lg" style={{ color: MUTE }}><Pencil size={16} /></button><button onClick={() => removeMember(m.id)} className="p-2 rounded-lg" style={{ color: '#F0A87C' }}><Trash2 size={16} /></button></div>}
+                <div className="flex items-center gap-1 shrink-0">
+                  {canManage && <button onClick={() => startEdit(m)} className="p-2 rounded-lg" style={{ color: MUTE }}><Pencil size={16} /></button>}
+                  {!canManage && m.id === currentUserId && <button onClick={() => startSelfEdit(m)} className="p-2 rounded-lg" style={{ color: MUTE }}><Pencil size={16} /></button>}
+                  {canManage && <button onClick={() => removeMember(m.id)} className="p-2 rounded-lg" style={{ color: '#F0A87C' }}><Trash2 size={16} /></button>}
+                </div>
               </div>
             )}
           </div>
