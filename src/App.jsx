@@ -616,6 +616,9 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
 function QrScreen({ members, currentMember, sessions, checkins, canManage, canManageAttendance, calendarDays, reload }) {
   const today = todayStr();
   const session = sessions.find((s) => s.date === today);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [timeInInput, setTimeInInput] = useState('');
+  const [timeOutInput, setTimeOutInput] = useState('');
 
   const startSession = async () => {
     await insertRow('sessions', { id: uid('s'), date: today, created_at: new Date().toISOString() });
@@ -645,17 +648,43 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
     await updateRow('checkins', 'id', c.id, { check_out_at: new Date().toISOString() });
     await reload();
   };
-  const bulkCheckInAll = async () => {
-    if (!session) return;
+
+  const toggleSelect = (id) => setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  const selectAll = () => setSelectedIds(members.map((m) => m.id));
+  const clearSelect = () => setSelectedIds([]);
+
+  const bulkCheckInSelected = async () => {
+    if (!session || selectedIds.length === 0) return;
     const now = new Date().toISOString();
-    const additions = members.filter((m) => !getCheckin(m.id)).map((m) => ({ id: uid('c'), session_id: session.id, member_id: m.id, check_in_at: now, check_out_at: null }));
-    if (additions.length) { await supabase.from('checkins').insert(additions); await reload(); }
+    const additions = selectedIds.filter((id) => !getCheckin(id)).map((id) => ({ id: uid('c'), session_id: session.id, member_id: id, check_in_at: now, check_out_at: null }));
+    if (additions.length) await supabase.from('checkins').insert(additions);
+    await reload();
   };
-  const bulkCheckOutAll = async () => {
-    if (!session) return;
+  const bulkCheckOutSelected = async () => {
+    if (!session || selectedIds.length === 0) return;
     const now = new Date().toISOString();
-    const ids = todaysCheckins.filter((c) => !c.check_out_at).map((c) => c.id);
-    if (ids.length) { await supabase.from('checkins').update({ check_out_at: now }).in('id', ids); await reload(); }
+    const ids = selectedIds.map((id) => getCheckin(id)).filter((c) => c && !c.check_out_at).map((c) => c.id);
+    if (ids.length) await supabase.from('checkins').update({ check_out_at: now }).in('id', ids);
+    await reload();
+  };
+  const bulkSetCheckInTime = async () => {
+    if (!session || selectedIds.length === 0 || !timeInInput) return;
+    const iso = new Date(`${today}T${timeInInput}:00`).toISOString();
+    for (const id of selectedIds) {
+      const c = getCheckin(id);
+      if (c) await updateRow('checkins', 'id', c.id, { check_in_at: iso });
+      else await insertRow('checkins', { id: uid('c'), session_id: session.id, member_id: id, check_in_at: iso, check_out_at: null });
+    }
+    await reload();
+  };
+  const bulkSetCheckOutTime = async () => {
+    if (!session || selectedIds.length === 0 || !timeOutInput) return;
+    const iso = new Date(`${today}T${timeOutInput}:00`).toISOString();
+    for (const id of selectedIds) {
+      const c = getCheckin(id);
+      if (c) await updateRow('checkins', 'id', c.id, { check_out_at: iso });
+    }
+    await reload();
   };
 
   return (
@@ -697,16 +726,27 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
 
       {session && canManageAttendance && (
         <Card>
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-semibold" style={{ color: INK }}>일괄 출결 관리</div>
-            <div className="flex gap-2"><GhostBtn onClick={bulkCheckInAll} icon={LogIn}>전체 체크인</GhostBtn><GhostBtn onClick={bulkCheckOutAll} icon={LogOut}>전체 체크아웃</GhostBtn></div>
+            <div className="flex items-center gap-2 text-xs" style={{ color: MUTE }}>
+              <span>{selectedIds.length}명 선택</span>
+              <button onClick={selectAll} className="underline underline-offset-2">전체 선택</button>
+              <button onClick={clearSelect} className="underline underline-offset-2">선택 해제</button>
+            </div>
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 mb-3">
             {members.map((m) => {
               const c = getCheckin(m.id); const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
+              const checked = selectedIds.includes(m.id);
               return (
                 <div key={m.id} className="flex items-center justify-between text-sm py-1.5" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-                  <div className="flex items-center gap-2 min-w-0"><Stamp role={m.role} size={26} tilt={0} /><span className="truncate" style={{ color: INK }}>{m.name}</span></div>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <button onClick={() => toggleSelect(m.id)} className="w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0"
+                      style={{ borderColor: checked ? '#7FDCCF' : LINE, background: checked ? '#12302C' : 'transparent' }}>
+                      {checked && <Check size={12} style={{ color: '#7FDCCF' }} />}
+                    </button>
+                    <Stamp role={m.role} size={26} tilt={0} /><span className="truncate" style={{ color: INK }}>{m.name}</span>
+                  </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {c ? <span className="text-xs" style={{ color: dur === null ? MUTE : dur >= 30 ? '#7FDCCF' : '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtTime(c.check_in_at)}–{fmtTime(c.check_out_at)} {dur !== null && `(${dur}분)`}</span> : <span className="text-xs" style={{ color: MUTE }}>미체크</span>}
                     {!c && <button onClick={() => checkInMember(m.id)} className="p-1.5 rounded-lg" style={{ background: NEUTRAL_BG, color: '#7FDCCF' }}><LogIn size={14} /></button>}
@@ -715,6 +755,21 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
                 </div>
               );
             })}
+          </div>
+          <div className="space-y-2 pt-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+            <div className="flex gap-2">
+              <GhostBtn onClick={bulkCheckInSelected} icon={LogIn} bg="#12302C" color="#7FDCCF">선택 체크인</GhostBtn>
+              <GhostBtn onClick={bulkCheckOutSelected} icon={LogOut} bg="#3A2213" color="#F0A87C">선택 체크아웃</GhostBtn>
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="time" value={timeInInput} onChange={(e) => setTimeInInput(e.target.value)} className="flex-1 rounded-lg border px-2 py-1.5 text-xs outline-none" style={inputStyle} />
+              <GhostBtn onClick={bulkSetCheckInTime} icon={LogIn}>체크인 시간 지정</GhostBtn>
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="time" value={timeOutInput} onChange={(e) => setTimeOutInput(e.target.value)} className="flex-1 rounded-lg border px-2 py-1.5 text-xs outline-none" style={inputStyle} />
+              <GhostBtn onClick={bulkSetCheckOutTime} icon={LogOut}>체크아웃 시간 지정</GhostBtn>
+            </div>
+            <p className="text-[11px]" style={{ color: MUTE }}>선택한 인원에게만 적용돼요. 시간 지정은 체크인 기록이 없어도(체크인은 자동 생성) 적용되고, 체크아웃 시간 지정은 기존 체크인이 있는 인원에만 적용돼요.</p>
           </div>
         </Card>
       )}
