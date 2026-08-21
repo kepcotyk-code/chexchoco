@@ -298,7 +298,7 @@ export default function App() {
           })}
         </div>
 
-        {tab === 'notice' && <NoticeScreen notices={notices} noticeViews={noticeViews} currentMember={currentMember} canManage={canManageUsers} reload={reload} />}
+        {tab === 'notice' && <NoticeScreen notices={notices} noticeViews={noticeViews} currentMember={currentMember} canManage={canManageUsers} reload={reload} photos={photos} setTab={setTab} />}
         {tab === 'gallery' && <GalleryScreen photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} />}
         {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} />}
         {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} />}
@@ -312,7 +312,7 @@ export default function App() {
 /* ---------------- 공지사항 ---------------- */
 const MAX_PDF_BYTES = 3 * 1024 * 1024;
 
-function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload }) {
+function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, photos, setTab }) {
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -327,6 +327,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload }
     if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
     return new Date(b.created_at) - new Date(a.created_at);
   });
+  const recentPhotos = [...(photos || [])].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 8);
 
   const isPdfSignature = (buf) => { const b = new Uint8Array(buf); return b.length >= 4 && b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46; };
   const handleFilePick = (e) => {
@@ -377,6 +378,21 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload }
 
   return (
     <div className="space-y-3">
+      {recentPhotos.length > 0 && (
+        <div>
+          <button onClick={() => setTab('gallery')} className="flex items-center justify-between w-full mb-1.5">
+            <span className="text-xs font-semibold flex items-center gap-1.5" style={{ color: MUTE }}><ImageIcon size={13} /> 최근 사진</span>
+            <span className="text-xs" style={{ color: MUTE }}>포토로그 전체 보기 →</span>
+          </button>
+          <div className="flex gap-1.5 overflow-x-auto pb-1">
+            {recentPhotos.map((p) => (
+              <button key={p.id} onClick={() => setTab('gallery')} className="shrink-0 w-16 h-16 rounded-lg overflow-hidden" style={{ background: NEUTRAL_BG }}>
+                <img src={publicUrl('photos', p.file_path)} className="w-full h-full object-cover" alt="" loading="lazy" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {canManage && (
         showForm ? (
           <Card className="space-y-3">
