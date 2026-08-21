@@ -936,27 +936,29 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
 function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canManage, notices, sessions, checkins, reload }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState(''); const [newRole, setNewRole] = useState('회원'); const [newBirthday, setNewBirthday] = useState(''); const [newPin, setNewPin] = useState('');
+  const [newDept, setNewDept] = useState(''); const [newJobType, setNewJobType] = useState(''); const [newJoinedAt, setNewJoinedAt] = useState(''); const [newGenre, setNewGenre] = useState(''); const [newNote, setNewNote] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editMode, setEditMode] = useState('full'); // 'full' | 'self'
   const [editName, setEditName] = useState(''); const [editRole, setEditRole] = useState('회원'); const [editBirthday, setEditBirthday] = useState(''); const [editPin, setEditPin] = useState('');
+  const [editDept, setEditDept] = useState(''); const [editJobType, setEditJobType] = useState(''); const [editJoinedAt, setEditJoinedAt] = useState(''); const [editGenre, setEditGenre] = useState(''); const [editNote, setEditNote] = useState('');
 
   const handleAdd = async () => {
     if (!newName.trim()) return;
     if (newPin && !/^\d{4}$/.test(newPin)) return;
     const id = uid('m');
     const isFirst = members.length === 0;
-    await insertRow('members', { id, name: newName.trim(), role: newRole, birthday: newBirthday || null, pin: newPin || null });
+    await insertRow('members', { id, name: newName.trim(), role: newRole, birthday: newBirthday || null, pin: newPin || null, department: newDept || null, job_type: newJobType || null, joined_at: newJoinedAt || null, book_genre: newGenre || null, note: newNote || null });
     if (isFirst) setIdentity(id);
     await reload();
-    setNewName(''); setNewRole('회원'); setNewBirthday(''); setNewPin(''); setShowAddForm(false);
+    setNewName(''); setNewRole('회원'); setNewBirthday(''); setNewPin(''); setNewDept(''); setNewJobType(''); setNewJoinedAt(''); setNewGenre(''); setNewNote(''); setShowAddForm(false);
   };
-  const startEdit = (m) => { setEditingId(m.id); setEditMode('full'); setEditName(m.name); setEditRole(m.role); setEditBirthday(m.birthday || ''); setEditPin(m.pin || ''); };
+  const startEdit = (m) => { setEditingId(m.id); setEditMode('full'); setEditName(m.name); setEditRole(m.role); setEditBirthday(m.birthday || ''); setEditPin(m.pin || ''); setEditDept(m.department || ''); setEditJobType(m.job_type || ''); setEditJoinedAt(m.joined_at || ''); setEditGenre(m.book_genre || ''); setEditNote(m.note || ''); };
   const startSelfEdit = (m) => { setEditingId(m.id); setEditMode('self'); setEditBirthday(m.birthday || ''); setEditPin(m.pin || ''); };
   const saveEdit = async () => {
     if (editPin && !/^\d{4}$/.test(editPin)) return;
     if (editMode === 'full') {
       if (!editName.trim()) return;
-      await updateRow('members', 'id', editingId, { name: editName.trim(), role: editRole, birthday: editBirthday || null, pin: editPin || null });
+      await updateRow('members', 'id', editingId, { name: editName.trim(), role: editRole, birthday: editBirthday || null, pin: editPin || null, department: editDept || null, job_type: editJobType || null, joined_at: editJoinedAt || null, book_genre: editGenre || null, note: editNote || null });
     } else {
       await updateRow('members', 'id', editingId, { birthday: editBirthday || null, pin: editPin || null });
     }
@@ -966,7 +968,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
   const removeMember = async (id) => { await deleteRow('members', 'id', id); await reload(); if (currentUserId === id) setIdentity(null); };
 
   const downloadExcel = () => {
-    const data = sortedMembers.map((m) => ({ 이름: m.name, 직급: m.role, 생일: m.birthday || '', PIN: m.pin || '' }));
+    const data = sortedMembers.map((m) => ({ 이름: m.name, 직급: m.role, 소속: m.department || '', 직군: m.job_type || '', 생일: m.birthday || '', 가입일자: m.joined_at || '', 선호도서: m.book_genre || '', 비고: m.note || '', PIN: m.pin || '' }));
     const ws = XLSX.utils.json_to_sheet(data); const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '멤버명단'); XLSX.writeFile(wb, `책스초코_멤버명단_${todayStr()}.xlsx`);
   };
@@ -978,7 +980,17 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
         const wb = XLSX.read(evt.target.result, { type: 'binary' });
         const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
         const validRoles = ROLES.map((r) => r.key);
-        const additions = rows.filter((r) => r['이름']).map((r) => ({ id: uid('m'), name: String(r['이름']).trim(), role: validRoles.includes(r['직급']) ? r['직급'] : '회원', birthday: /^\d{4}-\d{2}-\d{2}$/.test(r['생일']) ? r['생일'] : null, pin: /^\d{4}$/.test(String(r['PIN'] || '')) ? String(r['PIN']) : null }));
+        const additions = rows.filter((r) => r['이름']).map((r) => ({
+          id: uid('m'), name: String(r['이름']).trim(),
+          role: validRoles.includes(r['구분']) ? r['구분'] : (validRoles.includes(r['직급']) ? r['직급'] : '회원'),
+          birthday: /^\d{4}[.-]\d{2}[.-]\d{2}$/.test(r['생일'] || r['생년월일'] || '') ? String(r['생일'] || r['생년월일']).replace(/\./g, '-') : null,
+          pin: /^\d{4}$/.test(String(r['PIN'] || '')) ? String(r['PIN']) : null,
+          department: r['소속'] ? String(r['소속']) : null,
+          job_type: r['직군'] ? String(r['직군']) : null,
+          joined_at: r['가입일자'] ? String(r['가입일자']).replace(/\./g, '-') : null,
+          book_genre: r['선호 도서 종류'] || r['선호도서'] ? String(r['선호 도서 종류'] || r['선호도서']) : null,
+          note: r['비고'] ? String(r['비고']) : null,
+        }));
         if (additions.length) { await supabase.from('members').insert(additions); await reload(); }
       } catch (err) {}
     };
@@ -1007,6 +1019,13 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
                   <>
                     <input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
                     <RolePicker value={editRole} onChange={setEditRole} />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input value={editDept} onChange={(e) => setEditDept(e.target.value)} placeholder="소속" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                      <input value={editJobType} onChange={(e) => setEditJobType(e.target.value)} placeholder="직군" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                    </div>
+                    <div><div className="text-xs mb-1" style={{ color: MUTE }}>가입일자</div><input type="date" value={editJoinedAt} onChange={(e) => setEditJoinedAt(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+                    <input value={editGenre} onChange={(e) => setEditGenre(e.target.value)} placeholder="선호 도서 종류 (예: 소설, 자기계발)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                    <input value={editNote} onChange={(e) => setEditNote(e.target.value)} placeholder="비고" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
                   </>
                 )}
                 {editMode === 'self' && <p className="text-xs" style={{ color: MUTE }}>본인의 생일과 PIN만 수정할 수 있어요.</p>}
@@ -1021,6 +1040,14 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
                   <div className="min-w-0">
                     <div className="font-semibold truncate" style={{ color: INK }}>{m.name}{m.id === currentUserId && <span className="ml-1.5 text-[11px] font-normal" style={{ color: MUTE }}>(나)</span>}</div>
                     <div className="flex items-center gap-1.5 flex-wrap"><RoleChip role={m.role} />{m.birthday && <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtMD(mdOf(m.birthday))}</span>}{m.pin && <Lock size={11} style={{ color: MUTE }} />}</div>
+                    {(m.department || m.job_type || m.joined_at || m.book_genre) && (
+                      <div className="hidden sm:flex items-center gap-2 flex-wrap mt-1 text-[11px]" style={{ color: MUTE }}>
+                        {m.department && <span>{m.department}</span>}
+                        {m.job_type && <span>· {m.job_type}</span>}
+                        {m.joined_at && <span>· 가입 {fmtDate(m.joined_at)}</span>}
+                        {m.book_genre && <span>· {m.book_genre}</span>}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
@@ -1039,6 +1066,13 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
           <Card className="space-y-3">
             <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="이름을 입력하세요" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
             <RolePicker value={newRole} onChange={setNewRole} />
+            <div className="grid grid-cols-2 gap-2">
+              <input value={newDept} onChange={(e) => setNewDept(e.target.value)} placeholder="소속 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+              <input value={newJobType} onChange={(e) => setNewJobType(e.target.value)} placeholder="직군 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+            </div>
+            <div><div className="text-xs mb-1" style={{ color: MUTE }}>가입일자 (선택)</div><input type="date" value={newJoinedAt} onChange={(e) => setNewJoinedAt(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+            <input value={newGenre} onChange={(e) => setNewGenre(e.target.value)} placeholder="선호 도서 종류 (선택)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+            <input value={newNote} onChange={(e) => setNewNote(e.target.value)} placeholder="비고 (선택)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
             <div><div className="text-xs mb-1 flex items-center gap-1" style={{ color: MUTE }}><Cake size={13} /> 생일 (선택)</div><input type="date" value={newBirthday} onChange={(e) => setNewBirthday(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
             <div><div className="text-xs mb-1 flex items-center gap-1" style={{ color: MUTE }}><Lock size={13} /> 본인 확인 PIN (4자리, 선택)</div><input type="password" inputMode="numeric" maxLength={4} value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))} className="w-full rounded-xl border px-3 py-2 text-sm tracking-[0.3em] outline-none" style={inputStyle} placeholder="설정 안 함" /></div>
             <div className="flex gap-2"><PrimaryBtn onClick={handleAdd} icon={Check}>등록</PrimaryBtn><GhostBtn onClick={() => setShowAddForm(false)} icon={X}>취소</GhostBtn></div>
