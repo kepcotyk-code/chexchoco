@@ -32,12 +32,13 @@ const roleMeta = (role) => ROLES.find((r) => r.key === role) || ROLES[3];
 const roleOrder = (role) => { const i = ROLES.findIndex((r) => r.key === role); return i === -1 ? 99 : i; };
 
 const DAY_TYPES = [
-  { key: '독서일', label: '독서일', color: '#7FDCCF', bg: '#12302C' },
-  { key: '휴무일', label: '휴무일', color: '#8FA3BE', bg: '#242C36' },
-  { key: '토론회', label: '토론회', color: '#EFC94C', bg: '#3A2E10' },
-  { key: '회식일', label: '회식일', color: '#F0A87C', bg: '#3A2213' },
+  { key: '독서일', label: '독서일', color: '#9CB380', bg: '#26301F' },
+  { key: '휴무일', label: '휴무일', color: '#E0958C', bg: '#3A2420' },
+  { key: '토론회', label: '토론회', color: '#8AA8C4', bg: '#212B36' },
+  { key: '회식일', label: '회식일', color: '#D9B04C', bg: '#332A12' },
 ];
 const dayTypeMeta = (key) => DAY_TYPES.find((d) => d.key === key) || null;
+const ATTENDANCE_DAY_TYPES = ['독서일', '토론회']; // 출석일자로 산정되는 유형
 
 function Stamp({ role, size = 38, tilt = -5 }) {
   const meta = roleMeta(role);
@@ -897,13 +898,16 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     const existing = calendarDays.find((d) => d.date === date && d.type === type);
     if (existing) {
       await deleteRow('calendar_days', 'id', existing.id);
-      if (type === '독서일') {
-        const s = sessions.find((ss) => ss.date === date);
-        if (s && !checkins.some((c) => c.session_id === s.id)) await deleteRow('sessions', 'id', s.id);
+      if (ATTENDANCE_DAY_TYPES.includes(type)) {
+        const stillCountsForAttendance = calendarDays.some((d) => d.date === date && d.type !== type && ATTENDANCE_DAY_TYPES.includes(d.type));
+        if (!stillCountsForAttendance) {
+          const s = sessions.find((ss) => ss.date === date);
+          if (s && !checkins.some((c) => c.session_id === s.id)) await deleteRow('sessions', 'id', s.id);
+        }
       }
     } else {
       await insertRow('calendar_days', { id: uid('cd'), date, type });
-      if (type === '독서일' && !sessions.some((s) => s.date === date)) {
+      if (ATTENDANCE_DAY_TYPES.includes(type) && !sessions.some((s) => s.date === date)) {
         await insertRow('sessions', { id: uid('s'), date, created_at: new Date().toISOString() });
       }
     }
