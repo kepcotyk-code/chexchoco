@@ -855,11 +855,16 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   const totalDays = sessionsInMonth.length;
   const shift = (delta) => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1));
 
+  const sortedSessionsInMonth = [...sessionsInMonth].sort((a, b) => a.date.localeCompare(b.date));
   const rows = members.map((m) => {
-    let present = 0;
-    sessionsInMonth.forEach((s) => { const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id); const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null; if (dur !== null && dur >= 30) present++; });
-    return { ...m, present, rate: totalDays ? Math.round((present / totalDays) * 100) : 0 };
-  });
+    const flags = sortedSessionsInMonth.map((s) => {
+      const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
+      const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
+      return dur !== null && dur >= 30;
+    });
+    const present = flags.filter(Boolean).length;
+    return { ...m, present, flags, rate: totalDays ? Math.round((present / totalDays) * 100) : 0 };
+  }).sort((a, b) => b.rate - a.rate);
   const monthSessionIds = new Set(sessionsInMonth.map((s) => s.id));
   const monthReadingRows = members.map((m) => {
     const totalMin = checkins.filter((c) => c.member_id === m.id && monthSessionIds.has(c.session_id)).reduce((sum, c) => { const d = durationMin(c.check_in_at, c.check_out_at); return sum + (d !== null && d > 0 ? d : 0); }, 0);
@@ -1002,16 +1007,21 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
           <Card>
             <div className="text-sm font-semibold mb-3" style={{ color: INK }}>이번 달 출석률</div>
             <div className="space-y-3">
-              {rows.map((r) => (
-                <div key={r.id}>
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <div className="flex items-center gap-2"><Stamp role={r.role} size={24} tilt={0} /><span style={{ color: INK }}>{r.name}</span></div>
-                    <div className="flex items-center gap-2">
-                      {penaltyByMember[r.id]?.pending > 0 && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}><Gavel size={10} /> 벌칙 대상 {penaltyByMember[r.id].pending}</span>}
-                      <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{totalDays}회 · {r.rate}%</span>
-                    </div>
+              {rows.map((r, idx) => (
+                <div key={r.id} className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xs w-4 text-center shrink-0" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{idx === 0 && r.present > 0 ? '🏆' : idx + 1}</span>
+                    <Stamp role={r.role} size={24} tilt={0} /><span className="truncate" style={{ color: INK }}>{r.name}</span>
                   </div>
-                  <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: NEUTRAL_BG }}><div className="h-full rounded-full" style={{ width: `${r.rate}%`, background: r.rate >= 80 ? '#7FDCCF' : r.rate >= 50 ? '#EFC94C' : '#F0A87C' }} /></div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {penaltyByMember[r.id]?.pending > 0 && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}><Gavel size={10} /> 벌칙 대상 {penaltyByMember[r.id].pending}</span>}
+                    <div className="flex items-center gap-1">
+                      {r.flags.map((attended, i) => (
+                        <span key={i} className="rounded-full" style={{ width: 9, height: 9, background: attended ? '#7FDCCF' : 'transparent', border: attended ? 'none' : `1.5px solid ${LINE}` }} />
+                      ))}
+                    </div>
+                    <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{totalDays}</span>
+                  </div>
                 </div>
               ))}
             </div>
