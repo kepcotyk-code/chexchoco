@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import { supabase } from './supabaseClient';
 import {
   Crown, Shield, Wallet, User, Plus, Pencil, Trash2, Check, X, Lock, AlertCircle,
-  Megaphone, QrCode, BarChart3, Users, Settings2, Download, Upload, ChevronLeft, ChevronRight,
+  Megaphone, QrCode, BarChart3, Users, Settings2, Download, Upload, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   LogIn, LogOut, Cake, PartyPopper, Archive, Paperclip, FileText, Eye, Pin, Gavel, BookOpen,
   Image as ImageIcon,
 } from 'lucide-react';
@@ -39,6 +39,8 @@ const DAY_TYPES = [
 ];
 const dayTypeMeta = (key) => DAY_TYPES.find((d) => d.key === key) || null;
 const ATTENDANCE_DAY_TYPES = ['독서일', '토론회']; // 출석일자로 산정되는 유형
+const WEEKEND_BG = '#302C22'; // 금·토·일 기본(미지정) 배경 — 평일 미지정보다 살짝 밝은 톤
+const WEEKEND_TEXT = '#9A9382';
 
 function Stamp({ role, size = 38, tilt = -5 }) {
   const meta = roleMeta(role);
@@ -107,6 +109,8 @@ const durationMin = (inIso, outIso) => { if (!inIso || !outIso) return null; ret
 const fmtHM = (totalMin) => { const h = Math.floor(totalMin / 60); const m = totalMin % 60; if (h === 0) return `${m}분`; if (m === 0) return `${h}시간`; return `${h}시간 ${m}분`; };
 const mdOf = (birthday) => birthday ? birthday.slice(5, 10) : null;
 const fmtMD = (md) => { const [m, d] = md.split('-'); return `${parseInt(m, 10)}월 ${parseInt(d, 10)}일`; };
+const maskName = (name) => { if (!name) return name; const chars = [...name]; return chars[0] + 'O'.repeat(Math.max(chars.length - 1, 0)); };
+const dispName = (name, loggedIn) => (loggedIn ? name : maskName(name));
 const uid = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 const buildMonthGrid = (year, month) => {
   const first = new Date(year, month, 1);
@@ -144,6 +148,7 @@ const weekKeyOf = (dateStr) => {
   const m = getMonday(dateStr);
   return `${m.getFullYear()}-${pad(m.getMonth() + 1)}-${pad(m.getDate())}`;
 };
+const EXEMPT_EXCUSE_REASONS = ['출장', '휴가']; // 벌칙 계산에서 제외되는 사유 (개인일정은 제외 안 됨 — 결석으로 그대로 집계)
 
 // 주 단위 벌칙 계산: 월~목 4일이 모두 독서일이고 이미 다 지난 "완결된 주"에서,
 // 4일 전부 결석(30분 미만 포함)한 멤버만 그 주의 벌칙 대상이 됨.
@@ -156,8 +161,8 @@ const computeWeeklyPenalties = (sessions, checkins, calendarDays, members, absen
     .map(([wk, sess]) => {
       const sorted = [...sess].sort((a, b) => a.date.localeCompare(b.date));
       const results = members.map((m) => {
-        // 출장/휴가 등 사유가 있는 날은 그 멤버에 한해 판단 대상에서 제외
-        const relevant = sorted.filter((s) => !absenceExcuses.some((e) => e.date === s.date && e.member_id === m.id));
+        // 출장/휴가 사유가 있는 날만 그 멤버에 한해 판단 대상에서 제외 (개인일정은 제외 안 됨)
+        const relevant = sorted.filter((s) => !absenceExcuses.some((e) => e.date === s.date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason)));
         if (relevant.length === 0) return { member: m, missedAll: false }; // 4일 다 사유 있으면 벌칙 대상 아님
         const attendedAny = relevant.some((s) => {
           const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
@@ -281,16 +286,14 @@ export default function App() {
   return (
     <div className="min-h-screen" style={{ background: PAPER_BG, fontFamily: "'Inter', sans-serif" }}>
       <div className="max-w-3xl mx-auto px-4 pt-6 pb-24">
-        <div className="mb-6 relative">
-          <button onClick={() => (currentMember ? logout() : openLogin())}
-            className="absolute right-0 top-0 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold"
-            style={{ background: currentMember ? BTN_BG : NEUTRAL_BG, color: currentMember ? BTN_TEXT : NEUTRAL_TEXT }}>
-            {currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} />{currentMember.name}님 · 로그아웃</> : <>로그인</>}
-          </button>
-          <div className="flex items-center gap-2 mb-1.5">
-            <div className="h-px flex-1" style={{ background: LINE }} />
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-1.5">
             <span className="text-[11px] tracking-[0.2em] uppercase" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>KEPCO Reading Club</span>
-            <div className="h-px flex-1" style={{ background: LINE }} />
+            <button onClick={() => (currentMember ? logout() : openLogin())}
+              className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold"
+              style={{ background: currentMember ? BTN_BG : NEUTRAL_BG, color: currentMember ? BTN_TEXT : NEUTRAL_TEXT }}>
+              {currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} />{currentMember.name}님 · 로그아웃</> : <>로그인</>}
+            </button>
           </div>
           <h1 className="text-center text-4xl font-semibold" style={{ fontFamily: "'Fraunces', serif", color: INK }}>책스초코</h1>
         </div>
@@ -365,10 +368,10 @@ export default function App() {
           })}
         </div>
 
-        {tab === 'notice' && <NoticeScreen notices={notices} noticeViews={noticeViews} currentMember={currentMember} canManage={canManageUsers} reload={reload} />}
+        {tab === 'notice' && <NoticeScreen notices={notices} noticeViews={noticeViews} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} />}
         {tab === 'gallery' && <GalleryScreen photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} />}
         {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} />}
-        {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} />}
+        {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} currentMember={currentMember} />}
         {tab === 'users' && <UsersScreen members={members} sortedMembers={sortedMembers} currentUserId={currentUserId} setIdentity={setIdentity} canManage={canManageUsers} notices={notices} sessions={sessions} checkins={checkins} reload={reload} />}
         {tab === 'admin' && canManageAttendance && <AdminScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} setPenaltyRule={setPenaltyRule} penaltyCompletions={penaltyCompletions} reload={reload} calendarDays={calendarDays} absenceExcuses={absenceExcuses} />}
       </div>
@@ -379,7 +382,7 @@ export default function App() {
 /* ---------------- 공지사항 ---------------- */
 const MAX_PDF_BYTES = 3 * 1024 * 1024;
 
-function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload }) {
+function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, members }) {
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -389,24 +392,43 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload }
   const [fileError, setFileError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [expandedViewsId, setExpandedViewsId] = useState(null);
+  const isLoggedIn = !!currentMember;
+
+  const todayMd = todayStr().slice(5, 10);
+  const birthdayFolksToday = members.filter((m) => m.birthday && mdOf(m.birthday) === todayMd);
 
   const sorted = [...notices].sort((a, b) => {
     if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
-    return new Date(b.created_at) - new Date(a.created_at);
+    const aOrder = a.sort_order ?? new Date(a.created_at).getTime();
+    const bOrder = b.sort_order ?? new Date(b.created_at).getTime();
+    return bOrder - aOrder;
   });
 
   const isPdfSignature = (buf) => { const b = new Uint8Array(buf); return b.length >= 4 && b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46; };
+  const extFromType = (type) => {
+    if (type === 'application/pdf') return 'pdf';
+    if (type === 'image/png') return 'png';
+    if (type === 'image/webp') return 'webp';
+    return 'jpg';
+  };
   const handleFilePick = (e) => {
     const file = e.target.files[0]; e.target.value = '';
     if (!file) return;
     setFileError('');
-    if (file.size > MAX_PDF_BYTES) { setFileError('3MB 이하의 PDF만 첨부할 수 있어요.'); return; }
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      if (!isPdfSignature(evt.target.result)) { setFileError('PDF 형식이 아니에요.'); return; }
+    if (file.type === 'application/pdf') {
+      if (file.size > MAX_PDF_BYTES) { setFileError('3MB 이하의 PDF만 첨부할 수 있어요.'); return; }
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        if (!isPdfSignature(evt.target.result)) { setFileError('PDF 형식이 아니에요.'); return; }
+        setAttachedFile(file);
+      };
+      reader.readAsArrayBuffer(file.slice(0, 8));
+    } else if (file.type.startsWith('image/')) {
+      if (file.size > MAX_PHOTO_BYTES) { setFileError('6MB 이하 이미지만 첨부할 수 있어요.'); return; }
       setAttachedFile(file);
-    };
-    reader.readAsArrayBuffer(file.slice(0, 8));
+    } else {
+      setFileError('PDF 또는 이미지 파일만 첨부할 수 있어요.');
+    }
   };
 
   const submit = async () => {
@@ -416,15 +438,15 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload }
       const id = editingId || uid('n');
       let fileMeta = {};
       if (attachedFile) {
-        const path = `${id}.pdf`;
-        const { error: upErr } = await supabase.storage.from('notice-files').upload(path, attachedFile, { upsert: true, contentType: 'application/pdf' });
+        const path = `${id}.${extFromType(attachedFile.type)}`;
+        const { error: upErr } = await supabase.storage.from('notice-files').upload(path, attachedFile, { upsert: true, contentType: attachedFile.type });
         if (upErr) throw upErr;
-        fileMeta = { has_file: true, file_name: attachedFile.name, file_type: 'application/pdf', file_uploaded_at: new Date().toISOString() };
+        fileMeta = { has_file: true, file_name: attachedFile.name, file_type: attachedFile.type, file_uploaded_at: new Date().toISOString() };
       }
       if (editingId) {
         await updateRow('notices', 'id', editingId, { title: title.trim(), content: content.trim(), pinned, ...fileMeta });
       } else {
-        await insertRow('notices', { id, title: title.trim(), content: content.trim(), author_name: currentMember?.name || '익명', created_at: new Date().toISOString(), pinned, ...fileMeta });
+        await insertRow('notices', { id, title: title.trim(), content: content.trim(), author_name: currentMember?.name || '익명', created_at: new Date().toISOString(), pinned, sort_order: Date.now(), ...fileMeta });
       }
       await reload();
       setTitle(''); setContent(''); setShowForm(false); setEditingId(null); setAttachedFile(null); setPinned(false);
@@ -434,16 +456,39 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload }
   const startEdit = (n) => { setEditingId(n.id); setTitle(n.title); setContent(n.content); setPinned(!!n.pinned); setAttachedFile(null); setFileError(''); setShowForm(true); };
   const remove = async (id) => { await deleteRow('notices', 'id', id); await deleteRow('notice_views', 'notice_id', id); await reload(); };
 
-  const openFile = async (n) => {
+  const openAttachment = async (n) => {
     if (currentMember && !noticeViews.some((v) => v.notice_id === n.id && v.member_id === currentMember.id)) {
       await insertRow('notice_views', { id: uid('v'), notice_id: n.id, member_id: currentMember.id, member_name: currentMember.name, viewed_at: new Date().toISOString() });
       reload();
     }
-    window.open(publicUrl('notice-files', `${n.id}.pdf`), '_blank');
+    window.open(publicUrl('notice-files', `${n.id}.${extFromType(n.file_type)}`), '_blank');
+  };
+
+  const moveNotice = async (id, direction) => {
+    const idx = sorted.findIndex((n) => n.id === id);
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (idx < 0 || swapIdx < 0 || swapIdx >= sorted.length) return;
+    const a = sorted[idx]; const b = sorted[swapIdx];
+    if (!!a.pinned !== !!b.pinned) return; // 고정글과 일반글 사이는 순서 이동 안 함
+    const aOrder = a.sort_order ?? new Date(a.created_at).getTime();
+    const bOrder = b.sort_order ?? new Date(b.created_at).getTime();
+    await updateRow('notices', 'id', a.id, { sort_order: bOrder });
+    await updateRow('notices', 'id', b.id, { sort_order: aOrder });
+    await reload();
   };
 
   return (
     <div className="space-y-3">
+      {birthdayFolksToday.length > 0 && (
+        <Card className="text-center">
+          <div className="flex items-center justify-center gap-2 mb-1">
+            <PartyPopper size={18} style={{ color: '#EFC94C' }} />
+            <span className="font-semibold" style={{ color: INK, fontFamily: "'Fraunces', serif" }}>오늘은 {birthdayFolksToday.map((m) => dispName(m.name, isLoggedIn)).join(', ')}님 생일이에요!</span>
+            <PartyPopper size={18} style={{ color: '#EFC94C' }} />
+          </div>
+          <p className="text-sm" style={{ color: MUTE }}>축하 인사 한마디 건네보는 건 어떨까요 🎂</p>
+        </Card>
+      )}
       {canManage && (
         showForm ? (
           <Card className="space-y-3">
@@ -451,8 +496,8 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload }
             <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="내용" rows={4} className="w-full rounded-xl border px-3 py-2 text-sm outline-none resize-none" style={inputStyle} />
             <div>
               <label className="inline-flex items-center gap-1.5 rounded-xl py-2 px-3 text-xs font-semibold cursor-pointer" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>
-                <Paperclip size={13} /> PDF 첨부 (선택, 3MB 이하)
-                <input type="file" accept="application/pdf" onChange={handleFilePick} className="hidden" />
+                <Paperclip size={13} /> 파일 첨부 (PDF 3MB / 이미지 6MB 이하)
+                <input type="file" accept="application/pdf,image/*" onChange={handleFilePick} className="hidden" />
               </label>
               {attachedFile && <div className="text-xs mt-1.5 flex items-center gap-1" style={{ color: MUTE }}><FileText size={12} /> {attachedFile.name}</div>}
               {fileError && <div className="text-xs mt-1.5" style={{ color: '#F0A87C' }}>{fileError}</div>}
@@ -477,6 +522,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload }
       {sorted.map((n) => {
         const views = noticeViews.filter((v) => v.notice_id === n.id);
         const expanded = expandedViewsId === n.id;
+        const isImage = n.file_type && n.file_type.startsWith('image/');
         return (
           <Card key={n.id} style={n.pinned ? { borderColor: '#EFC94C', borderWidth: 2 } : {}}>
             <div className="flex items-start justify-between gap-2">
@@ -485,10 +531,12 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload }
                   {n.pinned && <Pin size={13} style={{ color: '#EFC94C' }} fill="#EFC94C" />}
                   <h3 className="font-semibold" style={{ color: INK, fontFamily: "'Fraunces', serif" }}>{n.title}</h3>
                 </div>
-                <div className="text-xs mt-0.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{n.author_name} · {fmtDate(n.created_at)} {fmtTime(n.created_at)}</div>
+                <div className="text-xs mt-0.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{dispName(n.author_name, isLoggedIn)} · {fmtDate(n.created_at)} {fmtTime(n.created_at)}</div>
               </div>
               {canManage && (
                 <div className="flex gap-1 shrink-0">
+                  <button onClick={() => moveNotice(n.id, 'up')} className="p-1.5" style={{ color: MUTE }}><ChevronUp size={15} /></button>
+                  <button onClick={() => moveNotice(n.id, 'down')} className="p-1.5" style={{ color: MUTE }}><ChevronDown size={15} /></button>
                   <button onClick={() => startEdit(n)} className="p-1.5" style={{ color: MUTE }}><Pencil size={15} /></button>
                   <button onClick={() => remove(n.id)} className="p-1.5" style={{ color: '#F0A87C' }}><Trash2 size={15} /></button>
                 </div>
@@ -497,10 +545,16 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload }
             <p className="text-sm mt-2 whitespace-pre-wrap" style={{ color: NEUTRAL_TEXT }}>{n.content}</p>
             {n.has_file && (
               <div className="mt-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <button onClick={() => openFile(n)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>
+                {isImage ? (
+                  <button onClick={() => openAttachment(n)} className="block w-full rounded-xl overflow-hidden" style={{ background: NEUTRAL_BG }}>
+                    <img src={publicUrl('notice-files', `${n.id}.${extFromType(n.file_type)}`)} className="w-full max-h-72 object-cover" alt="" loading="lazy" />
+                  </button>
+                ) : (
+                  <button onClick={() => openAttachment(n)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>
                     <Paperclip size={13} /> {n.file_name || '첨부파일'} 다운로드
                   </button>
+                )}
+                <div className="flex flex-wrap items-center gap-2 mt-2">
                   {n.file_uploaded_at && <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>업로드 {fmtDate(n.file_uploaded_at)}</span>}
                   <button onClick={() => canManage && setExpandedViewsId(expanded ? null : n.id)} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}>
                     <Eye size={12} /> {views.length}명 조회{canManage && views.length > 0 ? (expanded ? ' 숨기기' : ' 보기') : ''}
@@ -556,6 +610,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [viewingId, setViewingId] = useState(null);
   const [editingDate, setEditingDate] = useState(false);
   const [dateInput, setDateInput] = useState('');
+  const isLoggedIn = !!currentMember;
   const sorted = [...photos].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
   const handleFile = async (e) => {
@@ -581,7 +636,10 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     await reload();
     setViewingId(null);
   };
-  const viewing = sorted.find((p) => p.id === viewingId);
+  const viewingIdx = sorted.findIndex((p) => p.id === viewingId);
+  const viewing = viewingIdx >= 0 ? sorted[viewingIdx] : null;
+  const showPrev = () => { if (viewingIdx > 0) { setViewingId(sorted[viewingIdx - 1].id); setEditingDate(false); } };
+  const showNext = () => { if (viewingIdx >= 0 && viewingIdx < sorted.length - 1) { setViewingId(sorted[viewingIdx + 1].id); setEditingDate(false); } };
   const saveDate = async () => {
     if (!viewing || !dateInput) return;
     const time = viewing.created_at.slice(11); // 기존 시각(HH:mm:ss.sssZ)은 그대로 유지
@@ -616,9 +674,9 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           {sorted.map((p) => (
             <button key={p.id} onClick={() => { setViewingId(p.id); setEditingDate(false); }} className="relative aspect-square rounded-lg overflow-hidden" style={{ background: NEUTRAL_BG }}>
               <img src={publicUrl('photos', p.file_path)} className="w-full h-full object-cover" alt="" loading="lazy" />
-              <div className="absolute bottom-1 left-1.5 right-1.5 flex items-center justify-between text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 2px rgba(0,0,0,0.6)', fontFamily: "'IBM Plex Mono', monospace" }}>
+              <div className="absolute top-1 left-1.5 right-1.5 flex items-center justify-between text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 2px rgba(0,0,0,0.6)', fontFamily: "'IBM Plex Mono', monospace" }}>
                 <span>{p.created_at.slice(0, 10)}</span>
-                <span className="truncate ml-1">{p.uploader_name}</span>
+                <span className="truncate ml-1">{dispName(p.uploader_name, isLoggedIn)}</span>
               </div>
             </button>
           ))}
@@ -626,10 +684,16 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
       )}
       {viewing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)' }} onClick={() => setViewingId(null)}>
-          <div className="max-w-full max-h-full flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
+          <div className="relative max-w-full max-h-full flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
+            {viewingIdx > 0 && (
+              <button onClick={showPrev} className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 p-2 rounded-full" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }}><ChevronLeft size={20} /></button>
+            )}
+            {viewingIdx < sorted.length - 1 && (
+              <button onClick={showNext} className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1 p-2 rounded-full" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }}><ChevronRight size={20} /></button>
+            )}
             <img src={publicUrl('photos', viewing.file_path)} className="max-w-full max-h-[65vh] rounded-xl" alt="" />
             <div className="flex items-center gap-3 mt-3">
-              <span className="text-sm" style={{ color: '#FFFFFF' }}>{viewing.uploader_name} · {fmtDate(viewing.created_at)} {fmtTime(viewing.created_at)}</span>
+              <span className="text-sm" style={{ color: '#FFFFFF' }}>{dispName(viewing.uploader_name, isLoggedIn)} · {fmtDate(viewing.created_at)} {fmtTime(viewing.created_at)}</span>
               {(canManage || viewing.uploader_id === currentMember?.id) && (
                 <button onClick={() => { setEditingDate(!editingDate); setDateInput(viewing.created_at.slice(0, 10)); }} className="p-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }}><Pencil size={15} /></button>
               )}
@@ -653,7 +717,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                   <span className="text-xs mr-1" style={{ color: 'rgba(255,255,255,0.6)' }}>그날 참석:</span>
                   {people.map((m) => (
                     <span key={m.id} className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs" style={{ background: 'rgba(255,255,255,0.12)', color: '#FFFFFF' }}>
-                      {m.name}
+                      {dispName(m.name, isLoggedIn)}
                     </span>
                   ))}
                 </div>
@@ -791,10 +855,11 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
                     </div>
                   )}
                 {!myExcuseToday && !myCheckin && (
-                  <div className="flex items-center gap-1.5 mt-1">
+                  <div className="flex items-center gap-1.5 mt-1 flex-wrap justify-center">
                     <span className="text-xs" style={{ color: MUTE }}>오늘 못 오시나요?</span>
                     <button onClick={() => setMyExcuse('출장')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>출장</button>
                     <button onClick={() => setMyExcuse('휴가')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>휴가</button>
+                    <button onClick={() => setMyExcuse('개인일정')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>개인일정</button>
                   </div>
                 )}
               </div>
@@ -860,7 +925,7 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
               const m = members.find((mm) => mm.id === c.member_id); const dur = durationMin(c.check_in_at, c.check_out_at);
               return (
                 <div key={c.id} className="flex items-center justify-between text-sm py-1">
-                  <div className="flex items-center gap-2"><Stamp role={m?.role || '회원'} size={24} tilt={0} /><span style={{ color: INK }}>{m?.name || '알 수 없음'}</span></div>
+                  <div className="flex items-center gap-2"><Stamp role={m?.role || '회원'} size={24} tilt={0} /><span style={{ color: INK }}>{m ? dispName(m.name, !!currentMember) : '알 수 없음'}</span></div>
                   <span style={{ color: dur === null ? MUTE : dur >= 30 ? '#7FDCCF' : '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtTime(c.check_in_at)}–{fmtTime(c.check_out_at)} {dur !== null && `(${dur}분)`}</span>
                 </div>
               );
@@ -873,12 +938,13 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
 }
 
 /* ---------------- 대시보드 ---------------- */
-function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyCompletions, canManage, calendarDays, reload, absenceExcuses }) {
+function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyCompletions, canManage, calendarDays, reload, absenceExcuses, currentMember }) {
+  const isLoggedIn = !!currentMember;
   const [cursor, setCursor] = useState(new Date());
   const [viewMode, setViewMode] = useState('month');
   const [selectedDate, setSelectedDate] = useState(null);
   const ms = monthStr(cursor);
-  const sessionsInMonth = sessions.filter((s) => s.date.startsWith(ms));
+  const sessionsInMonth = sessions.filter((s) => s.date.startsWith(ms) && s.date <= todayStr());
   const totalDays = sessionsInMonth.length;
   const shift = (delta) => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1));
 
@@ -904,7 +970,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   }).sort((a, b) => b.totalMin - a.totalMin);
   const maxMonthReadingMin = Math.max(1, ...monthReadingRows.map((r) => r.totalMin));
 
-  const totalSessions = sessions.length;
+  const totalSessions = sessions.filter((s) => s.date <= todayStr()).length;
   const allTimeRows = members.map((m) => {
     let present = 0;
     sessions.forEach((s) => { const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id); const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null; if (dur !== null && dur >= 30) present++; });
@@ -924,7 +990,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     if (r.missedAll && !isWeekCompleted(w.weekKey, r.member.id)) penaltyByMember[r.member.id].pending += 1;
   }));
 
-  // 이번 주(진행 중) 3일 연속 미참석 → 벌칙 예상 경고
+  // 이번 주(진행 중) 월·화 모두 미참석 → 벌칙 예상 경고
   const thisWeekKey = weekKeyOf(todayStr());
   const thisWeekSessionsSoFar = [...sessions]
     .filter((s) => isMonToThu(s.date) && weekKeyOf(s.date) === thisWeekKey && s.date <= todayStr())
@@ -932,17 +998,19 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   const thisWeekQualifies = weekQualifiesForPenalty(todayStr(), calendarDays);
   const warningMemberIds = new Set();
   if (thisWeekQualifies) {
-    members.forEach((m) => {
-      let streak = 0; let maxStreak = 0;
-      thisWeekSessionsSoFar.forEach((s) => {
-        const excused = absenceExcuses.some((e) => e.date === s.date && e.member_id === m.id);
-        if (excused) { streak = 0; return; }
-        const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
-        const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
-        if (dur !== null && dur >= 30) streak = 0; else { streak++; maxStreak = Math.max(maxStreak, streak); }
+    const monTue = thisWeekSessionsSoFar.slice(0, 2);
+    if (monTue.length === 2) {
+      members.forEach((m) => {
+        const bothMissed = monTue.every((s) => {
+          const excused = absenceExcuses.some((e) => e.date === s.date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason));
+          if (excused) return false;
+          const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
+          const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
+          return !(dur !== null && dur >= 30);
+        });
+        if (bothMissed) warningMemberIds.add(m.id);
       });
-      if (maxStreak >= 3) warningMemberIds.add(m.id);
-    });
+    }
   }
 
   const todayMd = todayStr().slice(5, 10);
@@ -978,7 +1046,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
         <Card className="text-center">
           <div className="flex items-center justify-center gap-2 mb-1">
             <PartyPopper size={18} style={{ color: '#EFC94C' }} />
-            <span className="font-semibold" style={{ color: INK, fontFamily: "'Fraunces', serif" }}>오늘은 {birthdayFolksToday.map((m) => m.name).join(', ')}님 생일이에요!</span>
+            <span className="font-semibold" style={{ color: INK, fontFamily: "'Fraunces', serif" }}>오늘은 {birthdayFolksToday.map((m) => dispName(m.name, isLoggedIn)).join(', ')}님 생일이에요!</span>
             <PartyPopper size={18} style={{ color: '#EFC94C' }} />
           </div>
           <p className="text-sm" style={{ color: MUTE }}>축하 인사 한마디 건네보는 건 어떨까요 🎂</p>
@@ -1012,45 +1080,70 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const types = getDayTypes(date);
                 const metas = types.map(dayTypeMeta).filter(Boolean);
                 const isToday = date === todayStr();
-                const bgStyle = metas.length === 0 ? NEUTRAL_BG
+                const dow = new Date(`${date}T00:00:00`).getDay();
+                const isWeekendDefault = metas.length === 0 && (dow === 0 || dow === 5 || dow === 6);
+                const bgStyle = metas.length === 0 ? (isWeekendDefault ? WEEKEND_BG : NEUTRAL_BG)
                   : metas.length === 1 ? metas[0].bg
                   : `linear-gradient(to bottom, ${metas.map((m, i) => `${m.bg} ${(i * 100) / metas.length}%, ${m.bg} ${((i + 1) * 100) / metas.length}%`).join(', ')})`;
-                const textColor = metas.length > 0 ? metas[0].color : MUTE;
+                const textColor = metas.length > 0 ? metas[0].color : (isWeekendDefault ? WEEKEND_TEXT : MUTE);
+                const hasExcuse = absenceExcuses.some((e) => e.date === date);
                 return (
-                  <button key={date} onClick={() => canManage && setSelectedDate(date === selectedDate ? null : date)}
-                    className="aspect-square rounded-lg flex items-center justify-center text-xs"
+                  <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
+                    className="relative aspect-square rounded-lg flex items-center justify-center text-xs"
                     style={{ background: bgStyle, color: textColor, border: isToday ? `1.5px solid ${INK}` : selectedDate === date ? `1.5px solid ${textColor}` : '1px solid transparent' }}>
                     {day}
+                    {hasExcuse && <span className="absolute bottom-1 rounded-full" style={{ width: 4, height: 4, background: INK }} />}
                   </button>
                 );
               })}
             </div>
             <div className="flex flex-wrap gap-2 mt-3">
               {DAY_TYPES.map((t) => <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: t.color }} /> {t.label}</span>)}
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: WEEKEND_BG, border: `1px solid ${WEEKEND_TEXT}` }} /> 금·토·일(기본)</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: INK }} /> 출장·휴가</span>
             </div>
-            {canManage && selectedDate && (
-              <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-                <div className="text-xs mb-2" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(selectedDate)} 유형 지정 (여러 개 선택 가능)</div>
-                <div className="flex flex-wrap gap-2">
-                  {DAY_TYPES.map((t) => {
-                    const active = getDayTypes(selectedDate).includes(t.key);
-                    return (
-                      <button key={t.key} onClick={() => toggleDayType(selectedDate, t.key)} className="rounded-full px-3 py-1.5 text-xs font-semibold border-2"
-                        style={{ background: active ? t.bg : 'transparent', color: active ? t.color : MUTE, borderColor: active ? t.color : LINE }}>
-                        {active && '✓ '}{t.label}
-                      </button>
-                    );
-                  })}
+            {selectedDate && (() => {
+              const excusedMembers = members.filter((m) => absenceExcuses.some((e) => e.date === selectedDate && e.member_id === m.id));
+              return (
+                <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                  {excusedMembers.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-xs mb-1.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(selectedDate)} 출장·휴가</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {excusedMembers.map((m) => {
+                          const e = absenceExcuses.find((ee) => ee.date === selectedDate && ee.member_id === m.id);
+                          return <span key={m.id} className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}><Stamp role={m.role} size={16} tilt={0} />{dispName(m.name, isLoggedIn)} · {e.reason}</span>;
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {canManage && (
+                    <div>
+                      <div className="text-xs mb-2" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(selectedDate)} 유형 지정 (여러 개 선택 가능)</div>
+                      <div className="flex flex-wrap gap-2">
+                        {DAY_TYPES.map((t) => {
+                          const active = getDayTypes(selectedDate).includes(t.key);
+                          return (
+                            <button key={t.key} onClick={() => toggleDayType(selectedDate, t.key)} className="rounded-full px-3 py-1.5 text-xs font-semibold border-2"
+                              style={{ background: active ? t.bg : 'transparent', color: active ? t.color : MUTE, borderColor: active ? t.color : LINE }}>
+                              {active && '✓ '}{t.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {!canManage && excusedMembers.length === 0 && <p className="text-xs" style={{ color: MUTE }}>이 날짜에 등록된 출장·휴가가 없어요.</p>}
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </Card>
 
           {monthBirthdays.length > 0 && (
             <Card>
-              <div className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: INK }}><Cake size={16} style={{ color: '#F0A87C' }} /> 이 달의 생일</div>
+              <div className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: INK }}><Cake size={16} style={{ color: '#F0A87C' }} /> 이 달의 생일 🎉</div>
               <div className="flex flex-wrap gap-2">
-                {monthBirthdays.map((m) => { const t = isCurrentMonth && mdOf(m.birthday) === todayMd; return <span key={m.id} className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: t ? '#3A2E10' : NEUTRAL_BG, color: t ? '#EFC94C' : NEUTRAL_TEXT }}>{m.name} · {fmtMD(mdOf(m.birthday))}{t && ' 🎉'}</span>; })}
+                {monthBirthdays.map((m) => { const t = isCurrentMonth && mdOf(m.birthday) === todayMd; return <span key={m.id} className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: t ? '#3A2E10' : NEUTRAL_BG, color: t ? '#EFC94C' : NEUTRAL_TEXT }}>{dispName(m.name, isLoggedIn)} · {fmtMD(mdOf(m.birthday))}{t && ' 🎉'}</span>; })}
               </div>
             </Card>
           )}
@@ -1064,8 +1157,8 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 <div key={r.id} className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-xs w-4 text-center shrink-0" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.rank === 1 && r.present > 0 ? '🏆' : r.rank}</span>
-                    <Stamp role={r.role} size={24} tilt={0} /><span className="truncate" style={{ color: INK }}>{r.name}</span>
-                    {isCurrentMonth && warningMemberIds.has(r.id) && <span title="이번 주 3일 연속 미참석 — 벌칙 예상" className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0" style={{ background: '#3A2213', color: '#F0A87C' }}>⚠️ 벌칙 예상</span>}
+                    <Stamp role={r.role} size={24} tilt={0} /><span className="truncate" style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>
+                    {isCurrentMonth && warningMemberIds.has(r.id) && <span title="이번 주 월·화 모두 미참석 — 벌칙 예상" className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0" style={{ background: '#3A2213', color: '#F0A87C' }}>⚠️ 벌칙 예상</span>}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {penaltyByMember[r.id]?.pending > 0 && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}><Gavel size={10} /> 벌칙 대상 {penaltyByMember[r.id].pending}</span>}
@@ -1087,7 +1180,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               {monthReadingRows.map((r, idx) => (
                 <div key={r.id}>
                   <div className="flex items-center justify-between text-sm mb-1">
-                    <div className="flex items-center gap-2"><Stamp role={r.role} size={24} tilt={0} /><span style={{ color: INK }}>{r.name}</span>{idx === 0 && r.totalMin > 0 && <span className="text-xs">🏆</span>}</div>
+                    <div className="flex items-center gap-2"><Stamp role={r.role} size={24} tilt={0} /><span style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>{idx === 0 && r.totalMin > 0 && <span className="text-xs">🏆</span>}</div>
                     <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtHM(r.totalMin)}</span>
                   </div>
                   <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: NEUTRAL_BG }}><div className="h-full rounded-full" style={{ width: `${(r.totalMin / maxMonthReadingMin) * 100}%`, background: '#EFC94C' }} /></div>
@@ -1106,7 +1199,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               {allTimeRows.map((r) => (
                 <div key={r.id}>
                   <div className="flex items-center justify-between text-sm mb-1">
-                    <div className="flex items-center gap-2"><Stamp role={r.role} size={24} tilt={0} /><span style={{ color: INK }}>{r.name}</span></div>
+                    <div className="flex items-center gap-2"><Stamp role={r.role} size={24} tilt={0} /><span style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span></div>
                     <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{totalSessions}회 · {r.rate}%</span>
                   </div>
                   <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: NEUTRAL_BG }}><div className="h-full rounded-full" style={{ width: `${r.rate}%`, background: r.rate >= 80 ? '#7FDCCF' : r.rate >= 50 ? '#EFC94C' : '#F0A87C' }} /></div>
@@ -1120,7 +1213,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               {totalReadingRows.map((r, idx) => (
                 <div key={r.id}>
                   <div className="flex items-center justify-between text-sm mb-1">
-                    <div className="flex items-center gap-2"><Stamp role={r.role} size={24} tilt={0} /><span style={{ color: INK }}>{r.name}</span>{idx === 0 && r.totalMin > 0 && <span className="text-xs">🏆</span>}</div>
+                    <div className="flex items-center gap-2"><Stamp role={r.role} size={24} tilt={0} /><span style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>{idx === 0 && r.totalMin > 0 && <span className="text-xs">🏆</span>}</div>
                     <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtHM(r.totalMin)}</span>
                   </div>
                   <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: NEUTRAL_BG }}><div className="h-full rounded-full" style={{ width: `${(r.totalMin / maxReadingMin) * 100}%`, background: '#EFC94C' }} /></div>
@@ -1136,6 +1229,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
 
 /* ---------------- 사용자관리 ---------------- */
 function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canManage, notices, sessions, checkins, reload }) {
+  const isLoggedIn = !!currentUserId;
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState(''); const [newRole, setNewRole] = useState('회원'); const [newBirthday, setNewBirthday] = useState(''); const [newPin, setNewPin] = useState('');
   const [newDept, setNewDept] = useState(''); const [newJobType, setNewJobType] = useState(''); const [newJoinedAt, setNewJoinedAt] = useState(''); const [newGenre, setNewGenre] = useState(''); const [newNote, setNewNote] = useState('');
@@ -1240,14 +1334,14 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <Stamp role={m.role} size={36} tilt={idx % 2 === 0 ? -5 : 4} />
                   <div className="min-w-0 flex-1">
-                    <div className="font-semibold truncate" style={{ color: INK }}>{m.name}{m.id === currentUserId && <span className="ml-1.5 text-[11px] font-normal" style={{ color: MUTE }}>(나)</span>}</div>
+                    <div className="font-semibold truncate" style={{ color: INK }}>{dispName(m.name, isLoggedIn)}{m.id === currentUserId && <span className="ml-1.5 text-[11px] font-normal" style={{ color: MUTE }}>(나)</span>}</div>
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <RoleChip role={m.role} />
                       {m.birthday && <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtMD(mdOf(m.birthday))}</span>}
                       {m.pin && <Lock size={11} style={{ color: MUTE }} />}
                     </div>
-                    {(m.department || m.job_type || m.joined_at || m.book_genre || m.note) && (
-                      <div className="hidden sm:flex items-center gap-2 flex-wrap mt-1 text-[11px]" style={{ color: MUTE }}>
+                    {isLoggedIn && (m.department || m.job_type || m.joined_at || m.book_genre || m.note) && (
+                      <div className="flex items-center gap-2 flex-wrap mt-1 text-[11px]" style={{ color: MUTE }}>
                         {(m.department || m.job_type) && (
                           <span>{m.department}{m.department && m.job_type ? `(${m.job_type})` : m.job_type}</span>
                         )}
@@ -1392,7 +1486,7 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
       </Card>
       <Card>
         <div className="text-sm font-semibold mb-1" style={{ color: INK }}>불참 사유 ({fmtDate(date)})</div>
-        <p className="text-xs mb-3" style={{ color: MUTE }}>출장·휴가로 등록하면 그 날은 벌칙 판단에서 제외돼요.</p>
+        <p className="text-xs mb-3" style={{ color: MUTE }}>출장·휴가는 그 날 벌칙 판단에서 제외돼요. 개인일정은 사전 파악용으로만 기록되고 결석으로 그대로 집계돼요.</p>
         <div className="space-y-2">
           {members.map((m) => {
             const excuse = absenceExcuses.find((e) => e.date === date && e.member_id === m.id);
@@ -1405,9 +1499,10 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
                     <button onClick={() => removeExcuse(excuse.id)} className="p-1" style={{ color: MUTE }}><X size={14} /></button>
                   </div>
                 ) : (
-                  <div className="flex gap-1.5 shrink-0">
+                  <div className="flex gap-1.5 shrink-0 flex-wrap justify-end">
                     <button onClick={() => addExcuse(m.id, '출장')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>출장</button>
                     <button onClick={() => addExcuse(m.id, '휴가')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>휴가</button>
+                    <button onClick={() => addExcuse(m.id, '개인일정')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>개인일정</button>
                   </div>
                 )}
               </div>
