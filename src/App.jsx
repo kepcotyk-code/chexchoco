@@ -1090,7 +1090,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const hasExempt = absenceExcuses.some((e) => e.date === date && EXEMPT_EXCUSE_REASONS.includes(e.reason));
                 const hasPersonal = absenceExcuses.some((e) => e.date === date && e.reason === '개인일정');
                 let borderStyle = isToday ? `1.5px solid ${INK}` : selectedDate === date ? `1.5px solid ${textColor}` : '1px solid transparent';
-                if (hasFeast) borderStyle = '2.5px solid #E5484D';
+                if (hasFeast) borderStyle = '1.5px solid rgba(229, 72, 77, 0.65)';
                 return (
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
                     className="relative aspect-square rounded-lg flex items-center justify-center text-xs"
@@ -1107,8 +1107,14 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               })}
             </div>
             <div className="flex flex-wrap gap-2 mt-3">
-              {DAY_TYPES.map((t) => <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: t.color, border: t.key === '회식일' ? '1.5px solid #E5484D' : 'none' }} /> {t.label}</span>)}
+              {DAY_TYPES.map((t) => t.key === '회식일' ? (
+                <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'transparent', border: '1.5px solid rgba(229, 72, 77, 0.65)' }} /> {t.label}</span>
+              ) : (
+                <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: t.color }} /> {t.label}</span>
+              ))}
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: WEEKEND_BG, border: `1px solid ${WEEKEND_TEXT}` }} /> 금·토·일(제외)</span>
+            </div>
+            <div className="flex flex-wrap gap-2 mt-1.5">
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: INK }} /> 출장·휴가</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: 'transparent', border: `1px solid ${INK}` }} /> 개인일정</span>
             </div>
