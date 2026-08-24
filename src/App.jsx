@@ -970,14 +970,13 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
         return (
           <Card>
             <div className="text-sm font-semibold mb-2" style={{ color: INK }}>오늘 못 오는 멤버 ({todaysExcuses.length}명)</div>
-            <div className="space-y-1.5">
+            <div className="flex flex-wrap gap-1.5">
               {todaysExcuses.map((e) => {
                 const m = members.find((mm) => mm.id === e.member_id);
                 return (
-                  <div key={e.id} className="flex items-center justify-between text-sm py-1">
-                    <div className="flex items-center gap-2"><Stamp role={m?.role || '회원'} size={24} tilt={0} /><span style={{ color: INK }}>{m ? dispName(m.name, !!currentMember) : '알 수 없음'}</span></div>
-                    <span className="text-xs rounded-full px-2 py-1" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{e.reason}</span>
-                  </div>
+                  <span key={e.id} className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>
+                    <Stamp role={m?.role || '회원'} size={16} tilt={0} />{m ? dispName(m.name, !!currentMember) : '알 수 없음'} · {e.reason}
+                  </span>
                 );
               })}
             </div>
@@ -1183,7 +1182,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               if (todayExcused.length === 0) return null;
               return (
                 <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-                  <div className="text-xs mb-1.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>오늘 참석 불가</div>
+                  <div className="text-xs mb-1.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(todayStr())} 참석불가</div>
                   <div className="flex flex-wrap gap-1.5">
                     {todayExcused.map((m) => {
                       const e = absenceExcuses.find((ee) => ee.date === todayStr() && ee.member_id === m.id);
@@ -1208,7 +1207,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               };
               return (
                 <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-                  {excusedMembers.length > 0 && (
+                  {excusedMembers.length > 0 && selectedDate !== todayStr() && (
                     <div className="mb-3">
                       <div className="text-xs mb-1.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(selectedDate)} 참석 불가</div>
                       <div className="flex flex-wrap gap-1.5">
