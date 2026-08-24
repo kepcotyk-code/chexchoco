@@ -775,7 +775,6 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
   };
   const todaysCheckins = session ? checkins.filter((c) => c.session_id === session.id) : [];
   const getCheckin = (memberId) => todaysCheckins.find((c) => c.member_id === memberId);
-  const todaysExcuses = absenceExcuses.filter((e) => e.date === today);
   const checkInMember = async (memberId) => {
     if (!session || getCheckin(memberId)) return;
     await insertRow('checkins', { id: uid('c'), session_id: session.id, member_id: memberId, check_in_at: new Date().toISOString(), check_out_at: null });
@@ -881,23 +880,6 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
           </div>
         )}
       </Card>
-
-      {session && todaysExcuses.length > 0 && (
-        <Card>
-          <div className="text-sm font-semibold mb-2" style={{ color: INK }}>오늘 출장·휴가·개인일정 ({todaysExcuses.length}명)</div>
-          <div className="flex flex-wrap gap-1.5">
-            {todaysExcuses.map((e) => {
-              const m = members.find((mm) => mm.id === e.member_id);
-              if (!m) return null;
-              return (
-                <span key={e.id} className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>
-                  <Stamp role={m.role} size={18} tilt={0} />{dispName(m.name, !!currentMember)} · {e.reason}
-                </span>
-              );
-            })}
-          </div>
-        </Card>
-      )}
 
       {session && canManageAttendance && (
         <Card>
