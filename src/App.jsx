@@ -775,6 +775,7 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
   };
   const todaysCheckins = session ? checkins.filter((c) => c.session_id === session.id) : [];
   const getCheckin = (memberId) => todaysCheckins.find((c) => c.member_id === memberId);
+  const todaysExcuses = absenceExcuses.filter((e) => e.date === today);
   const checkInMember = async (memberId) => {
     if (!session || getCheckin(memberId)) return;
     await insertRow('checkins', { id: uid('c'), session_id: session.id, member_id: memberId, check_in_at: new Date().toISOString(), check_out_at: null });
@@ -881,6 +882,23 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
         )}
       </Card>
 
+      {session && todaysExcuses.length > 0 && (
+        <Card>
+          <div className="text-sm font-semibold mb-2" style={{ color: INK }}>오늘 출장·휴가·개인일정 ({todaysExcuses.length}명)</div>
+          <div className="flex flex-wrap gap-1.5">
+            {todaysExcuses.map((e) => {
+              const m = members.find((mm) => mm.id === e.member_id);
+              if (!m) return null;
+              return (
+                <span key={e.id} className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>
+                  <Stamp role={m.role} size={18} tilt={0} />{dispName(m.name, !!currentMember)} · {e.reason}
+                </span>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
       {session && canManageAttendance && (
         <Card>
           <div className="flex items-center justify-between mb-2">
@@ -946,6 +964,26 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
           </div>
         </Card>
       )}
+      {(() => {
+        const todaysExcuses = absenceExcuses.filter((e) => e.date === today);
+        if (todaysExcuses.length === 0) return null;
+        return (
+          <Card>
+            <div className="text-sm font-semibold mb-2" style={{ color: INK }}>오늘 못 오는 멤버 ({todaysExcuses.length}명)</div>
+            <div className="space-y-1.5">
+              {todaysExcuses.map((e) => {
+                const m = members.find((mm) => mm.id === e.member_id);
+                return (
+                  <div key={e.id} className="flex items-center justify-between text-sm py-1">
+                    <div className="flex items-center gap-2"><Stamp role={m?.role || '회원'} size={24} tilt={0} /><span style={{ color: INK }}>{m ? dispName(m.name, !!currentMember) : '알 수 없음'}</span></div>
+                    <span className="text-xs rounded-full px-2 py-1" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{e.reason}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        );
+      })()}
     </div>
   );
 }
@@ -1098,15 +1136,17 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 if (!date) return <div key={idx} />;
                 const day = parseInt(date.slice(8, 10), 10);
                 const types = getDayTypes(date);
-                const metas = types.map(dayTypeMeta).filter(Boolean);
+                const hasFeast = types.includes('회식일');
+                const fillTypes = types.filter((t) => t !== '회식일'); // 회식일은 테두리로만 표시, 채우기 색에서는 제외
+                const metas = fillTypes.map(dayTypeMeta).filter(Boolean);
                 const isToday = date === todayStr();
                 const dow = new Date(`${date}T00:00:00`).getDay();
                 const isWeekendDefault = metas.length === 0 && (dow === 0 || dow === 5 || dow === 6);
-                const bgStyle = metas.length === 0 ? (isWeekendDefault ? WEEKEND_BG : NEUTRAL_BG)
+                const bgStyle = metas.length === 0
+                  ? (hasFeast ? dayTypeMeta('회식일').bg : (isWeekendDefault ? WEEKEND_BG : NEUTRAL_BG))
                   : metas.length === 1 ? metas[0].bg
                   : `linear-gradient(to bottom, ${metas.map((m, i) => `${m.bg} ${(i * 100) / metas.length}%, ${m.bg} ${((i + 1) * 100) / metas.length}%`).join(', ')})`;
-                const textColor = metas.length > 0 ? metas[0].color : (isWeekendDefault ? WEEKEND_TEXT : MUTE);
-                const hasFeast = types.includes('회식일');
+                const textColor = metas.length > 0 ? metas[0].color : (hasFeast ? dayTypeMeta('회식일').color : (isWeekendDefault ? WEEKEND_TEXT : MUTE));
                 const hasExempt = absenceExcuses.some((e) => e.date === date && EXEMPT_EXCUSE_REASONS.includes(e.reason));
                 const hasPersonal = absenceExcuses.some((e) => e.date === date && e.reason === '개인일정');
                 let borderStyle = isToday ? `1.5px solid ${INK}` : selectedDate === date ? `1.5px solid ${textColor}` : '1px solid transparent';
@@ -1138,19 +1178,62 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: INK }} /> 출장·휴가</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: 'transparent', border: `1px solid ${INK}` }} /> 개인일정</span>
             </div>
+            {(() => {
+              const todayExcused = members.filter((m) => absenceExcuses.some((e) => e.date === todayStr() && e.member_id === m.id));
+              if (todayExcused.length === 0) return null;
+              return (
+                <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                  <div className="text-xs mb-1.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>오늘 참석 불가</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {todayExcused.map((m) => {
+                      const e = absenceExcuses.find((ee) => ee.date === todayStr() && ee.member_id === m.id);
+                      return <span key={m.id} className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}><Stamp role={m.role} size={16} tilt={0} />{dispName(m.name, isLoggedIn)} · {e.reason}</span>;
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
             {selectedDate && (() => {
               const excusedMembers = members.filter((m) => absenceExcuses.some((e) => e.date === selectedDate && e.member_id === m.id));
+              const myExcuse = currentMember ? absenceExcuses.find((e) => e.date === selectedDate && e.member_id === currentMember.id) : null;
+              const setMyExcuseForDate = async (reason) => {
+                if (!currentMember) return;
+                await insertRow('absence_excuses', { id: uid('ae'), date: selectedDate, member_id: currentMember.id, reason });
+                await reload();
+              };
+              const clearMyExcuseForDate = async () => {
+                if (!myExcuse) return;
+                await deleteRow('absence_excuses', 'id', myExcuse.id);
+                await reload();
+              };
               return (
                 <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
                   {excusedMembers.length > 0 && (
                     <div className="mb-3">
-                      <div className="text-xs mb-1.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(selectedDate)} 출장·휴가</div>
+                      <div className="text-xs mb-1.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(selectedDate)} 참석 불가</div>
                       <div className="flex flex-wrap gap-1.5">
                         {excusedMembers.map((m) => {
                           const e = absenceExcuses.find((ee) => ee.date === selectedDate && ee.member_id === m.id);
                           return <span key={m.id} className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}><Stamp role={m.role} size={16} tilt={0} />{dispName(m.name, isLoggedIn)} · {e.reason}</span>;
                         })}
                       </div>
+                    </div>
+                  )}
+                  {currentMember && (
+                    <div className="mb-3">
+                      <div className="text-xs mb-1.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>본인 참석 불가 등록</div>
+                      {myExcuse ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs rounded-full px-2 py-1" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{myExcuse.reason}</span>
+                          <button onClick={clearMyExcuseForDate} className="text-xs underline underline-offset-2" style={{ color: MUTE }}>취소</button>
+                        </div>
+                      ) : (
+                        <div className="flex gap-1.5 flex-wrap">
+                          <button onClick={() => setMyExcuseForDate('출장')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>출장</button>
+                          <button onClick={() => setMyExcuseForDate('휴가')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>휴가</button>
+                          <button onClick={() => setMyExcuseForDate('개인일정')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>개인일정</button>
+                        </div>
+                      )}
                     </div>
                   )}
                   {canManage && (
