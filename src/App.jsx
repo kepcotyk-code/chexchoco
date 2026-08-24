@@ -767,6 +767,12 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
     await updateRow('checkins', 'id', myCheckin.id, { check_out_at: new Date().toISOString() });
     await reload();
   };
+  const resetMyCheckin = async () => {
+    if (!myCheckin) return;
+    if (!window.confirm('오늘 체크인/체크아웃 기록을 초기화할까요?')) return;
+    await deleteRow('checkins', 'id', myCheckin.id);
+    await reload();
+  };
   const todaysCheckins = session ? checkins.filter((c) => c.session_id === session.id) : [];
   const getCheckin = (memberId) => todaysCheckins.find((c) => c.member_id === memberId);
   const checkInMember = async (memberId) => {
@@ -845,13 +851,20 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
                   </div>
                 ) : !myCheckin ? <PrimaryBtn onClick={checkIn} icon={LogIn}>체크인</PrimaryBtn>
                   : !myCheckin.check_out_at ? (
-                    <><div className="text-sm" style={{ color: '#7FDCCF' }}>체크인 {fmtTime(myCheckin.check_in_at)}</div><PrimaryBtn onClick={checkOut} icon={LogOut}>체크아웃</PrimaryBtn></>
+                    <>
+                      <div className="text-sm" style={{ color: '#7FDCCF' }}>체크인 {fmtTime(myCheckin.check_in_at)}</div>
+                      <div className="flex items-center gap-2">
+                        <PrimaryBtn onClick={checkOut} icon={LogOut}>체크아웃</PrimaryBtn>
+                        <button onClick={resetMyCheckin} className="text-xs underline underline-offset-2" style={{ color: MUTE }}>초기화</button>
+                      </div>
+                    </>
                   ) : (
-                    <div className="text-sm" style={{ color: MUTE }}>
+                    <div className="text-sm text-center" style={{ color: MUTE }}>
                       체크인 {fmtTime(myCheckin.check_in_at)} → 체크아웃 {fmtTime(myCheckin.check_out_at)}
                       <div className="font-semibold mt-1" style={{ color: durationMin(myCheckin.check_in_at, myCheckin.check_out_at) >= 30 ? '#7FDCCF' : '#F0A87C' }}>
                         {durationMin(myCheckin.check_in_at, myCheckin.check_out_at)}분 · {durationMin(myCheckin.check_in_at, myCheckin.check_out_at) >= 30 ? '출석 인정' : '30분 미만'}
                       </div>
+                      <button onClick={resetMyCheckin} className="text-xs underline underline-offset-2 mt-2 block mx-auto" style={{ color: MUTE }}>초기화</button>
                     </div>
                   )}
                 {!myExcuseToday && !myCheckin && (
@@ -964,10 +977,17 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     return { ...r, rank: lastRank };
   });
   const monthSessionIds = new Set(sessionsInMonth.map((s) => s.id));
-  const monthReadingRows = members.map((m) => {
+  const withRank = (rowsUnranked) => {
+    let lastVal = null; let lastRank = 0;
+    return rowsUnranked.map((r, i) => {
+      if (r.totalMin !== lastVal) { lastRank = i + 1; lastVal = r.totalMin; }
+      return { ...r, rank: lastRank };
+    });
+  };
+  const monthReadingRows = withRank(members.map((m) => {
     const totalMin = checkins.filter((c) => c.member_id === m.id && monthSessionIds.has(c.session_id)).reduce((sum, c) => { const d = durationMin(c.check_in_at, c.check_out_at); return sum + (d !== null && d > 0 ? d : 0); }, 0);
     return { ...m, totalMin };
-  }).sort((a, b) => b.totalMin - a.totalMin);
+  }).sort((a, b) => b.totalMin - a.totalMin));
   const maxMonthReadingMin = Math.max(1, ...monthReadingRows.map((r) => r.totalMin));
 
   const totalSessions = sessions.filter((s) => s.date <= todayStr()).length;
@@ -976,10 +996,10 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     sessions.forEach((s) => { const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id); const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null; if (dur !== null && dur >= 30) present++; });
     return { ...m, present, rate: totalSessions ? Math.round((present / totalSessions) * 100) : 0 };
   });
-  const totalReadingRows = members.map((m) => {
+  const totalReadingRows = withRank(members.map((m) => {
     const totalMin = checkins.filter((c) => c.member_id === m.id).reduce((sum, c) => { const d = durationMin(c.check_in_at, c.check_out_at); return sum + (d !== null && d > 0 ? d : 0); }, 0);
     return { ...m, totalMin };
-  }).sort((a, b) => b.totalMin - a.totalMin);
+  }).sort((a, b) => b.totalMin - a.totalMin));
   const maxReadingMin = Math.max(1, ...totalReadingRows.map((r) => r.totalMin));
 
   const weeklyPenalties = computeWeeklyPenalties(sessions, checkins, calendarDays, members, absenceExcuses);
@@ -1193,10 +1213,13 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
           <Card>
             <div className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: INK }}><BookOpen size={16} style={{ color: '#EFC94C' }} /> 이번 달 독서시간</div>
             <div className="space-y-3">
-              {monthReadingRows.map((r, idx) => (
+              {monthReadingRows.map((r) => (
                 <div key={r.id}>
                   <div className="flex items-center justify-between text-sm mb-1">
-                    <div className="flex items-center gap-2"><Stamp role={r.role} size={24} tilt={0} /><span style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>{idx === 0 && r.totalMin > 0 && <span className="text-xs">🏆</span>}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs w-4 text-center shrink-0" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.rank === 1 && r.totalMin > 0 ? '🏆' : r.rank}</span>
+                      <Stamp role={r.role} size={24} tilt={0} /><span style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>
+                    </div>
                     <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtHM(r.totalMin)}</span>
                   </div>
                   <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: NEUTRAL_BG }}><div className="h-full rounded-full" style={{ width: `${(r.totalMin / maxMonthReadingMin) * 100}%`, background: '#EFC94C' }} /></div>
@@ -1226,10 +1249,13 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
           <Card>
             <div className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: INK }}><BookOpen size={16} style={{ color: '#EFC94C' }} /> 누적 독서시간 (전체 기간)</div>
             <div className="space-y-3">
-              {totalReadingRows.map((r, idx) => (
+              {totalReadingRows.map((r) => (
                 <div key={r.id}>
                   <div className="flex items-center justify-between text-sm mb-1">
-                    <div className="flex items-center gap-2"><Stamp role={r.role} size={24} tilt={0} /><span style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>{idx === 0 && r.totalMin > 0 && <span className="text-xs">🏆</span>}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs w-4 text-center shrink-0" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.rank === 1 && r.totalMin > 0 ? '🏆' : r.rank}</span>
+                      <Stamp role={r.role} size={24} tilt={0} /><span style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>
+                    </div>
                     <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtHM(r.totalMin)}</span>
                   </div>
                   <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: NEUTRAL_BG }}><div className="h-full rounded-full" style={{ width: `${(r.totalMin / maxReadingMin) * 100}%`, background: '#EFC94C' }} /></div>
