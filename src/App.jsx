@@ -1086,21 +1086,31 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                   : metas.length === 1 ? metas[0].bg
                   : `linear-gradient(to bottom, ${metas.map((m, i) => `${m.bg} ${(i * 100) / metas.length}%, ${m.bg} ${((i + 1) * 100) / metas.length}%`).join(', ')})`;
                 const textColor = metas.length > 0 ? metas[0].color : (isWeekendDefault ? WEEKEND_TEXT : MUTE);
-                const hasExcuse = absenceExcuses.some((e) => e.date === date);
+                const hasFeast = types.includes('회식일');
+                const hasExempt = absenceExcuses.some((e) => e.date === date && EXEMPT_EXCUSE_REASONS.includes(e.reason));
+                const hasPersonal = absenceExcuses.some((e) => e.date === date && e.reason === '개인일정');
+                let borderStyle = isToday ? `1.5px solid ${INK}` : selectedDate === date ? `1.5px solid ${textColor}` : '1px solid transparent';
+                if (hasFeast) borderStyle = '2.5px solid #E5484D';
                 return (
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
                     className="relative aspect-square rounded-lg flex items-center justify-center text-xs"
-                    style={{ background: bgStyle, color: textColor, border: isToday ? `1.5px solid ${INK}` : selectedDate === date ? `1.5px solid ${textColor}` : '1px solid transparent' }}>
+                    style={{ background: bgStyle, color: textColor, border: borderStyle }}>
                     {day}
-                    {hasExcuse && <span className="absolute bottom-1 rounded-full" style={{ width: 4, height: 4, background: INK }} />}
+                    {(hasExempt || hasPersonal) && (
+                      <span className="absolute bottom-1 flex items-center gap-0.5">
+                        {hasExempt && <span className="rounded-full" style={{ width: 4, height: 4, background: INK }} />}
+                        {hasPersonal && <span className="rounded-full" style={{ width: 4, height: 4, background: 'transparent', border: `1px solid ${INK}` }} />}
+                      </span>
+                    )}
                   </button>
                 );
               })}
             </div>
             <div className="flex flex-wrap gap-2 mt-3">
-              {DAY_TYPES.map((t) => <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: t.color }} /> {t.label}</span>)}
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: WEEKEND_BG, border: `1px solid ${WEEKEND_TEXT}` }} /> 금·토·일(기본)</span>
+              {DAY_TYPES.map((t) => <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: t.color, border: t.key === '회식일' ? '1.5px solid #E5484D' : 'none' }} /> {t.label}</span>)}
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: WEEKEND_BG, border: `1px solid ${WEEKEND_TEXT}` }} /> 금·토·일(제외)</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: INK }} /> 출장·휴가</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: 'transparent', border: `1px solid ${INK}` }} /> 개인일정</span>
             </div>
             {selectedDate && (() => {
               const excusedMembers = members.filter((m) => absenceExcuses.some((e) => e.date === selectedDate && e.member_id === m.id));
@@ -1249,14 +1259,14 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
     setNewName(''); setNewRole('회원'); setNewBirthday(''); setNewPin(''); setNewDept(''); setNewJobType(''); setNewJoinedAt(''); setNewGenre(''); setNewNote(''); setShowAddForm(false);
   };
   const startEdit = (m) => { setEditingId(m.id); setEditMode('full'); setEditName(m.name); setEditRole(m.role); setEditBirthday(m.birthday || ''); setEditPin(m.pin || ''); setEditDept(m.department || ''); setEditJobType(m.job_type || ''); setEditJoinedAt(m.joined_at || ''); setEditGenre(m.book_genre || ''); setEditNote(m.note || ''); };
-  const startSelfEdit = (m) => { setEditingId(m.id); setEditMode('self'); setEditBirthday(m.birthday || ''); setEditPin(m.pin || ''); };
+  const startSelfEdit = (m) => { setEditingId(m.id); setEditMode('self'); setEditBirthday(m.birthday || ''); setEditPin(m.pin || ''); setEditDept(m.department || ''); setEditJobType(m.job_type || ''); setEditJoinedAt(m.joined_at || ''); setEditGenre(m.book_genre || ''); setEditNote(m.note || ''); };
   const saveEdit = async () => {
     if (editPin && !/^\d{4}$/.test(editPin)) return;
     if (editMode === 'full') {
       if (!editName.trim()) return;
       await updateRow('members', 'id', editingId, { name: editName.trim(), role: editRole, birthday: editBirthday || null, pin: editPin || null, department: editDept || null, job_type: editJobType || null, joined_at: editJoinedAt || null, book_genre: editGenre || null, note: editNote || null });
     } else {
-      await updateRow('members', 'id', editingId, { birthday: editBirthday || null, pin: editPin || null });
+      await updateRow('members', 'id', editingId, { birthday: editBirthday || null, pin: editPin || null, department: editDept || null, job_type: editJobType || null, book_genre: editGenre || null });
     }
     await reload();
     setEditingId(null);
@@ -1311,20 +1321,30 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
           <div key={m.id} style={{ borderTop: idx === 0 ? 'none' : `1px solid ${ROW_LINE}` }}>
             {editingId === m.id ? (
               <div className="p-4 space-y-3" style={{ background: '#1A1812' }}>
+                <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: '#3A2E10' }}>
+                  <Stamp role={m.role} size={28} tilt={0} />
+                  <span className="font-semibold" style={{ color: '#EFC94C' }}>{m.name} 정보 수정</span>
+                </div>
                 {editMode === 'full' && (
                   <>
                     <input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
                     <RolePicker value={editRole} onChange={setEditRole} />
-                    <div className="grid grid-cols-2 gap-2">
-                      <input value={editDept} onChange={(e) => setEditDept(e.target.value)} placeholder="소속" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
-                      <input value={editJobType} onChange={(e) => setEditJobType(e.target.value)} placeholder="직군" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
-                    </div>
-                    <div><div className="text-xs mb-1" style={{ color: MUTE }}>가입일자</div><input type="date" value={editJoinedAt} onChange={(e) => setEditJoinedAt(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
-                    <input value={editGenre} onChange={(e) => setEditGenre(e.target.value)} placeholder="선호 도서 종류 (예: 소설, 자기계발)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
-                    <input value={editNote} onChange={(e) => setEditNote(e.target.value)} placeholder="비고" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
                   </>
                 )}
-                {editMode === 'self' && <p className="text-xs" style={{ color: MUTE }}>본인의 생일과 PIN만 수정할 수 있어요.</p>}
+                {editMode === 'self' && <p className="text-xs" style={{ color: MUTE }}>이름·직급·가입일자·비고는 회장·간사·총무만 변경할 수 있어요. 나머지 정보는 본인이 직접 수정할 수 있어요.</p>}
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={editDept} onChange={(e) => setEditDept(e.target.value)} placeholder="소속" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                  <input value={editJobType} onChange={(e) => setEditJobType(e.target.value)} placeholder="직군" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                </div>
+                {editMode === 'full' && (
+                  <>
+                    <div><div className="text-xs mb-1" style={{ color: MUTE }}>가입일자</div><input type="date" value={editJoinedAt} onChange={(e) => setEditJoinedAt(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+                  </>
+                )}
+                <input value={editGenre} onChange={(e) => setEditGenre(e.target.value)} placeholder="선호 도서 종류 (예: 소설, 자기계발)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                {editMode === 'full' && (
+                  <input value={editNote} onChange={(e) => setEditNote(e.target.value)} placeholder="비고" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                )}
                 <div><div className="text-xs mb-1 flex items-center gap-1" style={{ color: MUTE }}><Cake size={13} /> 생일</div><input type="date" value={editBirthday} onChange={(e) => setEditBirthday(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
                 <div><div className="text-xs mb-1 flex items-center gap-1" style={{ color: MUTE }}><Lock size={13} /> 본인 확인 PIN (4자리, 선택)</div><input type="password" inputMode="numeric" maxLength={4} value={editPin} onChange={(e) => setEditPin(e.target.value.replace(/\D/g, ''))} className="w-full rounded-xl border px-3 py-2 text-sm tracking-[0.3em] outline-none" style={inputStyle} placeholder="설정 안 함" /></div>
                 <div className="flex gap-2 pt-1"><PrimaryBtn onClick={saveEdit} icon={Check}>저장</PrimaryBtn><GhostBtn onClick={() => setEditingId(null)} icon={X}>취소</GhostBtn></div>
