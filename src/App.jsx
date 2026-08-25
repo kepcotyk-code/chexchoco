@@ -889,8 +889,10 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
           {currentMember && <button onClick={() => setShowLocEdit(!showLocEdit)} className="text-xs underline underline-offset-2" style={{ color: MUTE }}>{todayLocation ? '변경' : '설정'}</button>}
         </div>
         {todayLocation ? (
-          <div className="text-sm mt-1 font-semibold" style={{ color: '#EFC94C' }}>{todayLocation.location}</div>
-          <div className="text-xs mt-0.5" style={{ color: MUTE }}>설정자 : {dispName(todayLocation.updated_by, !!currentMember)}</div>
+          <>
+            <div className="text-sm mt-1 font-semibold" style={{ color: '#EFC94C' }}>{todayLocation.location}</div>
+            <div className="text-xs mt-0.5" style={{ color: MUTE }}>설정자 : {dispName(todayLocation.updated_by, !!currentMember)}</div>
+          </>
         ) : <p className="text-sm mt-1" style={{ color: MUTE }}>아직 정해지지 않았어요.</p>}
         {showLocEdit && currentMember && (
           <div className="mt-3 pt-3 space-y-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
