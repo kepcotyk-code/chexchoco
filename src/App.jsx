@@ -5,7 +5,7 @@ import {
   Crown, Shield, Wallet, User, Plus, Pencil, Trash2, Check, X, Lock, AlertCircle,
   Megaphone, QrCode, BarChart3, Users, Settings2, Download, Upload, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   LogIn, LogOut, Cake, PartyPopper, Archive, Paperclip, FileText, Eye, Pin, Gavel, BookOpen,
-  Image as ImageIcon,
+  Image as ImageIcon, Trophy,
 } from 'lucide-react';
 
 /* ---------- design tokens (dark) ---------- */
@@ -880,11 +880,6 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
           ) : <p className="text-sm py-6" style={{ color: MUTE }}>아직 오늘 출결이 시작되지 않았어요.<br />간사에게 문의해 주세요.</p>
         ) : (
           <div>
-            <div className="mx-auto rounded-2xl p-6 inline-flex flex-col items-center gap-2 border" style={{ background: NEUTRAL_BG, borderColor: LINE }}>
-              <QrCode size={48} color={INK} strokeWidth={1.5} />
-              <div className="text-xl font-bold tracking-[0.25em]" style={{ color: INK, fontFamily: "'IBM Plex Mono', monospace" }}>{session.id.slice(-6).toUpperCase()}</div>
-            </div>
-            <div className="text-xs mt-2" style={{ color: MUTE }}>오늘의 출결 코드</div>
             {currentMember ? (
               <div className="mt-4 flex flex-col items-center gap-2">
                 {!myCheckin && !myExcuseToday && (
@@ -1335,7 +1330,13 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               {rows.map((r) => (
                 <div key={r.id} className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-xs w-4 text-center shrink-0" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.rank === 1 && r.present > 0 ? '🏆' : r.rank}</span>
+                    <span className="w-4 flex items-center justify-center shrink-0">
+                      {r.rank <= 3 && r.present > 0 ? (
+                        <Trophy size={14} color={r.rank === 1 ? '#EFC94C' : r.rank === 2 ? '#C9C9C9' : '#C08552'} strokeWidth={2.2} />
+                      ) : (
+                        <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.rank}</span>
+                      )}
+                    </span>
                     <Stamp role={r.role} size={24} tilt={0} /><span className="truncate" style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>
                     {isCurrentMonth && warningMemberIds.has(r.id) && <span title="이번 주 월·화 모두 미참석 — 벌칙유의" className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0" style={{ background: '#3A2213', color: '#F0A87C' }}>⚠️ 벌칙유의</span>}
                   </div>
@@ -1361,16 +1362,13 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             <div className="grid grid-cols-3 gap-4">
               {allTimeRows.map((r) => {
                 const gaugeColor = r.rate >= 80 ? '#7FDCCF' : r.rate >= 50 ? '#EFC94C' : '#F0A87C';
-                const medalBg = r.rank === 1 ? '#EFC94C' : r.rank === 2 ? '#C9C9C9' : r.rank === 3 ? '#C08552' : null;
+                const medal = r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : r.rank === 3 ? '🥉' : null;
                 return (
                   <div key={r.id} className="flex flex-col items-center gap-1.5 text-center">
-                    <span className="text-xs truncate max-w-full" style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>
+                    <span className="text-xs truncate max-w-full flex items-center justify-center gap-1" style={{ color: INK }}>
+                      {medal && <span>{medal}</span>}{dispName(r.name, isLoggedIn)}
+                    </span>
                     <div className="relative rounded-full shrink-0" style={{ width: 72, height: 72, background: `conic-gradient(${gaugeColor} ${r.rate * 3.6}deg, ${NEUTRAL_BG} ${r.rate * 3.6}deg 360deg)` }}>
-                      {medalBg && (
-                        <span className="absolute -top-1.5 -right-1.5 z-10 rounded-full flex items-center justify-center" style={{ width: 24, height: 24, background: medalBg, boxShadow: '0 1px 3px rgba(0,0,0,0.4)' }}>
-                          <span style={{ fontSize: 13, lineHeight: 1 }}>🏆</span>
-                        </span>
-                      )}
                       <div className="absolute inset-[5px] rounded-full flex flex-col items-center justify-center" style={{ background: CARD_BG }}>
                         <span style={{ fontSize: 15, color: gaugeColor, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700 }}>{r.rate}%</span>
                         <span style={{ fontSize: 10, color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{totalSessions}</span>
