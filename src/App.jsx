@@ -117,6 +117,7 @@ const uid = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(36).sl
 const MEETING_LAT = 35.0267194;
 const MEETING_LNG = 126.7843083;
 const MEETING_RADIUS_M = 200;
+const MEETING_LABEL = '한전 나주 본사';
 const distanceMeters = (lat1, lng1, lat2, lng2) => {
   const R = 6371000;
   const toRad = (d) => (d * Math.PI) / 180;
@@ -125,12 +126,15 @@ const distanceMeters = (lat1, lng1, lat2, lng2) => {
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
-// 위치 허용 여부 확인: true=범위 내, false=범위 밖, null=확인 불가(권한 거부 등) — 어떤 경우든 체크인 자체는 막지 않음
+// 위치 확인: { ok: true=범위 내 / false=범위 밖 / null=확인 불가, distance: 미터(m) } — 어떤 경우든 체크인 자체는 막지 않음
 const getLocationStatus = () => new Promise((resolve) => {
-  if (!navigator.geolocation) { resolve(null); return; }
+  if (!navigator.geolocation) { resolve({ ok: null, distance: null }); return; }
   navigator.geolocation.getCurrentPosition(
-    (pos) => resolve(distanceMeters(pos.coords.latitude, pos.coords.longitude, MEETING_LAT, MEETING_LNG) <= MEETING_RADIUS_M),
-    () => resolve(null),
+    (pos) => {
+      const d = Math.round(distanceMeters(pos.coords.latitude, pos.coords.longitude, MEETING_LAT, MEETING_LNG));
+      resolve({ ok: d <= MEETING_RADIUS_M, distance: d });
+    },
+    () => resolve({ ok: null, distance: null }),
     { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
   );
 });
@@ -782,20 +786,28 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
   };
   const myCheckin = session ? checkins.find((c) => c.session_id === session.id && c.member_id === currentMember?.id) : null;
   const [locChecking, setLocChecking] = useState(false);
+  const [myLocStatus, setMyLocStatus] = useState('checking'); // 'checking' | true | false | null
+  useEffect(() => {
+    if (!currentMember || !session) return;
+    let cancelled = false;
+    setMyLocStatus('checking');
+    getLocationStatus().then((res) => { if (!cancelled) setMyLocStatus(res); });
+    return () => { cancelled = true; };
+  }, [currentMember?.id, session?.id]);
   const checkIn = async () => {
     if (!session || !currentMember) return;
     setLocChecking(true);
-    const locOk = await getLocationStatus();
+    const locResult = await getLocationStatus();
     setLocChecking(false);
-    await insertRow('checkins', { id: uid('c'), session_id: session.id, member_id: currentMember.id, check_in_at: new Date().toISOString(), check_out_at: null, checkin_loc_ok: locOk });
+    await insertRow('checkins', { id: uid('c'), session_id: session.id, member_id: currentMember.id, check_in_at: new Date().toISOString(), check_out_at: null, checkin_loc_ok: locResult.ok });
     await reload();
   };
   const checkOut = async () => {
     if (!myCheckin) return;
     setLocChecking(true);
-    const locOk = await getLocationStatus();
+    const locResult = await getLocationStatus();
     setLocChecking(false);
-    await updateRow('checkins', 'id', myCheckin.id, { check_out_at: new Date().toISOString(), checkout_loc_ok: locOk });
+    await updateRow('checkins', 'id', myCheckin.id, { check_out_at: new Date().toISOString(), checkout_loc_ok: locResult.ok });
     await reload();
   };
   const resetMyCheckin = async () => {
@@ -875,6 +887,17 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
             <div className="text-xs mt-2" style={{ color: MUTE }}>오늘의 출결 코드</div>
             {currentMember ? (
               <div className="mt-4 flex flex-col items-center gap-2">
+                {!myCheckin && !myExcuseToday && (
+                  myLocStatus === 'checking' ? (
+                    <span className="text-[11px] rounded-full px-2 py-1 text-center" style={{ background: NEUTRAL_BG, color: MUTE }}>📍 위치 확인 중…</span>
+                  ) : myLocStatus.ok === true ? (
+                    <span className="text-[11px] rounded-full px-2.5 py-1 text-center" style={{ background: '#12302C', color: '#7FDCCF' }}>📍 {MEETING_LABEL} 기준 약 {myLocStatus.distance}m · {MEETING_RADIUS_M}m 이내라 적정이에요</span>
+                  ) : myLocStatus.ok === false ? (
+                    <span className="text-[11px] rounded-full px-2.5 py-1 text-center" style={{ background: '#3A2213', color: '#F0A87C' }}>📍 {MEETING_LABEL} 기준 약 {myLocStatus.distance}m · {MEETING_RADIUS_M}m 이내여야 적정이에요</span>
+                  ) : (
+                    <span className="text-[11px] rounded-full px-2 py-1 text-center" style={{ background: NEUTRAL_BG, color: MUTE }}>📍 위치 확인 불가</span>
+                  )
+                )}
                 {myExcuseToday ? (
                   <div className="flex items-center gap-2">
                     <span className="text-sm rounded-full px-3 py-1.5" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>오늘 사유: {myExcuseToday.reason}</span>
