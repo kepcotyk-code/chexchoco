@@ -113,6 +113,28 @@ const fmtMD = (md) => { const [m, d] = md.split('-'); return `${parseInt(m, 10)}
 const maskName = (name) => { if (!name) return name; const chars = [...name]; return chars[0] + 'O'.repeat(Math.max(chars.length - 1, 0)); };
 const dispName = (name, loggedIn) => (loggedIn ? name : maskName(name));
 const uid = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+// 오늘 모임장소 위치 확인 (전남 나주시 전력로 55 — 한전 본사 기준)
+const MEETING_LAT = 35.0267194;
+const MEETING_LNG = 126.7843083;
+const MEETING_RADIUS_M = 200;
+const distanceMeters = (lat1, lng1, lat2, lng2) => {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+// 위치 허용 여부 확인: true=범위 내, false=범위 밖, null=확인 불가(권한 거부 등) — 어떤 경우든 체크인 자체는 막지 않음
+const getLocationStatus = () => new Promise((resolve) => {
+  if (!navigator.geolocation) { resolve(null); return; }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => resolve(distanceMeters(pos.coords.latitude, pos.coords.longitude, MEETING_LAT, MEETING_LNG) <= MEETING_RADIUS_M),
+    () => resolve(null),
+    { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+  );
+});
+
 const buildMonthGrid = (year, month) => {
   const first = new Date(year, month, 1);
   const startWeekday = first.getDay();
@@ -759,14 +781,21 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
     await reload();
   };
   const myCheckin = session ? checkins.find((c) => c.session_id === session.id && c.member_id === currentMember?.id) : null;
+  const [locChecking, setLocChecking] = useState(false);
   const checkIn = async () => {
     if (!session || !currentMember) return;
-    await insertRow('checkins', { id: uid('c'), session_id: session.id, member_id: currentMember.id, check_in_at: new Date().toISOString(), check_out_at: null });
+    setLocChecking(true);
+    const locOk = await getLocationStatus();
+    setLocChecking(false);
+    await insertRow('checkins', { id: uid('c'), session_id: session.id, member_id: currentMember.id, check_in_at: new Date().toISOString(), check_out_at: null, checkin_loc_ok: locOk });
     await reload();
   };
   const checkOut = async () => {
     if (!myCheckin) return;
-    await updateRow('checkins', 'id', myCheckin.id, { check_out_at: new Date().toISOString() });
+    setLocChecking(true);
+    const locOk = await getLocationStatus();
+    setLocChecking(false);
+    await updateRow('checkins', 'id', myCheckin.id, { check_out_at: new Date().toISOString(), checkout_loc_ok: locOk });
     await reload();
   };
   const resetMyCheckin = async () => {
@@ -851,21 +880,22 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
                     <span className="text-sm rounded-full px-3 py-1.5" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>오늘 사유: {myExcuseToday.reason}</span>
                     <button onClick={clearMyExcuse} className="text-xs underline underline-offset-2" style={{ color: MUTE }}>취소</button>
                   </div>
-                ) : !myCheckin ? <PrimaryBtn onClick={checkIn} icon={LogIn}>체크인</PrimaryBtn>
+                ) : !myCheckin ? <PrimaryBtn onClick={checkIn} icon={LogIn} disabled={locChecking}>{locChecking ? '위치 확인 중…' : '체크인'}</PrimaryBtn>
                   : !myCheckin.check_out_at ? (
                     <>
-                      <div className="text-sm" style={{ color: '#7FDCCF' }}>체크인 {fmtTime(myCheckin.check_in_at)}</div>
+                      <div className="text-sm flex items-center gap-1.5" style={{ color: '#7FDCCF' }}>체크인 {fmtTime(myCheckin.check_in_at)}{myCheckin.checkin_loc_ok === false && <span className="text-[10px] rounded-full px-1.5 py-0.5" style={{ background: '#3A2213', color: '#F0A87C' }}>📍위치 미확인</span>}</div>
                       <div className="flex items-center gap-2">
-                        <PrimaryBtn onClick={checkOut} icon={LogOut}>체크아웃</PrimaryBtn>
+                        <PrimaryBtn onClick={checkOut} icon={LogOut} disabled={locChecking}>{locChecking ? '위치 확인 중…' : '체크아웃'}</PrimaryBtn>
                         <button onClick={resetMyCheckin} className="text-xs underline underline-offset-2" style={{ color: MUTE }}>초기화</button>
                       </div>
                     </>
                   ) : (
                     <div className="text-sm text-center" style={{ color: MUTE }}>
-                      체크인 {fmtTime(myCheckin.check_in_at)} → 체크아웃 {fmtTime(myCheckin.check_out_at)}
+                      체크인 {fmtTime(myCheckin.check_in_at)}{myCheckin.checkin_loc_ok === false && ' 📍'} → 체크아웃 {fmtTime(myCheckin.check_out_at)}{myCheckin.checkout_loc_ok === false && ' 📍'}
                       <div className="font-semibold mt-1" style={{ color: durationMin(myCheckin.check_in_at, myCheckin.check_out_at) >= 30 ? '#7FDCCF' : '#F0A87C' }}>
                         {durationMin(myCheckin.check_in_at, myCheckin.check_out_at)}분 · {durationMin(myCheckin.check_in_at, myCheckin.check_out_at) >= 30 ? '출석 인정' : '30분 미만'}
                       </div>
+                      {(myCheckin.checkin_loc_ok === false || myCheckin.checkout_loc_ok === false) && <div className="text-[11px] mt-1" style={{ color: '#F0A87C' }}>📍 모임장소 위치가 확인되지 않았어요 (출석 인정에는 영향 없어요)</div>}
                       <button onClick={resetMyCheckin} className="text-xs underline underline-offset-2 mt-2 block mx-auto" style={{ color: MUTE }}>초기화</button>
                     </div>
                   )}
@@ -907,7 +937,7 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
                     <Stamp role={m.role} size={26} tilt={0} /><span className="truncate" style={{ color: INK }}>{m.name}</span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {c ? <span className="text-xs" style={{ color: dur === null ? MUTE : dur >= 30 ? '#7FDCCF' : '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtTime(c.check_in_at)}–{fmtTime(c.check_out_at)} {dur !== null && `(${dur}분)`}</span> : <span className="text-xs" style={{ color: MUTE }}>미체크</span>}
+                    {c ? <span className="text-xs" style={{ color: dur === null ? MUTE : dur >= 30 ? '#7FDCCF' : '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtTime(c.check_in_at)}–{fmtTime(c.check_out_at)} {dur !== null && `(${dur}분)`}{(c.checkin_loc_ok === false || c.checkout_loc_ok === false) && ' 📍'}</span> : <span className="text-xs" style={{ color: MUTE }}>미체크</span>}
                     {!c && <button onClick={() => checkInMember(m.id)} className="p-1.5 rounded-lg" style={{ background: NEUTRAL_BG, color: '#7FDCCF' }}><LogIn size={14} /></button>}
                     {c && !c.check_out_at && <button onClick={() => checkOutMember(m.id)} className="p-1.5 rounded-lg" style={{ background: NEUTRAL_BG, color: '#F0A87C' }}><LogOut size={14} /></button>}
                   </div>
@@ -941,7 +971,7 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
               return (
                 <div key={c.id} className="flex items-center justify-between text-sm py-1">
                   <div className="flex items-center gap-2"><Stamp role={m?.role || '회원'} size={24} tilt={0} /><span style={{ color: INK }}>{m ? dispName(m.name, !!currentMember) : '알 수 없음'}</span></div>
-                  <span style={{ color: dur === null ? MUTE : dur >= 30 ? '#7FDCCF' : '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtTime(c.check_in_at)}–{fmtTime(c.check_out_at)} {dur !== null && `(${dur}분)`}</span>
+                  <span style={{ color: dur === null ? MUTE : dur >= 30 ? '#7FDCCF' : '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtTime(c.check_in_at)}–{fmtTime(c.check_out_at)} {dur !== null && `(${dur}분)`}{(c.checkin_loc_ok === false || c.checkout_loc_ok === false) && ' 📍'}</span>
                 </div>
               );
             })}
