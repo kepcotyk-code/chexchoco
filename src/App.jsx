@@ -1361,11 +1361,16 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             <div className="grid grid-cols-3 gap-4">
               {allTimeRows.map((r) => {
                 const gaugeColor = r.rate >= 80 ? '#7FDCCF' : r.rate >= 50 ? '#EFC94C' : '#F0A87C';
-                const medal = r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : r.rank === 3 ? '🥉' : null;
+                const medalBg = r.rank === 1 ? '#EFC94C' : r.rank === 2 ? '#C9C9C9' : r.rank === 3 ? '#C08552' : null;
                 return (
                   <div key={r.id} className="flex flex-col items-center gap-1.5 text-center">
-                    <span className="text-xs truncate max-w-full" style={{ color: INK }}>{medal && `${medal} `}{dispName(r.name, isLoggedIn)}</span>
+                    <span className="text-xs truncate max-w-full" style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>
                     <div className="relative rounded-full shrink-0" style={{ width: 72, height: 72, background: `conic-gradient(${gaugeColor} ${r.rate * 3.6}deg, ${NEUTRAL_BG} ${r.rate * 3.6}deg 360deg)` }}>
+                      {medalBg && (
+                        <span className="absolute -top-1.5 -right-1.5 z-10 rounded-full flex items-center justify-center" style={{ width: 24, height: 24, background: medalBg, boxShadow: '0 1px 3px rgba(0,0,0,0.4)' }}>
+                          <span style={{ fontSize: 13, lineHeight: 1 }}>🏆</span>
+                        </span>
+                      )}
                       <div className="absolute inset-[5px] rounded-full flex flex-col items-center justify-center" style={{ background: CARD_BG }}>
                         <span style={{ fontSize: 15, color: gaugeColor, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700 }}>{r.rate}%</span>
                         <span style={{ fontSize: 10, color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{totalSessions}</span>
