@@ -257,6 +257,9 @@ export default function App() {
   const [modalSelectedId, setModalSelectedId] = useState('');
   const [modalPinInput, setModalPinInput] = useState('');
   const [modalPinError, setModalPinError] = useState('');
+  const [pendingDelete, setPendingDelete] = useState(null); // { message, onConfirm }
+  const [deletePinInput, setDeletePinInput] = useState('');
+  const [deletePinError, setDeletePinError] = useState('');
 
   const reload = async () => {
     try {
@@ -289,6 +292,16 @@ export default function App() {
   };
 
   const currentMember = members.find((m) => m.id === currentUserId) || null;
+
+  // 삭제 시 실수 방지용 재확인(로그인 PIN) — PIN이 설정된 계정이면 PIN 입력, 아니면 한 번 더 확인만
+  const requestDelete = (onConfirm, message = '정말 삭제할까요?') => { setPendingDelete({ onConfirm, message }); setDeletePinInput(''); setDeletePinError(''); };
+  const cancelDelete = () => { setPendingDelete(null); setDeletePinInput(''); setDeletePinError(''); };
+  const confirmDelete = () => {
+    if (currentMember?.pin && deletePinInput !== currentMember.pin) { setDeletePinError('PIN이 일치하지 않아요.'); return; }
+    const action = pendingDelete?.onConfirm;
+    cancelDelete();
+    if (action) action();
+  };
   const noManagerExists = !members.some((m) => MANAGE_ROLES.includes(m.role));
   const canManageUsers = noManagerExists || (currentMember ? MANAGE_ROLES.includes(currentMember.role) : false);
   const canManageAttendance = currentMember ? currentMember.role === '간사' : false;
@@ -387,6 +400,34 @@ export default function App() {
           </div>
         )}
 
+        {pendingDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={cancelDelete}>
+            <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl border p-5" style={{ background: CARD_BG, borderColor: LINE }}>
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-sm font-semibold flex items-center gap-1.5" style={{ color: INK }}><Trash2 size={16} style={{ color: '#F0A87C' }} /> 삭제 확인</div>
+                <button onClick={cancelDelete}><X size={18} style={{ color: MUTE }} /></button>
+              </div>
+              <p className="text-sm mb-3" style={{ color: NEUTRAL_TEXT }}>{pendingDelete.message}</p>
+              {currentMember?.pin ? (
+                <div className="mb-3">
+                  <div className="text-xs mb-1" style={{ color: MUTE }}>로그인 PIN 확인</div>
+                  <input type="password" inputMode="numeric" maxLength={4} value={deletePinInput}
+                    onChange={(e) => { setDeletePinInput(e.target.value.replace(/\D/g, '')); setDeletePinError(''); }}
+                    onKeyDown={(e) => e.key === 'Enter' && confirmDelete()}
+                    className="w-full rounded-xl border px-3 py-2.5 text-sm tracking-[0.3em] outline-none" style={inputStyle} placeholder="••••" autoFocus />
+                  {deletePinError && <p className="text-xs mt-1" style={{ color: '#F0A87C' }}>{deletePinError}</p>}
+                </div>
+              ) : (
+                <p className="text-xs mb-3" style={{ color: MUTE }}>PIN이 설정되어 있지 않아요. 아래 버튼으로 한 번 더 확인해 주세요.</p>
+              )}
+              <div className="flex gap-2">
+                <button onClick={cancelDelete} className="flex-1 rounded-xl py-2.5 text-sm font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>취소</button>
+                <button onClick={confirmDelete} className="flex-1 rounded-xl py-2.5 text-sm font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}>삭제</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-1.5 mb-4 overflow-x-auto pb-1">
           {TABS.map((t) => {
             const Icon = t.icon; const active = tab === t.key;
@@ -400,13 +441,13 @@ export default function App() {
           })}
         </div>
 
-        {tab === 'notice' && <NoticeScreen notices={notices} noticeViews={noticeViews} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} />}
-        {tab === 'gallery' && <GalleryScreen photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} />}
+        {tab === 'notice' && <NoticeScreen notices={notices} noticeViews={noticeViews} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} requestDelete={requestDelete} />}
+        {tab === 'gallery' && <GalleryScreen photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} requestDelete={requestDelete} />}
         {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} meetingLocations={meetingLocations} />}
         {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} currentMember={currentMember} />}
-        {tab === 'users' && <UsersScreen members={members} sortedMembers={sortedMembers} currentUserId={currentUserId} setIdentity={setIdentity} canManage={canManageUsers} notices={notices} sessions={sessions} checkins={checkins} reload={reload} />}
-        {tab === 'treasury' && canManageUsers && <TreasuryScreen members={sortedMembers} duesPayments={duesPayments} expenses={expenses} dinnerCollections={dinnerCollections} currentMember={currentMember} reload={reload} />}
-        {tab === 'admin' && canManageAttendance && <AdminScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} setPenaltyRule={setPenaltyRule} penaltyCompletions={penaltyCompletions} reload={reload} calendarDays={calendarDays} absenceExcuses={absenceExcuses} />}
+        {tab === 'users' && <UsersScreen members={members} sortedMembers={sortedMembers} currentUserId={currentUserId} setIdentity={setIdentity} canManage={canManageUsers} notices={notices} sessions={sessions} checkins={checkins} reload={reload} requestDelete={requestDelete} />}
+        {tab === 'treasury' && canManageUsers && <TreasuryScreen members={sortedMembers} duesPayments={duesPayments} expenses={expenses} dinnerCollections={dinnerCollections} currentMember={currentMember} reload={reload} requestDelete={requestDelete} />}
+        {tab === 'admin' && canManageAttendance && <AdminScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} setPenaltyRule={setPenaltyRule} penaltyCompletions={penaltyCompletions} reload={reload} calendarDays={calendarDays} absenceExcuses={absenceExcuses} requestDelete={requestDelete} />}
       </div>
     </div>
   );
@@ -415,7 +456,7 @@ export default function App() {
 /* ---------------- 공지사항 ---------------- */
 const MAX_PDF_BYTES = 3 * 1024 * 1024;
 
-function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, members }) {
+function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, members, requestDelete }) {
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -571,7 +612,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                   <button onClick={() => moveNotice(n.id, 'up')} className="p-1.5" style={{ color: MUTE }}><ChevronUp size={15} /></button>
                   <button onClick={() => moveNotice(n.id, 'down')} className="p-1.5" style={{ color: MUTE }}><ChevronDown size={15} /></button>
                   <button onClick={() => startEdit(n)} className="p-1.5" style={{ color: MUTE }}><Pencil size={15} /></button>
-                  <button onClick={() => remove(n.id)} className="p-1.5" style={{ color: '#F0A87C' }}><Trash2 size={15} /></button>
+                  <button onClick={() => requestDelete(() => remove(n.id), '이 공지사항을 삭제할까요?')} className="p-1.5" style={{ color: '#F0A87C' }}><Trash2 size={15} /></button>
                 </div>
               )}
             </div>
@@ -637,7 +678,7 @@ function compressImage(file) {
     reader.readAsDataURL(file);
   });
 }
-function GalleryScreen({ photos, currentMember, canManage, reload, members, sessions, checkins }) {
+function GalleryScreen({ photos, currentMember, canManage, reload, members, sessions, checkins, requestDelete }) {
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [viewingId, setViewingId] = useState(null);
@@ -743,7 +784,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 <button onClick={() => { setEditingDate(!editingDate); setDateInput(viewing.created_at.slice(0, 10)); }} className="p-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }}><Pencil size={15} /></button>
               )}
               {(canManage || viewing.uploader_id === currentMember?.id) && (
-                <button onClick={() => removePhoto(viewing)} className="p-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.15)', color: '#F0A87C' }}><Trash2 size={15} /></button>
+                <button onClick={() => requestDelete(() => removePhoto(viewing), '이 사진을 삭제할까요?')} className="p-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.15)', color: '#F0A87C' }}><Trash2 size={15} /></button>
               )}
               <button onClick={() => setViewingId(null)} className="p-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }}><X size={15} /></button>
             </div>
@@ -1406,7 +1447,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
 }
 
 /* ---------------- 사용자관리 ---------------- */
-function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canManage, notices, sessions, checkins, reload }) {
+function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canManage, notices, sessions, checkins, reload, requestDelete }) {
   const isLoggedIn = !!currentUserId;
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState(''); const [newRole, setNewRole] = useState('회원'); const [newBirthday, setNewBirthday] = useState(''); const [newPin, setNewPin] = useState('');
@@ -1543,7 +1584,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
                 <div className="flex items-center gap-1 shrink-0">
                   {canManage && <button onClick={() => startEdit(m)} className="p-2 rounded-lg" style={{ color: MUTE }}><Pencil size={16} /></button>}
                   {!canManage && m.id === currentUserId && <button onClick={() => startSelfEdit(m)} className="p-2 rounded-lg" style={{ color: MUTE }}><Pencil size={16} /></button>}
-                  {canManage && <button onClick={() => removeMember(m.id)} className="p-2 rounded-lg" style={{ color: '#F0A87C' }}><Trash2 size={16} /></button>}
+                  {canManage && <button onClick={() => requestDelete(() => removeMember(m.id), `${m.name}님을 삭제할까요? 관련 기록도 함께 사라져요.`)} className="p-2 rounded-lg" style={{ color: '#F0A87C' }}><Trash2 size={16} /></button>}
                 </div>
               </div>
             )}
@@ -1577,7 +1618,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
 
 /* ---------------- 출석관리 (간사 전용) ---------------- */
 /* ---------------- 회계 (총무 관리) ---------------- */
-function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, currentMember, reload }) {
+function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, currentMember, reload, requestDelete }) {
   const [cursor, setCursor] = useState(new Date());
   const monthKey = `${cursor.getFullYear()}-${pad(cursor.getMonth() + 1)}`;
   const shift = (delta) => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1));
@@ -1748,6 +1789,19 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
     await reload();
   };
 
+  // 회식 최종 정산 명단 — 선택한 날짜의 모든 차수에서 생성된 개인별 징수 내역을 합산
+  const allDinnerCollectionsForDate = dinnerExpenses.flatMap((e) => getRoundCollections(e.id));
+  const finalMemberTotalsMap = {};
+  allDinnerCollectionsForDate.forEach((c) => {
+    if (!finalMemberTotalsMap[c.member_id]) finalMemberTotalsMap[c.member_id] = { amount: 0, paid: true };
+    finalMemberTotalsMap[c.member_id].amount += Number(c.amount);
+    if (!c.paid) finalMemberTotalsMap[c.member_id].paid = false;
+  });
+  const finalMemberTotals = members
+    .filter((m) => finalMemberTotalsMap[m.id])
+    .map((m) => ({ member: m, ...finalMemberTotalsMap[m.id] }))
+    .sort((a, b) => b.amount - a.amount);
+
   // 지난 회식 목록 — 날짜를 선택해 바로 그 회식으로 이동
   const dinnerByDate = {};
   expenses.forEach((e) => { if (dinnerRoundRe.test(e.description)) { (dinnerByDate[e.date] = dinnerByDate[e.date] || []).push(e); } });
@@ -1854,7 +1908,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
                     <span className="font-semibold" style={{ color: INK }}>회식 {e.description.match(dinnerRoundRe)?.[1]}차</span>
                     <div className="flex items-center gap-2">
                       <span style={{ color: '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(s.roundCost)}</span>
-                      <button onClick={() => removeExpense(e.id)} className="p-1" style={{ color: MUTE }}><Trash2 size={14} /></button>
+                      <button onClick={() => requestDelete(() => removeExpense(e.id), '이 지출 내역을 삭제할까요?')} className="p-1" style={{ color: MUTE }}><Trash2 size={14} /></button>
                     </div>
                   </div>
                   <input value={getRestaurantValue(e)} onChange={(ev) => setRestaurantEdits((prev) => ({ ...prev, [e.id]: ev.target.value }))} onBlur={() => saveRestaurant(e)} placeholder="식당명 (선택)" className="w-full rounded-lg border px-2 py-1.5 text-xs outline-none" style={inputStyle} />
@@ -1953,6 +2007,20 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
                 <span className="font-semibold" style={{ color: finalBalanceAfterDinner >= 0 ? '#7FDCCF' : '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(finalBalanceAfterDinner)}</span>
               </div>
             </div>
+            {finalMemberTotals.length > 0 && (
+              <div className="pt-2 mt-1 space-y-1" style={{ borderTop: `1px dashed ${ROW_LINE}` }}>
+                <div className="text-xs font-semibold mb-1" style={{ color: INK }}>회식 최종 정산 명단 (전체 차수 합산)</div>
+                {finalMemberTotals.map(({ member: m, amount, paid }) => (
+                  <div key={m.id} className="flex items-center justify-between text-xs py-0.5">
+                    <div className="flex items-center gap-1.5"><Stamp role={m.role} size={16} tilt={0} /><span style={{ color: INK }}>{m.name}</span></div>
+                    <div className="flex items-center gap-2">
+                      <span style={{ color: '#EFC94C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(amount)}</span>
+                      <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: paid ? '#12302C' : NEUTRAL_BG, color: paid ? '#7FDCCF' : MUTE }}>{paid ? '완납' : '미납'}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
         <div className="flex items-center gap-2">
@@ -1982,7 +2050,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <span style={{ color: '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(Number(e.amount))}</span>
-                <button onClick={() => removeExpense(e.id)} className="p-1" style={{ color: MUTE }}><Trash2 size={14} /></button>
+                <button onClick={() => requestDelete(() => removeExpense(e.id), '이 지출 내역을 삭제할까요?')} className="p-1" style={{ color: MUTE }}><Trash2 size={14} /></button>
               </div>
             </div>
           ))}
@@ -1992,7 +2060,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
   );
 }
 
-function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule, penaltyCompletions, reload, calendarDays, absenceExcuses }) {
+function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule, penaltyCompletions, reload, calendarDays, absenceExcuses, requestDelete }) {
   const [date, setDate] = useState(todayStr());
   const session = sessions.find((s) => s.date === date);
   const dayCheckins = session ? checkins.filter((c) => c.session_id === session.id) : [];
@@ -2082,7 +2150,7 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
                 <span className="text-xs" style={{ color: MUTE }}>→</span>
                 <input type="time" defaultValue={c.check_out_at ? fmtTime(c.check_out_at) : ''} onBlur={(e) => updateCheckin(c.id, 'check_out_at', e.target.value)} className="rounded-lg border px-2 py-1 text-xs" style={inputStyle} />
                 <span className="text-xs font-semibold ml-auto" style={{ color: dur !== null && dur >= 30 ? '#7FDCCF' : '#F0A87C' }}>{dur !== null ? `${dur}분` : '—'}</span>
-                <button onClick={() => removeCheckin(c.id)} className="p-1" style={{ color: '#F0A87C' }}><Trash2 size={14} /></button>
+                <button onClick={() => requestDelete(() => removeCheckin(c.id), '이 출결 기록을 삭제할까요?')} className="p-1" style={{ color: '#F0A87C' }}><Trash2 size={14} /></button>
               </div>
             );
           })}
