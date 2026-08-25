@@ -398,8 +398,8 @@ export default function App() {
 
         {tab === 'notice' && <NoticeScreen notices={notices} noticeViews={noticeViews} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} />}
         {tab === 'gallery' && <GalleryScreen photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} />}
-        {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} />}
-        {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} currentMember={currentMember} meetingLocations={meetingLocations} />}
+        {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} meetingLocations={meetingLocations} />}
+        {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} currentMember={currentMember} />}
         {tab === 'users' && <UsersScreen members={members} sortedMembers={sortedMembers} currentUserId={currentUserId} setIdentity={setIdentity} canManage={canManageUsers} notices={notices} sessions={sessions} checkins={checkins} reload={reload} />}
         {tab === 'admin' && canManageAttendance && <AdminScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} setPenaltyRule={setPenaltyRule} penaltyCompletions={penaltyCompletions} reload={reload} calendarDays={calendarDays} absenceExcuses={absenceExcuses} />}
       </div>
@@ -759,7 +759,17 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
 }
 
 /* ---------------- QR 출결 ---------------- */
-function QrScreen({ members, currentMember, sessions, checkins, canManage, canManageAttendance, calendarDays, reload, absenceExcuses }) {
+function QrScreen({ members, currentMember, sessions, checkins, canManage, canManageAttendance, calendarDays, reload, absenceExcuses, meetingLocations }) {
+  const [showLocEdit, setShowLocEdit] = useState(false);
+  const [locCustomMode, setLocCustomMode] = useState(false);
+  const [locCustomInput, setLocCustomInput] = useState('');
+  const todayLocation = meetingLocations.find((l) => l.date === todayStr());
+  const setLocation = async (loc) => {
+    if (!currentMember || !loc.trim()) return;
+    await upsertRow('meeting_locations', { date: todayStr(), location: loc.trim(), updated_by: currentMember.name, updated_at: new Date().toISOString() }, 'date');
+    await reload();
+    setShowLocEdit(false); setLocCustomMode(false); setLocCustomInput('');
+  };
   const today = todayStr();
   const session = sessions.find((s) => s.date === today);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -869,6 +879,31 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
 
   return (
     <div className="space-y-4">
+      <Card style={{ borderColor: '#EFC94C', borderWidth: 1.5 }}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: INK }}>📍 오늘 모임장소</div>
+          {currentMember && <button onClick={() => setShowLocEdit(!showLocEdit)} className="text-xs underline underline-offset-2" style={{ color: MUTE }}>{todayLocation ? '변경' : '설정'}</button>}
+        </div>
+        {todayLocation ? (
+          <div className="text-sm mt-1 font-semibold" style={{ color: '#EFC94C' }}>{todayLocation.location}</div>
+          <div className="text-xs mt-0.5" style={{ color: MUTE }}>설정자 : {dispName(todayLocation.updated_by, !!currentMember)}</div>
+        ) : <p className="text-sm mt-1" style={{ color: MUTE }}>아직 정해지지 않았어요.</p>}
+        {showLocEdit && currentMember && (
+          <div className="mt-3 pt-3 space-y-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => setLocation('도서관 세미나실')} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>도서관 세미나실</button>
+              <button onClick={() => setLocation('도서관 안쪽 테이블')} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>도서관 안쪽 테이블</button>
+              <button onClick={() => setLocCustomMode(!locCustomMode)} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: locCustomMode ? '#3A2E10' : NEUTRAL_BG, color: locCustomMode ? '#EFC94C' : NEUTRAL_TEXT }}>수기작성</button>
+            </div>
+            {locCustomMode && (
+              <div className="flex gap-2">
+                <input value={locCustomInput} onChange={(e) => setLocCustomInput(e.target.value)} placeholder="장소 직접 입력" className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                <PrimaryBtn onClick={() => setLocation(locCustomInput)} icon={Check}>저장</PrimaryBtn>
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
       <Card className="text-center">
         <div className="text-[11px] uppercase tracking-wider mb-3" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(today)} 오늘의 출결</div>
         {!session ? (
@@ -882,17 +917,6 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
           <div>
             {currentMember ? (
               <div className="mt-4 flex flex-col items-center gap-2">
-                {!myCheckin && !myExcuseToday && (
-                  myLocStatus === 'checking' ? (
-                    <span className="text-[11px] rounded-full px-2 py-1 text-center" style={{ background: NEUTRAL_BG, color: MUTE }}>📍 위치 확인 중…</span>
-                  ) : myLocStatus.ok === true ? (
-                    <span className="text-[11px] rounded-full px-2.5 py-1 text-center" style={{ background: '#12302C', color: '#7FDCCF' }}>📍 {MEETING_LABEL} 기준 약 {myLocStatus.distance}m · {MEETING_RADIUS_M}m 이내라 적정이에요</span>
-                  ) : myLocStatus.ok === false ? (
-                    <span className="text-[11px] rounded-full px-2.5 py-1 text-center" style={{ background: '#3A2213', color: '#F0A87C' }}>📍 {MEETING_LABEL} 기준 약 {myLocStatus.distance}m · {MEETING_RADIUS_M}m 이내여야 적정이에요</span>
-                  ) : (
-                    <span className="text-[11px] rounded-full px-2 py-1 text-center" style={{ background: NEUTRAL_BG, color: MUTE }}>📍 위치 확인 불가</span>
-                  )
-                )}
                 {myExcuseToday ? (
                   <div className="flex items-center gap-2">
                     <span className="text-sm rounded-full px-3 py-1.5" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>오늘 사유: {myExcuseToday.reason}</span>
@@ -917,6 +941,17 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
                       <button onClick={resetMyCheckin} className="text-xs underline underline-offset-2 mt-2 block mx-auto" style={{ color: MUTE }}>초기화</button>
                     </div>
                   )}
+                {!myCheckin && !myExcuseToday && (
+                  myLocStatus === 'checking' ? (
+                    <span className="text-[11px] rounded-full px-2 py-1 text-center" style={{ background: NEUTRAL_BG, color: MUTE }}>📍 위치 확인 중…</span>
+                  ) : myLocStatus.ok === true ? (
+                    <span className="text-[11px] rounded-full px-2.5 py-1 text-center" style={{ background: '#12302C', color: '#7FDCCF' }}>📍 {MEETING_LABEL} 기준 약 {myLocStatus.distance}m · {MEETING_RADIUS_M}m 이내라 적정이에요</span>
+                  ) : myLocStatus.ok === false ? (
+                    <span className="text-[11px] rounded-full px-2.5 py-1 text-center" style={{ background: '#3A2213', color: '#F0A87C' }}>📍 {MEETING_LABEL} 기준 약 {myLocStatus.distance}m · {MEETING_RADIUS_M}m 이내여야 적정이에요</span>
+                  ) : (
+                    <span className="text-[11px] rounded-full px-2 py-1 text-center" style={{ background: NEUTRAL_BG, color: MUTE }}>📍 위치 확인 불가</span>
+                  )
+                )}
                 {!myExcuseToday && !myCheckin && (
                   <div className="flex items-center gap-1.5 mt-1 flex-wrap justify-center">
                     <span className="text-xs" style={{ color: MUTE }}>오늘 못 오시나요?</span>
@@ -1020,18 +1055,8 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
 }
 
 /* ---------------- 대시보드 ---------------- */
-function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyCompletions, canManage, calendarDays, reload, absenceExcuses, currentMember, meetingLocations }) {
+function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyCompletions, canManage, calendarDays, reload, absenceExcuses, currentMember }) {
   const isLoggedIn = !!currentMember;
-  const [showLocEdit, setShowLocEdit] = useState(false);
-  const [locCustomMode, setLocCustomMode] = useState(false);
-  const [locCustomInput, setLocCustomInput] = useState('');
-  const todayLocation = meetingLocations.find((l) => l.date === todayStr());
-  const setLocation = async (loc) => {
-    if (!currentMember || !loc.trim()) return;
-    await upsertRow('meeting_locations', { date: todayStr(), location: loc.trim(), updated_by: currentMember.name, updated_at: new Date().toISOString() }, 'date');
-    await reload();
-    setShowLocEdit(false); setLocCustomMode(false); setLocCustomInput('');
-  };
   const [cursor, setCursor] = useState(new Date());
   const [viewMode, setViewMode] = useState('month');
   const [selectedDate, setSelectedDate] = useState(null);
@@ -1286,31 +1311,6 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             })()}
           </Card>
 
-          <Card style={{ borderColor: '#EFC94C', borderWidth: 1.5 }}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: INK }}>📍 오늘 모임장소</div>
-              {currentMember && <button onClick={() => setShowLocEdit(!showLocEdit)} className="text-xs underline underline-offset-2" style={{ color: MUTE }}>{todayLocation ? '변경' : '설정'}</button>}
-            </div>
-            {todayLocation ? (
-              <div className="text-sm mt-1" style={{ color: NEUTRAL_TEXT }}>{todayLocation.location} <span className="text-xs" style={{ color: MUTE }}>· {dispName(todayLocation.updated_by, isLoggedIn)} 설정</span></div>
-            ) : <p className="text-sm mt-1" style={{ color: MUTE }}>아직 정해지지 않았어요.</p>}
-            {showLocEdit && currentMember && (
-              <div className="mt-3 pt-3 space-y-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-                <div className="flex flex-wrap gap-2">
-                  <button onClick={() => setLocation('도서관 세미나실')} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>도서관 세미나실</button>
-                  <button onClick={() => setLocation('도서관 안쪽 테이블')} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>도서관 안쪽 테이블</button>
-                  <button onClick={() => setLocCustomMode(!locCustomMode)} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: locCustomMode ? '#3A2E10' : NEUTRAL_BG, color: locCustomMode ? '#EFC94C' : NEUTRAL_TEXT }}>수기작성</button>
-                </div>
-                {locCustomMode && (
-                  <div className="flex gap-2">
-                    <input value={locCustomInput} onChange={(e) => setLocCustomInput(e.target.value)} placeholder="장소 직접 입력" className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
-                    <PrimaryBtn onClick={() => setLocation(locCustomInput)} icon={Check}>저장</PrimaryBtn>
-                  </div>
-                )}
-              </div>
-            )}
-          </Card>
-
           {monthBirthdays.length > 0 && (
             <Card>
               <div className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: INK }}><Cake size={16} style={{ color: '#F0A87C' }} /> 이 달의 생일 🎉</div>
@@ -1327,7 +1327,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
           <Card>
             <div className="text-sm font-semibold mb-3" style={{ color: INK }}>이번 달 출석률</div>
             <div className="space-y-3">
-              {rows.map((r) => (
+              {rows.map((r, idx) => (
                 <div key={r.id} className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="w-4 flex items-center justify-center shrink-0">
@@ -1360,7 +1360,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             <div className="text-sm font-semibold mb-1" style={{ color: INK }}>전체 누적 출석률</div>
             <div className="text-xs mb-3" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>지금까지 총 출결 {totalSessions}회</div>
             <div className="grid grid-cols-3 gap-4">
-              {allTimeRows.map((r) => {
+              {allTimeRows.map((r, idx) => {
                 const gaugeColor = r.rate >= 80 ? '#7FDCCF' : r.rate >= 50 ? '#EFC94C' : '#F0A87C';
                 const medal = r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : r.rank === 3 ? '🥉' : null;
                 return (
