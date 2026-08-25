@@ -883,19 +883,17 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
 
   return (
     <div className="space-y-4">
-      <Card style={{ borderColor: '#EFC94C', borderWidth: 1.5 }}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: INK }}>📍 오늘 모임장소</div>
-          {currentMember && <button onClick={() => setShowLocEdit(!showLocEdit)} className="text-xs underline underline-offset-2" style={{ color: MUTE }}>{todayLocation ? '변경' : '설정'}</button>}
+      <Card style={{ borderColor: '#EFC94C', borderWidth: 1.5, padding: 12 }}>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-sm font-semibold shrink-0" style={{ color: INK }}>📍 오늘 모임장소</div>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-sm font-semibold truncate" style={{ color: todayLocation ? '#EFC94C' : MUTE }}>{todayLocation ? todayLocation.location : '아직 정해지지 않았어요'}</span>
+            {currentMember && <button onClick={() => setShowLocEdit(!showLocEdit)} className="text-xs underline underline-offset-2 shrink-0" style={{ color: MUTE }}>{todayLocation ? '변경' : '설정'}</button>}
+          </div>
         </div>
-        {todayLocation ? (
-          <>
-            <div className="text-sm mt-1 font-semibold" style={{ color: '#EFC94C' }}>{todayLocation.location}</div>
-            <div className="text-xs mt-0.5" style={{ color: MUTE }}>설정자 : {dispName(todayLocation.updated_by, !!currentMember)}</div>
-          </>
-        ) : <p className="text-sm mt-1" style={{ color: MUTE }}>아직 정해지지 않았어요.</p>}
         {showLocEdit && currentMember && (
           <div className="mt-3 pt-3 space-y-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+            {todayLocation && <div className="text-xs" style={{ color: MUTE }}>기존 설정자 : {dispName(todayLocation.updated_by, !!currentMember)}</div>}
             <div className="flex flex-wrap gap-2">
               <button onClick={() => setLocation('도서관 세미나실')} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>도서관 세미나실</button>
               <button onClick={() => setLocation('도서관 안쪽 테이블')} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>도서관 안쪽 테이블</button>
@@ -1568,7 +1566,7 @@ function TreasuryScreen({ members, duesPayments, expenses, currentMember, reload
   const monthKey = `${cursor.getFullYear()}-${pad(cursor.getMonth() + 1)}`;
   const shift = (delta) => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1));
 
-  const [defaultAmount, setDefaultAmount] = useState('10000');
+  const [defaultAmount, setDefaultAmount] = useState('5000');
   const duesForMonth = duesPayments.filter((d) => d.month === monthKey);
   const getDues = (memberId) => duesForMonth.find((d) => d.member_id === memberId);
   const togglePaid = async (memberId) => {
@@ -1583,6 +1581,37 @@ function TreasuryScreen({ members, duesPayments, expenses, currentMember, reload
   };
   const totalDuesThisMonth = duesForMonth.filter((d) => d.paid).reduce((sum, d) => sum + Number(d.amount), 0);
 
+  // 개별 금액 수정 (완납/미납과 무관하게 각 멤버 회비 금액을 조정)
+  const [amountEdits, setAmountEdits] = useState({});
+  const getAmountValue = (m) => {
+    if (amountEdits[m.id] !== undefined) return amountEdits[m.id];
+    const d = getDues(m.id);
+    return d ? String(d.amount) : defaultAmount;
+  };
+  const saveAmount = async (memberId) => {
+    const val = amountEdits[memberId];
+    if (val === undefined) return;
+    const amt = parseInt(val, 10) || 0;
+    const existing = getDues(memberId);
+    if (existing) { if (Number(existing.amount) !== amt) await updateRow('dues_payments', 'id', existing.id, { amount: amt }); }
+    else await insertRow('dues_payments', { id: uid('dp'), member_id: memberId, month: monthKey, amount: amt, paid: false, paid_at: null });
+    await reload();
+    setAmountEdits((prev) => { const next = { ...prev }; delete next[memberId]; return next; });
+  };
+
+  // 일괄 납부 처리 — 이번 달 미납 회원 전체를 각자 현재 금액(또는 기본 금액)으로 완납 처리
+  const unpaidCount = members.filter((m) => !getDues(m.id)?.paid).length;
+  const bulkPayAll = async () => {
+    for (const m of members) {
+      const existing = getDues(m.id);
+      if (existing?.paid) continue;
+      const amt = existing ? Number(existing.amount) : (parseInt(defaultAmount, 10) || 0);
+      if (existing) await updateRow('dues_payments', 'id', existing.id, { paid: true, paid_at: new Date().toISOString() });
+      else await insertRow('dues_payments', { id: uid('dp'), member_id: m.id, month: monthKey, amount: amt, paid: true, paid_at: new Date().toISOString() });
+    }
+    await reload();
+  };
+
   const [expDate, setExpDate] = useState(todayStr());
   const [expDesc, setExpDesc] = useState('');
   const [expAmount, setExpAmount] = useState('');
@@ -1595,6 +1624,21 @@ function TreasuryScreen({ members, duesPayments, expenses, currentMember, reload
     setExpDesc(''); setExpAmount('');
   };
   const removeExpense = async (id) => { await deleteRow('expenses', 'id', id); await reload(); };
+
+  // 회식비 빠른 입력 — 특정 날짜에 1차/2차/... 금액을 발생할 때마다 등록
+  const [dinnerDate, setDinnerDate] = useState(todayStr());
+  const [dinnerAmount, setDinnerAmount] = useState('');
+  const dinnerRoundRe = /^회식 (\d+)차$/;
+  const dinnerExpenses = expenses.filter((e) => e.date === dinnerDate && dinnerRoundRe.test(e.description))
+    .sort((a, b) => parseInt(a.description.match(dinnerRoundRe)[1], 10) - parseInt(b.description.match(dinnerRoundRe)[1], 10));
+  const nextDinnerRound = dinnerExpenses.length + 1;
+  const dinnerTotal = dinnerExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+  const addDinnerRound = async () => {
+    if (!dinnerAmount) return;
+    await insertRow('expenses', { id: uid('ex'), date: dinnerDate, description: `회식 ${nextDinnerRound}차`, amount: parseInt(dinnerAmount, 10) || 0, recorded_by: currentMember?.name || '', created_at: new Date().toISOString() });
+    await reload();
+    setDinnerAmount('');
+  };
 
   const totalDuesAllTime = duesPayments.filter((d) => d.paid).reduce((sum, d) => sum + Number(d.amount), 0);
   const totalExpensesAllTime = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
@@ -1645,12 +1689,44 @@ function TreasuryScreen({ members, duesPayments, expenses, currentMember, reload
               <div key={m.id} className="flex items-center justify-between py-1.5" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
                 <div className="flex items-center gap-2 min-w-0"><Stamp role={m.role} size={24} tilt={0} /><span className="text-sm truncate" style={{ color: INK }}>{m.name}</span></div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {d && <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(Number(d.amount))}</span>}
+                  <input type="number" value={getAmountValue(m)} onChange={(e) => setAmountEdits((prev) => ({ ...prev, [m.id]: e.target.value }))} onBlur={() => saveAmount(m.id)} className="w-20 rounded-lg border px-2 py-1 text-xs outline-none text-right" style={inputStyle} />
                   <button onClick={() => togglePaid(m.id)} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: paid ? '#12302C' : NEUTRAL_BG, color: paid ? '#7FDCCF' : MUTE }}>{paid ? <Check size={12} /> : null} {paid ? '완납' : '미납'}</button>
                 </div>
               </div>
             );
           })}
+        </div>
+        <div className="pt-3 mt-1" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+          <PrimaryBtn onClick={bulkPayAll} disabled={unpaidCount === 0} icon={Check}>미납 {unpaidCount}명 일괄 납부 처리</PrimaryBtn>
+        </div>
+      </Card>
+
+      <Card className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-semibold" style={{ color: INK }}>회식비 빠른 입력</div>
+          <input type="date" value={dinnerDate} onChange={(e) => setDinnerDate(e.target.value)} className="rounded-lg border px-2 py-1 text-xs outline-none" style={inputStyle} />
+        </div>
+        {dinnerExpenses.length > 0 && (
+          <div className="space-y-1" style={{ borderTop: `1px solid ${ROW_LINE}`, paddingTop: 6 }}>
+            {dinnerExpenses.map((e) => (
+              <div key={e.id} className="flex items-center justify-between text-sm py-0.5">
+                <span style={{ color: INK }}>{e.description}</span>
+                <div className="flex items-center gap-2">
+                  <span style={{ color: '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(Number(e.amount))}</span>
+                  <button onClick={() => removeExpense(e.id)} className="p-1" style={{ color: MUTE }}><Trash2 size={14} /></button>
+                </div>
+              </div>
+            ))}
+            <div className="flex items-center justify-between text-xs pt-1" style={{ color: MUTE }}>
+              <span>{fmtDate(dinnerDate)} 회식비 합계</span>
+              <span className="font-semibold" style={{ color: '#F0A87C' }}>{fmtWon(dinnerTotal)}</span>
+            </div>
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          <span className="text-xs shrink-0" style={{ color: MUTE }}>{nextDinnerRound}차 금액</span>
+          <input type="number" value={dinnerAmount} onChange={(e) => setDinnerAmount(e.target.value)} placeholder="금액" className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+          <PrimaryBtn onClick={addDinnerRound} icon={Plus}>추가</PrimaryBtn>
         </div>
       </Card>
 
