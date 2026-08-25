@@ -204,7 +204,7 @@ const computeWeeklyPenalties = (sessions, checkins, calendarDays, members, absen
 };
 
 /* ---------- Supabase data layer ---------- */
-const TABLES = ['members', 'notices', 'notice_views', 'sessions', 'checkins', 'penalty_completions', 'calendar_days', 'settings', 'photos', 'absence_excuses', 'meeting_locations', 'dues_payments', 'expenses'];
+const TABLES = ['members', 'notices', 'notice_views', 'sessions', 'checkins', 'penalty_completions', 'calendar_days', 'settings', 'photos', 'absence_excuses', 'meeting_locations', 'dues_payments', 'expenses', 'dinner_collections'];
 
 async function fetchAll() {
   const results = await Promise.all(TABLES.map((t) => supabase.from(t).select('*')));
@@ -250,6 +250,7 @@ export default function App() {
   const [meetingLocations, setMeetingLocations] = useState([]);
   const [duesPayments, setDuesPayments] = useState([]);
   const [expenses, setExpenses] = useState([]);
+  const [dinnerCollections, setDinnerCollections] = useState([]);
   const [currentUserId, setCurrentUserId] = useState(() => localStorage.getItem('chexchoco-current-user') || null);
   const [tab, setTab] = useState('notice');
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -262,7 +263,7 @@ export default function App() {
       const data = await fetchAll();
       setMembers(data.members); setNotices(data.notices); setNoticeViews(data.notice_views);
       setSessions(data.sessions); setCheckins(data.checkins); setPenaltyCompletions(data.penalty_completions);
-      setCalendarDays(data.calendar_days); setSettings(data.settings); setPhotos(data.photos); setAbsenceExcuses(data.absence_excuses); setMeetingLocations(data.meeting_locations); setDuesPayments(data.dues_payments); setExpenses(data.expenses);
+      setCalendarDays(data.calendar_days); setSettings(data.settings); setPhotos(data.photos); setAbsenceExcuses(data.absence_excuses); setMeetingLocations(data.meeting_locations); setDuesPayments(data.dues_payments); setExpenses(data.expenses); setDinnerCollections(data.dinner_collections);
       setError('');
     } catch (e) { setError('데이터를 불러오지 못했어요. 새로고침해 주세요.'); }
     setLoaded(true);
@@ -404,7 +405,7 @@ export default function App() {
         {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} meetingLocations={meetingLocations} />}
         {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} currentMember={currentMember} />}
         {tab === 'users' && <UsersScreen members={members} sortedMembers={sortedMembers} currentUserId={currentUserId} setIdentity={setIdentity} canManage={canManageUsers} notices={notices} sessions={sessions} checkins={checkins} reload={reload} />}
-        {tab === 'treasury' && canManageUsers && <TreasuryScreen members={sortedMembers} duesPayments={duesPayments} expenses={expenses} currentMember={currentMember} reload={reload} />}
+        {tab === 'treasury' && canManageUsers && <TreasuryScreen members={sortedMembers} duesPayments={duesPayments} expenses={expenses} dinnerCollections={dinnerCollections} currentMember={currentMember} reload={reload} />}
         {tab === 'admin' && canManageAttendance && <AdminScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} setPenaltyRule={setPenaltyRule} penaltyCompletions={penaltyCompletions} reload={reload} calendarDays={calendarDays} absenceExcuses={absenceExcuses} />}
       </div>
     </div>
@@ -642,6 +643,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [viewingId, setViewingId] = useState(null);
   const [editingDate, setEditingDate] = useState(false);
   const [dateInput, setDateInput] = useState('');
+  const [editingCaption, setEditingCaption] = useState(false);
+  const [captionInput, setCaptionInput] = useState('');
   const isLoggedIn = !!currentMember;
   const sorted = [...photos].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
@@ -670,14 +673,20 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   };
   const viewingIdx = sorted.findIndex((p) => p.id === viewingId);
   const viewing = viewingIdx >= 0 ? sorted[viewingIdx] : null;
-  const showPrev = () => { if (viewingIdx > 0) { setViewingId(sorted[viewingIdx - 1].id); setEditingDate(false); } };
-  const showNext = () => { if (viewingIdx >= 0 && viewingIdx < sorted.length - 1) { setViewingId(sorted[viewingIdx + 1].id); setEditingDate(false); } };
+  const showPrev = () => { if (viewingIdx > 0) { setViewingId(sorted[viewingIdx - 1].id); setEditingDate(false); setEditingCaption(false); } };
+  const showNext = () => { if (viewingIdx >= 0 && viewingIdx < sorted.length - 1) { setViewingId(sorted[viewingIdx + 1].id); setEditingDate(false); setEditingCaption(false); } };
   const saveDate = async () => {
     if (!viewing || !dateInput) return;
     const time = viewing.created_at.slice(11); // 기존 시각(HH:mm:ss.sssZ)은 그대로 유지
     await updateRow('photos', 'id', viewing.id, { created_at: `${dateInput}T${time}` });
     await reload();
     setEditingDate(false);
+  };
+  const saveCaption = async () => {
+    if (!viewing) return;
+    await updateRow('photos', 'id', viewing.id, { caption: captionInput.trim() });
+    await reload();
+    setEditingCaption(false);
   };
 
   const participantsFor = (photo) => {
@@ -704,8 +713,9 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
       ) : (
         <div className="grid grid-cols-3 gap-2">
           {sorted.map((p) => (
-            <button key={p.id} onClick={() => { setViewingId(p.id); setEditingDate(false); }} className="relative aspect-square rounded-lg overflow-hidden" style={{ background: NEUTRAL_BG }}>
+            <button key={p.id} onClick={() => { setViewingId(p.id); setEditingDate(false); setEditingCaption(false); }} className="relative aspect-square rounded-lg overflow-hidden" style={{ background: NEUTRAL_BG }}>
               <img src={publicUrl('photos', p.file_path)} className="w-full h-full object-cover" alt="" loading="lazy" />
+              {p.caption && <div className="absolute bottom-1 right-1.5" style={{ color: 'rgba(255,255,255,0.85)', textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}><FileText size={12} /></div>}
               <div className="absolute top-1 left-1.5 right-1.5 flex items-center justify-between text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 2px rgba(0,0,0,0.6)', fontFamily: "'IBM Plex Mono', monospace" }}>
                 <span>{p.created_at.slice(0, 10)}</span>
                 <span className="truncate ml-1">{dispName(p.uploader_name, isLoggedIn)}</span>
@@ -727,6 +737,9 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
             <div className="flex items-center gap-3 mt-3">
               <span className="text-sm" style={{ color: '#FFFFFF' }}>{dispName(viewing.uploader_name, isLoggedIn)} · {fmtDate(viewing.created_at)} {fmtTime(viewing.created_at)}</span>
               {(canManage || viewing.uploader_id === currentMember?.id) && (
+                <button onClick={() => { setEditingCaption(!editingCaption); setCaptionInput(viewing.caption || ''); }} className="p-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }}><FileText size={15} /></button>
+              )}
+              {(canManage || viewing.uploader_id === currentMember?.id) && (
                 <button onClick={() => { setEditingDate(!editingDate); setDateInput(viewing.created_at.slice(0, 10)); }} className="p-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }}><Pencil size={15} /></button>
               )}
               {(canManage || viewing.uploader_id === currentMember?.id) && (
@@ -734,6 +747,16 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
               )}
               <button onClick={() => setViewingId(null)} className="p-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }}><X size={15} /></button>
             </div>
+            {viewing.caption && !editingCaption && (
+              <p className="text-sm mt-2 max-w-sm text-center px-4" style={{ color: 'rgba(255,255,255,0.85)' }}>{viewing.caption}</p>
+            )}
+            {editingCaption && (
+              <div className="flex items-center gap-2 mt-2 w-full max-w-sm px-4" onClick={(e) => e.stopPropagation()}>
+                <input value={captionInput} onChange={(e) => setCaptionInput(e.target.value)} placeholder="캡션 추가" className="flex-1 rounded-lg border px-2 py-1.5 text-sm outline-none" style={{ background: '#17150F', borderColor: '#332F24', color: '#F2EEE3' }} />
+                <button onClick={saveCaption} className="rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ background: '#F2EEE3', color: '#161410' }}>저장</button>
+                <button onClick={() => setEditingCaption(false)} className="rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }}>취소</button>
+              </div>
+            )}
             {editingDate && (
               <div className="flex items-center gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
                 <input type="date" value={dateInput} onChange={(e) => setDateInput(e.target.value)}
@@ -884,10 +907,11 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
   return (
     <div className="space-y-4">
       <Card style={{ borderColor: '#EFC94C', borderWidth: 1.5, padding: 12 }}>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 text-sm font-semibold shrink-0" style={{ color: INK }}>📍 오늘 모임장소</div>
-          <span className="text-sm font-semibold truncate" style={{ color: todayLocation ? '#EFC94C' : MUTE }}>{todayLocation ? todayLocation.location : '아직 정해지지 않았어요'}</span>
-          <div className="flex-1" />
+          <div className="flex-1 text-center min-w-0">
+            <span className="text-sm font-semibold truncate" style={{ color: todayLocation ? '#EFC94C' : MUTE }}>{todayLocation ? todayLocation.location : '아직 정해지지 않았어요'}</span>
+          </div>
           {currentMember && <button onClick={() => setShowLocEdit(!showLocEdit)} className="text-xs underline underline-offset-2 shrink-0" style={{ color: MUTE }}>{todayLocation ? '변경' : '설정'}</button>}
         </div>
         {showLocEdit && currentMember && (
@@ -983,6 +1007,7 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
             {members.map((m) => {
               const c = getCheckin(m.id); const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
               const checked = selectedIds.includes(m.id);
+              const excuse = absenceExcuses.find((e) => e.date === today && e.member_id === m.id);
               return (
                 <div key={m.id} className="flex items-center justify-between text-sm py-1.5" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
                   <div className="flex items-center gap-2 min-w-0">
@@ -993,7 +1018,7 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
                     <Stamp role={m.role} size={26} tilt={0} /><span className="truncate" style={{ color: INK }}>{m.name}</span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {c ? <span className="text-xs" style={{ color: dur === null ? MUTE : dur >= 30 ? '#7FDCCF' : '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtTime(c.check_in_at)}–{fmtTime(c.check_out_at)} {dur !== null && `(${dur}분)`}{(c.checkin_loc_ok === false || c.checkout_loc_ok === false) && ' 📍'}</span> : <span className="text-xs" style={{ color: MUTE }}>미체크</span>}
+                    {c ? <span className="text-xs" style={{ color: dur === null ? MUTE : dur >= 30 ? '#7FDCCF' : '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtTime(c.check_in_at)}–{fmtTime(c.check_out_at)} {dur !== null && `(${dur}분)`}{(c.checkin_loc_ok === false || c.checkout_loc_ok === false) && ' 📍'}</span> : <span className="text-xs" style={{ color: MUTE }}>미체크{excuse ? ` · ${excuse.reason}` : ''}</span>}
                     {!c && <button onClick={() => checkInMember(m.id)} className="p-1.5 rounded-lg" style={{ background: NEUTRAL_BG, color: '#7FDCCF' }}><LogIn size={14} /></button>}
                     {c && !c.check_out_at && <button onClick={() => checkOutMember(m.id)} className="p-1.5 rounded-lg" style={{ background: NEUTRAL_BG, color: '#F0A87C' }}><LogOut size={14} /></button>}
                   </div>
@@ -1129,10 +1154,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     }
   }
 
-  const todayMd = todayStr().slice(5, 10);
   const isCurrentMonth = ms === monthStr(new Date());
-  const monthBirthdays = members.filter((m) => m.birthday && m.birthday.slice(5, 7) === pad(cursor.getMonth() + 1)).sort((a, b) => mdOf(a.birthday).localeCompare(mdOf(b.birthday)));
-  const birthdayFolksToday = isCurrentMonth ? monthBirthdays.filter((m) => mdOf(m.birthday) === todayMd) : [];
 
   const monthGrid = buildMonthGrid(cursor.getFullYear(), cursor.getMonth());
   const getDayTypes = (date) => calendarDays.filter((d) => d.date === date).map((d) => d.type);
@@ -1158,17 +1180,6 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
 
   return (
     <div className="space-y-4">
-      {birthdayFolksToday.length > 0 && (
-        <Card className="text-center">
-          <div className="flex items-center justify-center gap-2 mb-1">
-            <PartyPopper size={18} style={{ color: '#EFC94C' }} />
-            <span className="font-semibold" style={{ color: INK, fontFamily: "'Fraunces', serif" }}>오늘은 {birthdayFolksToday.map((m) => dispName(m.name, isLoggedIn)).join(', ')}님 생일이에요!</span>
-            <PartyPopper size={18} style={{ color: '#EFC94C' }} />
-          </div>
-          <p className="text-sm" style={{ color: MUTE }}>축하 인사 한마디 건네보는 건 어떨까요 🎂</p>
-        </Card>
-      )}
-
       <div className="flex gap-2">
         <button onClick={() => setViewMode('month')} className="flex-1 rounded-xl py-2 text-sm font-semibold" style={{ background: viewMode === 'month' ? BTN_BG : NEUTRAL_BG, color: viewMode === 'month' ? BTN_TEXT : NEUTRAL_TEXT }}>이번 달</button>
         <button onClick={() => setViewMode('all')} className="flex-1 rounded-xl py-2 text-sm font-semibold" style={{ background: viewMode === 'all' ? BTN_BG : NEUTRAL_BG, color: viewMode === 'all' ? BTN_TEXT : NEUTRAL_TEXT }}>전체 기간</button>
@@ -1207,6 +1218,8 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const textColor = metas.length > 0 ? metas[0].color : (hasFeast ? dayTypeMeta('회식일').color : (isWeekendDefault ? WEEKEND_TEXT : MUTE));
                 const hasExempt = absenceExcuses.some((e) => e.date === date && EXEMPT_EXCUSE_REASONS.includes(e.reason));
                 const hasPersonal = absenceExcuses.some((e) => e.date === date && e.reason === '개인일정');
+                const birthdayFolks = members.filter((m) => m.birthday && mdOf(m.birthday) === date.slice(5, 10));
+                const hasBirthday = birthdayFolks.length > 0;
                 let borderStyle = isToday ? `1.5px solid ${INK}` : selectedDate === date ? `1.5px solid ${textColor}` : '1px solid transparent';
                 if (hasFeast) borderStyle = '1.5px solid rgba(229, 72, 77, 0.65)';
                 return (
@@ -1214,6 +1227,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                     className="relative aspect-square rounded-lg flex items-center justify-center text-xs"
                     style={{ background: bgStyle, color: textColor, border: borderStyle }}>
                     {day}
+                    {hasBirthday && <span className="absolute top-0.5 right-0.5" style={{ color: '#F0A87C' }}><Cake size={10} /></span>}
                     {(hasExempt || hasPersonal) && (
                       <span className="absolute bottom-1 flex items-center gap-0.5">
                         {hasExempt && <span className="rounded-full" style={{ width: 4, height: 4, background: INK }} />}
@@ -1225,6 +1239,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               })}
             </div>
             <div className="flex flex-wrap gap-2 mt-3">
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Cake size={11} style={{ color: '#F0A87C' }} /> 생일</span>
               {DAY_TYPES.map((t) => t.key === '회식일' ? (
                 <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'transparent', border: '1.5px solid rgba(229, 72, 77, 0.65)' }} /> {t.label}</span>
               ) : (
@@ -1251,6 +1266,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             })()}
             {selectedDate && (() => {
               const excusedMembers = members.filter((m) => absenceExcuses.some((e) => e.date === selectedDate && e.member_id === m.id));
+              const birthdayFolksSelected = members.filter((m) => m.birthday && mdOf(m.birthday) === selectedDate.slice(5, 10));
               const myExcuse = currentMember ? absenceExcuses.find((e) => e.date === selectedDate && e.member_id === currentMember.id) : null;
               const setMyExcuseForDate = async (reason) => {
                 if (!currentMember) return;
@@ -1264,6 +1280,16 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               };
               return (
                 <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                  {birthdayFolksSelected.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-xs mb-1.5 flex items-center gap-1" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}><Cake size={12} style={{ color: '#F0A87C' }} /> {fmtDate(selectedDate)} 생일</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {birthdayFolksSelected.map((m) => (
+                          <span key={m.id} className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: '#3A2E10', color: '#EFC94C' }}><Stamp role={m.role} size={16} tilt={0} />{dispName(m.name, isLoggedIn)}님</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {excusedMembers.length > 0 && selectedDate !== todayStr() && (
                     <div className="mb-3">
                       <div className="text-xs mb-1.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(selectedDate)} 참석 불가</div>
@@ -1313,15 +1339,6 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               );
             })()}
           </Card>
-
-          {monthBirthdays.length > 0 && (
-            <Card>
-              <div className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: INK }}><Cake size={16} style={{ color: '#F0A87C' }} /> 이 달의 생일 🎉</div>
-              <div className="flex flex-wrap gap-2">
-                {monthBirthdays.map((m) => { const t = isCurrentMonth && mdOf(m.birthday) === todayMd; return <span key={m.id} className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: t ? '#3A2E10' : NEUTRAL_BG, color: t ? '#EFC94C' : NEUTRAL_TEXT }}>{dispName(m.name, isLoggedIn)} · {fmtMD(mdOf(m.birthday))}{t && ' 🎉'}</span>; })}
-              </div>
-            </Card>
-          )}
 
           {penaltyRule && (Object.values(penaltyByMember).some((p) => p.pending > 0) || warningMemberIds.size > 0) && (
             <Card><div className="flex items-center gap-1.5 text-sm font-semibold mb-1" style={{ color: INK }}><Gavel size={16} style={{ color: '#F0A87C' }} /> 벌칙 규정</div><p className="text-sm whitespace-pre-wrap" style={{ color: NEUTRAL_TEXT }}>{penaltyRule}</p></Card>
@@ -1560,7 +1577,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
 
 /* ---------------- 출석관리 (간사 전용) ---------------- */
 /* ---------------- 회계 (총무 관리) ---------------- */
-function TreasuryScreen({ members, duesPayments, expenses, currentMember, reload }) {
+function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, currentMember, reload }) {
   const [cursor, setCursor] = useState(new Date());
   const monthKey = `${cursor.getFullYear()}-${pad(cursor.getMonth() + 1)}`;
   const shift = (delta) => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1));
@@ -1624,10 +1641,10 @@ function TreasuryScreen({ members, duesPayments, expenses, currentMember, reload
   };
   const removeExpense = async (id) => { await deleteRow('expenses', 'id', id); await reload(); };
 
-  // 회식비 빠른 입력 — 특정 날짜에 1차/2차/... 금액을 발생할 때마다 등록
+  // 회식비 정산 — 특정 날짜에 1차/2차/... 금액을 발생할 때마다 등록 (식당명은 "회식 N차 · 식당명" 형태로 저장)
   const [dinnerDate, setDinnerDate] = useState(todayStr());
   const [dinnerAmount, setDinnerAmount] = useState('');
-  const dinnerRoundRe = /^회식 (\d+)차$/;
+  const dinnerRoundRe = /^회식 (\d+)차(?: · (.*))?$/;
   const dinnerExpenses = expenses.filter((e) => e.date === dinnerDate && dinnerRoundRe.test(e.description))
     .sort((a, b) => parseInt(a.description.match(dinnerRoundRe)[1], 10) - parseInt(b.description.match(dinnerRoundRe)[1], 10));
   const nextDinnerRound = dinnerExpenses.length + 1;
@@ -1639,15 +1656,33 @@ function TreasuryScreen({ members, duesPayments, expenses, currentMember, reload
     setDinnerAmount('');
   };
 
-  // 회식 정산 계산기 — 차수별로 정산 방식(회비/각출/차액만 각출)과 참석자를 선택해 1인당 징수액 계산
+  // 식당명 수정
+  const [restaurantEdits, setRestaurantEdits] = useState({});
+  const getRestaurantValue = (e) => {
+    if (restaurantEdits[e.id] !== undefined) return restaurantEdits[e.id];
+    const m = e.description.match(dinnerRoundRe);
+    return m && m[2] ? m[2] : '';
+  };
+  const saveRestaurant = async (e) => {
+    const val = restaurantEdits[e.id];
+    if (val === undefined) return;
+    const m = e.description.match(dinnerRoundRe);
+    const roundNum = m ? m[1] : '';
+    const newDesc = `회식 ${roundNum}차` + (val.trim() ? ` · ${val.trim()}` : '');
+    if (newDesc !== e.description) await updateRow('expenses', 'id', e.id, { description: newDesc });
+    await reload();
+    setRestaurantEdits((prev) => { const next = { ...prev }; delete next[e.id]; return next; });
+  };
+
+  // 회식 정산 계산기 — 차수별로 정산 방식(회비/각출)과 참석자를 선택해 1인당 징수액 계산
   const SETTLE_MODES = [
     { key: 'club', label: '회비에서 정산' },
     { key: 'split', label: '각출 정산' },
-    { key: 'shortfall', label: '차액만 각출' },
   ];
   const [roundSettlement, setRoundSettlement] = useState({});
-  const getRoundSettlement = (roundId) => roundSettlement[roundId] || { mode: 'club', attendees: [] };
+  const getRoundSettlement = (roundId) => roundSettlement[roundId] || { mode: 'club', attendees: [], headcount: '' };
   const setRoundMode = (roundId, mode) => setRoundSettlement((prev) => ({ ...prev, [roundId]: { ...getRoundSettlement(roundId), mode } }));
+  const setRoundHeadcount = (roundId, headcount) => setRoundSettlement((prev) => ({ ...prev, [roundId]: { ...getRoundSettlement(roundId), headcount } }));
   const toggleRoundAttendee = (roundId, memberId) => setRoundSettlement((prev) => {
     const cur = getRoundSettlement(roundId);
     const attendees = cur.attendees.includes(memberId) ? cur.attendees.filter((id) => id !== memberId) : [...cur.attendees, memberId];
@@ -1655,27 +1690,78 @@ function TreasuryScreen({ members, duesPayments, expenses, currentMember, reload
   });
 
   const totalDuesAllTime = duesPayments.filter((d) => d.paid).reduce((sum, d) => sum + Number(d.amount), 0);
+  const totalCollectionsAllTime = dinnerCollections.filter((c) => c.paid).reduce((sum, c) => sum + Number(c.amount), 0);
   const totalExpensesAllTime = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
-  const balance = totalDuesAllTime - totalExpensesAllTime;
+  const balance = totalDuesAllTime + totalCollectionsAllTime - totalExpensesAllTime;
   const fmtWon = (n) => `${Math.round(n).toLocaleString('ko-KR')}원`;
 
   // 차수별 정산 결과: 현재 잔액(balance)은 이미 이 차수 지출이 반영된 값이라고 보고,
-  // 이 차수를 빼기 전 잔액(preRoundBalance)을 기준으로 부족액을 판단한다.
+  // 이 차수를 빼기 전 잔액(preRoundBalance)을 기준으로 부족액(shortfall)을 판단한다.
   const computeRoundSettlement = (e) => {
     const rs = getRoundSettlement(e.id);
     const roundCost = Number(e.amount);
     const preRoundBalance = balance + roundCost;
-    const attendeeCount = rs.attendees.length;
+    const shortfall = Math.max(0, roundCost - preRoundBalance); // 회비만으로 감당 안 되는 금액
+    let count = 0;
     let collection = 0;
-    if (rs.mode === 'split') collection = roundCost;
-    else if (rs.mode === 'shortfall') collection = Math.max(0, roundCost - preRoundBalance);
-    const perPerson = attendeeCount > 0 ? collection / attendeeCount : 0;
+    if (rs.mode === 'split') {
+      count = rs.attendees.length;
+      collection = roundCost;
+    } else if (shortfall > 0) {
+      count = rs.attendees.length > 0 ? rs.attendees.length : (parseInt(rs.headcount, 10) || 0);
+      collection = shortfall;
+    }
+    const perPerson = count > 0 ? collection / count : 0;
     const finalBalance = balance + collection;
-    return { ...rs, roundCost, attendeeCount, collection, perPerson, finalBalance };
+    return { ...rs, roundCost, shortfall, count, collection, perPerson, finalBalance };
   };
   const dinnerSettlements = dinnerExpenses.map((e) => ({ id: e.id, ...computeRoundSettlement(e) }));
   const totalDinnerCollection = dinnerSettlements.reduce((sum, s) => sum + s.collection, 0);
   const finalBalanceAfterDinner = balance + totalDinnerCollection;
+
+  // 차수별 징수 내역(개인별 배분·완납 여부) — N분의 1 나머지는 참석 순서상 앞사람부터 1원씩 더 배분
+  const getRoundCollections = (roundId) => dinnerCollections.filter((c) => c.expense_id === roundId);
+  const generateCollections = async (e, s) => {
+    if (s.collection <= 0 || s.attendees.length === 0) return;
+    const orderedIds = members.filter((m) => s.attendees.includes(m.id)).map((m) => m.id);
+    const base = Math.floor(s.collection / orderedIds.length);
+    const remainder = s.collection - base * orderedIds.length;
+    const presidentId = members.find((m) => m.role === '회장' && s.attendees.includes(m.id))?.id;
+    const amountFor = (mid, idx) => {
+      if (presidentId) return base + (mid === presidentId ? remainder : 0);
+      return base + (idx < remainder ? 1 : 0); // 참석자 중 회장이 없으면 참석 순서상 앞사람이 나머지를 부담
+    };
+    const existing = getRoundCollections(e.id);
+    const existingMap = {}; existing.forEach((c) => { existingMap[c.member_id] = c; });
+    for (const c of existing) { if (!orderedIds.includes(c.member_id)) await deleteRow('dinner_collections', 'id', c.id); }
+    for (let i = 0; i < orderedIds.length; i++) {
+      const mid = orderedIds[i];
+      const amt = amountFor(mid, i);
+      const prev = existingMap[mid];
+      if (prev) { if (Number(prev.amount) !== amt) await updateRow('dinner_collections', 'id', prev.id, { amount: amt }); }
+      else await insertRow('dinner_collections', { id: uid('dc'), expense_id: e.id, member_id: mid, amount: amt, paid: false, paid_at: null });
+    }
+    await reload();
+  };
+  const toggleCollectionPaid = async (c) => {
+    await updateRow('dinner_collections', 'id', c.id, { paid: !c.paid, paid_at: !c.paid ? new Date().toISOString() : null });
+    await reload();
+  };
+
+  // 지난 회식 목록 — 날짜를 선택해 바로 그 회식으로 이동
+  const dinnerByDate = {};
+  expenses.forEach((e) => { if (dinnerRoundRe.test(e.description)) { (dinnerByDate[e.date] = dinnerByDate[e.date] || []).push(e); } });
+  const recentDinnerDates = Object.keys(dinnerByDate).sort((a, b) => b.localeCompare(a)).slice(0, 8);
+
+  // 미납자 명단 복사
+  const [duesCopied, setDuesCopied] = useState(false);
+  const copyUnpaidList = async () => {
+    const unpaidNames = members.filter((m) => !getDues(m.id)?.paid).map((m) => m.name);
+    const text = unpaidNames.length
+      ? `[${cursor.getFullYear()}.${cursor.getMonth() + 1} 회비 미납자]\n${unpaidNames.join(', ')}`
+      : `${cursor.getFullYear()}.${cursor.getMonth() + 1} 회비 미납자가 없어요 🎉`;
+    try { await navigator.clipboard.writeText(text); setDuesCopied(true); setTimeout(() => setDuesCopied(false), 2000); } catch (err) {}
+  };
 
   return (
     <div className="space-y-4">
@@ -1728,14 +1814,34 @@ function TreasuryScreen({ members, duesPayments, expenses, currentMember, reload
             );
           })}
         </div>
-        <div className="pt-3 mt-1" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+        <div className="pt-3 mt-1 space-y-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
           <PrimaryBtn onClick={bulkPayAll} disabled={unpaidCount === 0} icon={Check}>미납 {unpaidCount}명 일괄 납부 처리</PrimaryBtn>
+          <button onClick={copyUnpaidList} className="w-full rounded-xl py-2 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: duesCopied ? '#7FDCCF' : MUTE }}>{duesCopied ? '복사했어요 ✓' : '미납자 명단 복사'}</button>
         </div>
       </Card>
 
+      {recentDinnerDates.length > 0 && (
+        <Card className="space-y-1.5">
+          <div className="text-sm font-semibold mb-1" style={{ color: INK }}>지난 회식 목록</div>
+          {recentDinnerDates.map((date) => {
+            const rounds = dinnerByDate[date];
+            const total = rounds.reduce((sum, e) => sum + Number(e.amount), 0);
+            return (
+              <button key={date} onClick={() => setDinnerDate(date)} className="w-full flex items-center justify-between py-1.5 text-left" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                <div>
+                  <div className="text-sm" style={{ color: date === dinnerDate ? '#EFC94C' : INK }}>{fmtDate(date)}</div>
+                  <div className="text-[11px]" style={{ color: MUTE }}>{rounds.length}차까지</div>
+                </div>
+                <span className="text-sm font-semibold" style={{ color: '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(total)}</span>
+              </button>
+            );
+          })}
+        </Card>
+      )}
+
       <Card className="space-y-2">
         <div className="flex items-center justify-between">
-          <div className="text-sm font-semibold" style={{ color: INK }}>회식비 빠른 입력</div>
+          <div className="text-sm font-semibold" style={{ color: INK }}>회식비 정산</div>
           <input type="date" value={dinnerDate} onChange={(e) => setDinnerDate(e.target.value)} className="rounded-lg border px-2 py-1 text-xs outline-none" style={inputStyle} />
         </div>
         {dinnerExpenses.length > 0 && (
@@ -1745,19 +1851,20 @@ function TreasuryScreen({ members, duesPayments, expenses, currentMember, reload
               return (
                 <div key={s.id} className="rounded-xl p-2.5 space-y-2" style={{ background: NEUTRAL_BG }}>
                   <div className="flex items-center justify-between text-sm">
-                    <span className="font-semibold" style={{ color: INK }}>{e.description}</span>
+                    <span className="font-semibold" style={{ color: INK }}>회식 {e.description.match(dinnerRoundRe)?.[1]}차</span>
                     <div className="flex items-center gap-2">
                       <span style={{ color: '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(s.roundCost)}</span>
                       <button onClick={() => removeExpense(e.id)} className="p-1" style={{ color: MUTE }}><Trash2 size={14} /></button>
                     </div>
                   </div>
+                  <input value={getRestaurantValue(e)} onChange={(ev) => setRestaurantEdits((prev) => ({ ...prev, [e.id]: ev.target.value }))} onBlur={() => saveRestaurant(e)} placeholder="식당명 (선택)" className="w-full rounded-lg border px-2 py-1.5 text-xs outline-none" style={inputStyle} />
                   <div className="flex flex-wrap gap-1.5">
                     {SETTLE_MODES.map((sm) => (
                       <button key={sm.key} onClick={() => setRoundMode(s.id, sm.key)} className="text-[11px] rounded-full px-2.5 py-1 font-semibold"
                         style={{ background: s.mode === sm.key ? '#3A2E10' : CARD_BG, color: s.mode === sm.key ? '#EFC94C' : MUTE }}>{sm.label}</button>
                     ))}
                   </div>
-                  {s.mode !== 'club' && (
+                  {s.mode === 'split' && (
                     <div className="flex flex-wrap gap-1.5">
                       {members.map((m) => {
                         const checked = s.attendees.includes(m.id);
@@ -1772,9 +1879,31 @@ function TreasuryScreen({ members, duesPayments, expenses, currentMember, reload
                       })}
                     </div>
                   )}
+                  {s.mode === 'club' && s.shortfall > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-[11px]" style={{ color: '#F0A87C' }}>⚠ 회비 잔액이 부족해요 ({fmtWon(s.shortfall)} 부족). 참석자를 선택하거나 인원수를 입력하면 각출액을 계산해요.</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {members.map((m) => {
+                          const checked = s.attendees.includes(m.id);
+                          return (
+                            <button key={m.id} onClick={() => toggleRoundAttendee(s.id, m.id)}
+                              className="flex items-center gap-1 rounded-full border pl-1 pr-2 py-0.5"
+                              style={{ borderColor: checked ? '#7FA8D9' : LINE, background: checked ? '#1E2A38' : 'transparent' }}>
+                              <Stamp role={m.role} size={16} tilt={0} />
+                              <span className="text-[11px]" style={{ color: checked ? '#7FA8D9' : INK }}>{m.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] shrink-0" style={{ color: MUTE }}>또는 인원수</span>
+                        <input type="number" value={s.headcount} onChange={(ev) => setRoundHeadcount(s.id, ev.target.value)} placeholder="인원수" className="w-24 rounded-lg border px-2 py-1 text-xs outline-none" style={inputStyle} />
+                      </div>
+                    </div>
+                  )}
                   <div className="pt-1 space-y-1" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
                     <div className="flex items-center justify-between text-xs">
-                      <span style={{ color: MUTE }}>참석 {s.attendeeCount}명 · 1인당 징수액</span>
+                      <span style={{ color: MUTE }}>참석 {s.count}명 · 1인당 평균 징수액</span>
                       <span className="font-semibold" style={{ color: '#EFC94C' }}>{fmtWon(s.perPerson)}</span>
                     </div>
                     <div className="flex items-center justify-between text-xs">
@@ -1782,6 +1911,35 @@ function TreasuryScreen({ members, duesPayments, expenses, currentMember, reload
                       <span className="font-semibold" style={{ color: s.finalBalance >= 0 ? '#7FDCCF' : '#F0A87C' }}>{fmtWon(s.finalBalance)}</span>
                     </div>
                   </div>
+                  {s.collection > 0 && s.attendees.length > 0 && (() => {
+                    const roundCollections = getRoundCollections(e.id);
+                    const paidCount = roundCollections.filter((c) => c.paid).length;
+                    return (
+                      <div className="pt-1 space-y-1.5" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px]" style={{ color: MUTE }}>개인별 납부내역{roundCollections.length > 0 ? ` · 완납 ${paidCount}/${roundCollections.length}명` : ''}</span>
+                          <button onClick={() => generateCollections(e, s)} className="text-[11px] underline underline-offset-2" style={{ color: MUTE }}>{roundCollections.length > 0 ? '내역 갱신' : '납부내역 생성'}</button>
+                        </div>
+                        {roundCollections.length > 0 && (
+                          <div className="space-y-1">
+                            {members.filter((m) => s.attendees.includes(m.id)).map((m) => {
+                              const c = roundCollections.find((cc) => cc.member_id === m.id);
+                              if (!c) return null;
+                              return (
+                                <div key={m.id} className="flex items-center justify-between text-xs py-0.5">
+                                  <span style={{ color: INK }}>{m.name}</span>
+                                  <div className="flex items-center gap-2">
+                                    <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(Number(c.amount))}</span>
+                                    <button onClick={() => toggleCollectionPaid(c)} className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: c.paid ? '#12302C' : NEUTRAL_BG, color: c.paid ? '#7FDCCF' : MUTE }}>{c.paid ? '완납' : '미납'}</button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
