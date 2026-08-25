@@ -1007,19 +1007,19 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     if (r.rate !== lastRate) { lastRank = i + 1; lastRate = r.rate; }
     return { ...r, rank: lastRank };
   });
-  const withRank = (rowsUnranked) => {
+  const withRank = (rowsUnranked, key = 'totalMin') => {
     let lastVal = null; let lastRank = 0;
     return rowsUnranked.map((r, i) => {
-      if (r.totalMin !== lastVal) { lastRank = i + 1; lastVal = r.totalMin; }
+      if (r[key] !== lastVal) { lastRank = i + 1; lastVal = r[key]; }
       return { ...r, rank: lastRank };
     });
   };
   const totalSessions = sessions.filter((s) => s.date <= todayStr()).length;
-  const allTimeRows = members.map((m) => {
+  const allTimeRows = withRank(members.map((m) => {
     let present = 0;
     sessions.forEach((s) => { const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id); const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null; if (dur !== null && dur >= 30) present++; });
     return { ...m, present, rate: totalSessions ? Math.round((present / totalSessions) * 100) : 0 };
-  });
+  }).sort((a, b) => b.rate - a.rate), 'rate');
 
   const weeklyPenalties = computeWeeklyPenalties(sessions, checkins, calendarDays, members, absenceExcuses);
   const isWeekCompleted = (wk, memberId) => penaltyCompletions.some((p) => p.session_id === wk && p.member_id === memberId);
@@ -1272,7 +1272,9 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             </Card>
           )}
 
-          {penaltyRule && <Card><div className="flex items-center gap-1.5 text-sm font-semibold mb-1" style={{ color: INK }}><Gavel size={16} style={{ color: '#F0A87C' }} /> 벌칙 규정</div><p className="text-sm whitespace-pre-wrap" style={{ color: NEUTRAL_TEXT }}>{penaltyRule}</p></Card>}
+          {penaltyRule && (Object.values(penaltyByMember).some((p) => p.pending > 0) || warningMemberIds.size > 0) && (
+            <Card><div className="flex items-center gap-1.5 text-sm font-semibold mb-1" style={{ color: INK }}><Gavel size={16} style={{ color: '#F0A87C' }} /> 벌칙 규정</div><p className="text-sm whitespace-pre-wrap" style={{ color: NEUTRAL_TEXT }}>{penaltyRule}</p></Card>
+          )}
 
           <Card>
             <div className="text-sm font-semibold mb-3" style={{ color: INK }}>이번 달 출석률</div>
@@ -1282,7 +1284,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-xs w-4 text-center shrink-0" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.rank === 1 && r.present > 0 ? '🏆' : r.rank}</span>
                     <Stamp role={r.role} size={24} tilt={0} /><span className="truncate" style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>
-                    {isCurrentMonth && warningMemberIds.has(r.id) && <span title="이번 주 월·화 모두 미참석 — 벌칙 예상" className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0" style={{ background: '#3A2213', color: '#F0A87C' }}>⚠️ 벌칙 예상</span>}
+                    {isCurrentMonth && warningMemberIds.has(r.id) && <span title="이번 주 월·화 모두 미참석 — 벌칙유의" className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0" style={{ background: '#3A2213', color: '#F0A87C' }}>⚠️ 벌칙유의</span>}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {penaltyByMember[r.id]?.pending > 0 && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}><Gavel size={10} /> 벌칙 대상 {penaltyByMember[r.id].pending}</span>}
@@ -1300,19 +1302,20 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
         </>
       ) : (
         <>
-          {penaltyRule && <Card><div className="flex items-center gap-1.5 text-sm font-semibold mb-1" style={{ color: INK }}><Gavel size={16} style={{ color: '#F0A87C' }} /> 벌칙 규정</div><p className="text-sm whitespace-pre-wrap" style={{ color: NEUTRAL_TEXT }}>{penaltyRule}</p></Card>}
           <Card>
             <div className="text-sm font-semibold mb-1" style={{ color: INK }}>전체 누적 출석률</div>
             <div className="text-xs mb-3" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>지금까지 총 출결 {totalSessions}회</div>
             <div className="grid grid-cols-3 gap-4">
               {allTimeRows.map((r) => {
                 const gaugeColor = r.rate >= 80 ? '#7FDCCF' : r.rate >= 50 ? '#EFC94C' : '#F0A87C';
+                const medal = r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : r.rank === 3 ? '🥉' : null;
                 return (
                   <div key={r.id} className="flex flex-col items-center gap-1.5 text-center">
-                    <span className="text-xs truncate max-w-full" style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>
-                    <div className="relative rounded-full shrink-0" style={{ width: 56, height: 56, background: `conic-gradient(${gaugeColor} ${r.rate * 3.6}deg, ${NEUTRAL_BG} ${r.rate * 3.6}deg 360deg)` }}>
-                      <div className="absolute inset-[4px] rounded-full flex items-center justify-center" style={{ background: CARD_BG }}>
-                        <span style={{ fontSize: 12, color: gaugeColor, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700 }}>{r.present}/{totalSessions}</span>
+                    <span className="text-xs truncate max-w-full" style={{ color: INK }}>{medal && `${medal} `}{dispName(r.name, isLoggedIn)}</span>
+                    <div className="relative rounded-full shrink-0" style={{ width: 72, height: 72, background: `conic-gradient(${gaugeColor} ${r.rate * 3.6}deg, ${NEUTRAL_BG} ${r.rate * 3.6}deg 360deg)` }}>
+                      <div className="absolute inset-[5px] rounded-full flex flex-col items-center justify-center" style={{ background: CARD_BG }}>
+                        <span style={{ fontSize: 15, color: gaugeColor, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700 }}>{r.rate}%</span>
+                        <span style={{ fontSize: 10, color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{totalSessions}</span>
                       </div>
                     </div>
                   </div>
