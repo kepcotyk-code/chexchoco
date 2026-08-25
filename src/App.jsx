@@ -114,10 +114,10 @@ const maskName = (name) => { if (!name) return name; const chars = [...name]; re
 const dispName = (name, loggedIn) => (loggedIn ? name : maskName(name));
 const uid = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 // 오늘 모임장소 위치 확인 (전남 나주시 전력로 55 — 한전 본사 기준)
-const MEETING_LAT = 35.0267194;
-const MEETING_LNG = 126.7843083;
+const MEETING_LAT = 35.0266818;
+const MEETING_LNG = 126.7853155;
 const MEETING_RADIUS_M = 200;
-const MEETING_LABEL = '한전 나주 본사';
+const MEETING_LABEL = '한전 나주 본사 도서관';
 const distanceMeters = (lat1, lng1, lat2, lng2) => {
   const R = 6371000;
   const toRad = (d) => (d * Math.PI) / 180;
