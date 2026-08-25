@@ -884,20 +884,19 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
   return (
     <div className="space-y-4">
       <Card style={{ borderColor: '#EFC94C', borderWidth: 1.5, padding: 12 }}>
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1.5 text-sm font-semibold shrink-0" style={{ color: INK }}>📍 오늘 모임장소</div>
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-sm font-semibold truncate" style={{ color: todayLocation ? '#EFC94C' : MUTE }}>{todayLocation ? todayLocation.location : '아직 정해지지 않았어요'}</span>
-            {currentMember && <button onClick={() => setShowLocEdit(!showLocEdit)} className="text-xs underline underline-offset-2 shrink-0" style={{ color: MUTE }}>{todayLocation ? '변경' : '설정'}</button>}
-          </div>
+          <span className="text-sm font-semibold truncate" style={{ color: todayLocation ? '#EFC94C' : MUTE }}>{todayLocation ? todayLocation.location : '아직 정해지지 않았어요'}</span>
+          <div className="flex-1" />
+          {currentMember && <button onClick={() => setShowLocEdit(!showLocEdit)} className="text-xs underline underline-offset-2 shrink-0" style={{ color: MUTE }}>{todayLocation ? '변경' : '설정'}</button>}
         </div>
         {showLocEdit && currentMember && (
           <div className="mt-3 pt-3 space-y-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-            {todayLocation && <div className="text-xs" style={{ color: MUTE }}>기존 설정자 : {dispName(todayLocation.updated_by, !!currentMember)}</div>}
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button onClick={() => setLocation('도서관 세미나실')} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>도서관 세미나실</button>
               <button onClick={() => setLocation('도서관 안쪽 테이블')} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>도서관 안쪽 테이블</button>
               <button onClick={() => setLocCustomMode(!locCustomMode)} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: locCustomMode ? '#3A2E10' : NEUTRAL_BG, color: locCustomMode ? '#EFC94C' : NEUTRAL_TEXT }}>수기작성</button>
+              {todayLocation && <span className="text-xs" style={{ color: MUTE }}>기존 설정자 : {dispName(todayLocation.updated_by, !!currentMember)}</span>}
             </div>
             {locCustomMode && (
               <div className="flex gap-2">
@@ -908,7 +907,7 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
           </div>
         )}
       </Card>
-      <Card className="text-center">
+      <Card className="text-center" style={{ borderColor: '#7FA8D9', borderWidth: 1.5 }}>
         <div className="text-[11px] uppercase tracking-wider mb-3" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(today)} 오늘의 출결</div>
         {!session ? (
           canManage ? (
@@ -1640,10 +1639,43 @@ function TreasuryScreen({ members, duesPayments, expenses, currentMember, reload
     setDinnerAmount('');
   };
 
+  // 회식 정산 계산기 — 차수별로 정산 방식(회비/각출/차액만 각출)과 참석자를 선택해 1인당 징수액 계산
+  const SETTLE_MODES = [
+    { key: 'club', label: '회비에서 정산' },
+    { key: 'split', label: '각출 정산' },
+    { key: 'shortfall', label: '차액만 각출' },
+  ];
+  const [roundSettlement, setRoundSettlement] = useState({});
+  const getRoundSettlement = (roundId) => roundSettlement[roundId] || { mode: 'club', attendees: [] };
+  const setRoundMode = (roundId, mode) => setRoundSettlement((prev) => ({ ...prev, [roundId]: { ...getRoundSettlement(roundId), mode } }));
+  const toggleRoundAttendee = (roundId, memberId) => setRoundSettlement((prev) => {
+    const cur = getRoundSettlement(roundId);
+    const attendees = cur.attendees.includes(memberId) ? cur.attendees.filter((id) => id !== memberId) : [...cur.attendees, memberId];
+    return { ...prev, [roundId]: { ...cur, attendees } };
+  });
+
   const totalDuesAllTime = duesPayments.filter((d) => d.paid).reduce((sum, d) => sum + Number(d.amount), 0);
   const totalExpensesAllTime = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
   const balance = totalDuesAllTime - totalExpensesAllTime;
-  const fmtWon = (n) => `${n.toLocaleString('ko-KR')}원`;
+  const fmtWon = (n) => `${Math.round(n).toLocaleString('ko-KR')}원`;
+
+  // 차수별 정산 결과: 현재 잔액(balance)은 이미 이 차수 지출이 반영된 값이라고 보고,
+  // 이 차수를 빼기 전 잔액(preRoundBalance)을 기준으로 부족액을 판단한다.
+  const computeRoundSettlement = (e) => {
+    const rs = getRoundSettlement(e.id);
+    const roundCost = Number(e.amount);
+    const preRoundBalance = balance + roundCost;
+    const attendeeCount = rs.attendees.length;
+    let collection = 0;
+    if (rs.mode === 'split') collection = roundCost;
+    else if (rs.mode === 'shortfall') collection = Math.max(0, roundCost - preRoundBalance);
+    const perPerson = attendeeCount > 0 ? collection / attendeeCount : 0;
+    const finalBalance = balance + collection;
+    return { ...rs, roundCost, attendeeCount, collection, perPerson, finalBalance };
+  };
+  const dinnerSettlements = dinnerExpenses.map((e) => ({ id: e.id, ...computeRoundSettlement(e) }));
+  const totalDinnerCollection = dinnerSettlements.reduce((sum, s) => sum + s.collection, 0);
+  const finalBalanceAfterDinner = balance + totalDinnerCollection;
 
   return (
     <div className="space-y-4">
@@ -1707,19 +1739,61 @@ function TreasuryScreen({ members, duesPayments, expenses, currentMember, reload
           <input type="date" value={dinnerDate} onChange={(e) => setDinnerDate(e.target.value)} className="rounded-lg border px-2 py-1 text-xs outline-none" style={inputStyle} />
         </div>
         {dinnerExpenses.length > 0 && (
-          <div className="space-y-1" style={{ borderTop: `1px solid ${ROW_LINE}`, paddingTop: 6 }}>
-            {dinnerExpenses.map((e) => (
-              <div key={e.id} className="flex items-center justify-between text-sm py-0.5">
-                <span style={{ color: INK }}>{e.description}</span>
-                <div className="flex items-center gap-2">
-                  <span style={{ color: '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(Number(e.amount))}</span>
-                  <button onClick={() => removeExpense(e.id)} className="p-1" style={{ color: MUTE }}><Trash2 size={14} /></button>
+          <div className="space-y-2" style={{ borderTop: `1px solid ${ROW_LINE}`, paddingTop: 8 }}>
+            {dinnerSettlements.map((s) => {
+              const e = dinnerExpenses.find((x) => x.id === s.id);
+              return (
+                <div key={s.id} className="rounded-xl p-2.5 space-y-2" style={{ background: NEUTRAL_BG }}>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-semibold" style={{ color: INK }}>{e.description}</span>
+                    <div className="flex items-center gap-2">
+                      <span style={{ color: '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(s.roundCost)}</span>
+                      <button onClick={() => removeExpense(e.id)} className="p-1" style={{ color: MUTE }}><Trash2 size={14} /></button>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {SETTLE_MODES.map((sm) => (
+                      <button key={sm.key} onClick={() => setRoundMode(s.id, sm.key)} className="text-[11px] rounded-full px-2.5 py-1 font-semibold"
+                        style={{ background: s.mode === sm.key ? '#3A2E10' : CARD_BG, color: s.mode === sm.key ? '#EFC94C' : MUTE }}>{sm.label}</button>
+                    ))}
+                  </div>
+                  {s.mode !== 'club' && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {members.map((m) => {
+                        const checked = s.attendees.includes(m.id);
+                        return (
+                          <button key={m.id} onClick={() => toggleRoundAttendee(s.id, m.id)}
+                            className="flex items-center gap-1 rounded-full border pl-1 pr-2 py-0.5"
+                            style={{ borderColor: checked ? '#7FA8D9' : LINE, background: checked ? '#1E2A38' : 'transparent' }}>
+                            <Stamp role={m.role} size={16} tilt={0} />
+                            <span className="text-[11px]" style={{ color: checked ? '#7FA8D9' : INK }}>{m.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div className="pt-1 space-y-1" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                    <div className="flex items-center justify-between text-xs">
+                      <span style={{ color: MUTE }}>참석 {s.attendeeCount}명 · 1인당 징수액</span>
+                      <span className="font-semibold" style={{ color: '#EFC94C' }}>{fmtWon(s.perPerson)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span style={{ color: MUTE }}>이 차수 정산 후 예상 잔액</span>
+                      <span className="font-semibold" style={{ color: s.finalBalance >= 0 ? '#7FDCCF' : '#F0A87C' }}>{fmtWon(s.finalBalance)}</span>
+                    </div>
+                  </div>
                 </div>
+              );
+            })}
+            <div className="pt-1 space-y-1">
+              <div className="flex items-center justify-between text-xs" style={{ color: MUTE }}>
+                <span>{fmtDate(dinnerDate)} 회식비 합계</span>
+                <span className="font-semibold" style={{ color: '#F0A87C' }}>{fmtWon(dinnerTotal)}</span>
               </div>
-            ))}
-            <div className="flex items-center justify-between text-xs pt-1" style={{ color: MUTE }}>
-              <span>{fmtDate(dinnerDate)} 회식비 합계</span>
-              <span className="font-semibold" style={{ color: '#F0A87C' }}>{fmtWon(dinnerTotal)}</span>
+              <div className="flex items-center justify-between text-sm">
+                <span style={{ color: MUTE }}>회식 정산 후 최종 결론 잔액</span>
+                <span className="font-semibold" style={{ color: finalBalanceAfterDinner >= 0 ? '#7FDCCF' : '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(finalBalanceAfterDinner)}</span>
+              </div>
             </div>
           </div>
         )}
