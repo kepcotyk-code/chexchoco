@@ -1791,9 +1791,27 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
     }
     await reload();
   };
-  const toggleCollectionPaid = async (c) => {
-    await updateRow('dinner_collections', 'id', c.id, { paid: !c.paid, paid_at: !c.paid ? new Date().toISOString() : null });
+  // 한 멤버가 여러 차수에 걸쳐 낼 금액을 한 번에 완납/미납 처리
+  const toggleMemberAllPaid = async (memberId) => {
+    const memberCollections = dinnerExpenses.flatMap((e) => getRoundCollections(e.id)).filter((c) => c.member_id === memberId);
+    if (memberCollections.length === 0) return;
+    const allPaid = memberCollections.every((c) => c.paid);
+    const newPaid = !allPaid;
+    for (const c of memberCollections) { if (c.paid !== newPaid) await updateRow('dinner_collections', 'id', c.id, { paid: newPaid, paid_at: newPaid ? new Date().toISOString() : null }); }
     await reload();
+  };
+
+  const [dinnerActionMsg, setDinnerActionMsg] = useState('');
+  const handleGenerateAll = async () => {
+    const targets = dinnerSettlements.filter((s) => s.collection > 0 && s.attendees.length > 0);
+    if (targets.length === 0) { setDinnerActionMsg('참석자가 선택된 차수가 없어요. 각 차수에서 정산 방식을 정하고 참석자를 선택해 주세요.'); return; }
+    try {
+      await generateAllCollections();
+      setDinnerActionMsg('');
+    } catch (err) {
+      console.error(err);
+      setDinnerActionMsg('부담금 생성에 실패했어요. Supabase에 dinner_collections 테이블이 만들어져 있는지 확인해 주세요.');
+    }
   };
 
   // 회식 최종 정산 명단 — 선택한 날짜의 모든 차수에서 생성된 개인별 징수 내역을 합산
@@ -1948,33 +1966,6 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
                       <span className="font-semibold" style={{ color: s.finalBalance >= 0 ? '#7FDCCF' : '#F0A87C' }}>{fmtWon(s.finalBalance)}</span>
                     </div>
                   </div>
-                  {s.collection > 0 && s.attendees.length > 0 && (() => {
-                    const roundCollections = getRoundCollections(e.id);
-                    const paidCount = roundCollections.filter((c) => c.paid).length;
-                    return (
-                      <div className="pt-1 space-y-1.5" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-                        <div className="text-[11px]" style={{ color: MUTE }}>개인별 납부내역{roundCollections.length > 0 ? ` · 완납 ${paidCount}/${roundCollections.length}명` : ''}</div>
-                        <button onClick={() => generateCollections(e, s)} className="w-full rounded-xl py-2.5 text-sm font-semibold" style={{ background: NEUTRAL_BG, color: '#EFC94C' }}>{roundCollections.length > 0 ? '차수별 개인 부담금 갱신' : '차수별 개인 부담금 생성'}</button>
-                        {roundCollections.length > 0 && (
-                          <div className="space-y-1">
-                            {members.filter((m) => s.attendees.includes(m.id)).map((m) => {
-                              const c = roundCollections.find((cc) => cc.member_id === m.id);
-                              if (!c) return null;
-                              return (
-                                <div key={m.id} className="flex items-center justify-between text-xs py-0.5">
-                                  <span style={{ color: INK }}>{m.name}</span>
-                                  <div className="flex items-center gap-2">
-                                    <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(Number(c.amount))}</span>
-                                    <button onClick={() => toggleCollectionPaid(c)} className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: c.paid ? '#12302C' : NEUTRAL_BG, color: c.paid ? '#7FDCCF' : MUTE }}>{c.paid ? '완납' : '미납'}</button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
                 </div>
               );
             })}
@@ -1987,22 +1978,43 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
                 <span style={{ color: MUTE }}>회식 정산 후 최종 결론 잔액</span>
                 <span className="font-semibold" style={{ color: finalBalanceAfterDinner >= 0 ? '#7FDCCF' : '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(finalBalanceAfterDinner)}</span>
               </div>
-              <div className="flex justify-end pt-1">
-                <button onClick={generateAllCollections} className="rounded-xl px-4 py-2 text-xs font-semibold" style={{ background: BTN_BG, color: BTN_TEXT }}>최종 부담액 생성</button>
-              </div>
             </div>
+            <div className="pt-2 flex justify-center">
+              <button onClick={handleGenerateAll} className="w-full max-w-xs rounded-xl py-3 text-sm font-semibold text-center" style={{ background: BTN_BG, color: BTN_TEXT }}>최종 부담액 생성</button>
+            </div>
+            {dinnerActionMsg && <p className="text-xs text-center" style={{ color: '#F0A87C' }}>{dinnerActionMsg}</p>}
             {finalMemberTotals.length > 0 && (
-              <div className="pt-2 mt-1 space-y-1" style={{ borderTop: `1px dashed ${ROW_LINE}` }}>
-                <div className="text-xs font-semibold mb-1" style={{ color: INK }}>회식 최종 정산 명단 (전체 차수 합산)</div>
-                {finalMemberTotals.map(({ member: m, amount, paid }) => (
-                  <div key={m.id} className="flex items-center justify-between text-xs py-0.5">
-                    <div className="flex items-center gap-1.5"><Stamp role={m.role} size={16} tilt={0} /><span style={{ color: INK }}>{m.name}</span></div>
-                    <div className="flex items-center gap-2">
-                      <span style={{ color: '#EFC94C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(amount)}</span>
-                      <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: paid ? '#12302C' : NEUTRAL_BG, color: paid ? '#7FDCCF' : MUTE }}>{paid ? '완납' : '미납'}</span>
-                    </div>
-                  </div>
-                ))}
+              <div className="pt-2 mt-1" style={{ borderTop: `1px dashed ${ROW_LINE}` }}>
+                <div className="text-xs font-semibold mb-2" style={{ color: INK }}>회식 최종 정산표 (차수별 부담액 · 합계)</div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
+                        <th className="text-left pb-1.5 pr-2 font-medium" style={{ color: MUTE }}>이름</th>
+                        {dinnerExpenses.map((e) => (
+                          <th key={e.id} className="text-right pb-1.5 px-2 font-medium whitespace-nowrap" style={{ color: MUTE }}>{e.description.match(dinnerRoundRe)?.[1]}차</th>
+                        ))}
+                        <th className="text-right pb-1.5 pl-2 font-medium" style={{ color: MUTE }}>합계</th>
+                        <th className="text-center pb-1.5 pl-2 font-medium" style={{ color: MUTE }}>완납</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {finalMemberTotals.map(({ member: m, amount, paid }) => (
+                        <tr key={m.id} style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
+                          <td className="py-1.5 pr-2 whitespace-nowrap" style={{ color: INK }}>{m.name}</td>
+                          {dinnerExpenses.map((e) => {
+                            const c = getRoundCollections(e.id).find((cc) => cc.member_id === m.id);
+                            return <td key={e.id} className="text-right py-1.5 px-2" style={{ color: c ? MUTE : LINE, fontFamily: "'IBM Plex Mono', monospace" }}>{c ? fmtWon(Number(c.amount)) : '–'}</td>;
+                          })}
+                          <td className="text-right py-1.5 pl-2 font-semibold" style={{ color: '#EFC94C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(amount)}</td>
+                          <td className="text-center py-1.5 pl-2">
+                            <button onClick={() => toggleMemberAllPaid(m.id)} className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: paid ? '#12302C' : NEUTRAL_BG, color: paid ? '#7FDCCF' : MUTE }}>{paid ? '완납' : '미납'}</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
