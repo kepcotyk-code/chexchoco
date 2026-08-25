@@ -1014,34 +1014,12 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
       return { ...r, rank: lastRank };
     });
   };
-  const monthReadingRows = withRank(members.map((m) => {
-    const segments = sortedSessionsInMonth.map((s) => {
-      const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
-      const d = c ? durationMin(c.check_in_at, c.check_out_at) : null;
-      return d !== null && d > 0 ? d : 0;
-    }).filter((d) => d > 0);
-    const totalMin = segments.reduce((sum, d) => sum + d, 0);
-    return { ...m, totalMin, segments };
-  }).sort((a, b) => b.totalMin - a.totalMin));
-  const maxMonthReadingMin = Math.max(1, ...monthReadingRows.map((r) => r.totalMin));
-
   const totalSessions = sessions.filter((s) => s.date <= todayStr()).length;
   const allTimeRows = members.map((m) => {
     let present = 0;
     sessions.forEach((s) => { const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id); const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null; if (dur !== null && dur >= 30) present++; });
     return { ...m, present, rate: totalSessions ? Math.round((present / totalSessions) * 100) : 0 };
   });
-  const sortedAllSessions = [...sessions].filter((s) => s.date <= todayStr()).sort((a, b) => a.date.localeCompare(b.date));
-  const totalReadingRows = withRank(members.map((m) => {
-    const segments = sortedAllSessions.map((s) => {
-      const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
-      const d = c ? durationMin(c.check_in_at, c.check_out_at) : null;
-      return d !== null && d > 0 ? d : 0;
-    }).filter((d) => d > 0);
-    const totalMin = segments.reduce((sum, d) => sum + d, 0);
-    return { ...m, totalMin, segments };
-  }).sort((a, b) => b.totalMin - a.totalMin));
-  const maxReadingMin = Math.max(1, ...totalReadingRows.map((r) => r.totalMin));
 
   const weeklyPenalties = computeWeeklyPenalties(sessions, checkins, calendarDays, members, absenceExcuses);
   const isWeekCompleted = (wk, memberId) => penaltyCompletions.some((p) => p.session_id === wk && p.member_id === memberId);
@@ -1104,30 +1082,6 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
 
   return (
     <div className="space-y-4">
-      <Card style={{ borderColor: '#7FA8D9', borderWidth: 1.5 }}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: INK }}>📍 오늘 모임장소</div>
-          {currentMember && <button onClick={() => setShowLocEdit(!showLocEdit)} className="text-xs underline underline-offset-2" style={{ color: MUTE }}>{todayLocation ? '변경' : '설정'}</button>}
-        </div>
-        {todayLocation ? (
-          <div className="text-sm mt-1" style={{ color: NEUTRAL_TEXT }}>{todayLocation.location} <span className="text-xs" style={{ color: MUTE }}>· {dispName(todayLocation.updated_by, isLoggedIn)} 설정</span></div>
-        ) : <p className="text-sm mt-1" style={{ color: MUTE }}>아직 정해지지 않았어요.</p>}
-        {showLocEdit && currentMember && (
-          <div className="mt-3 pt-3 space-y-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-            <div className="flex flex-wrap gap-2">
-              <button onClick={() => setLocation('도서관 세미나실')} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>도서관 세미나실</button>
-              <button onClick={() => setLocation('도서관 안쪽 테이블')} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>도서관 안쪽 테이블</button>
-              <button onClick={() => setLocCustomMode(!locCustomMode)} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: locCustomMode ? '#1E2A38' : NEUTRAL_BG, color: locCustomMode ? '#7FA8D9' : NEUTRAL_TEXT }}>수기작성</button>
-            </div>
-            {locCustomMode && (
-              <div className="flex gap-2">
-                <input value={locCustomInput} onChange={(e) => setLocCustomInput(e.target.value)} placeholder="장소 직접 입력" className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
-                <PrimaryBtn onClick={() => setLocation(locCustomInput)} icon={Check}>저장</PrimaryBtn>
-              </div>
-            )}
-          </div>
-        )}
-      </Card>
       {birthdayFolksToday.length > 0 && (
         <Card className="text-center">
           <div className="flex items-center justify-center gap-2 mb-1">
@@ -1200,8 +1154,6 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               ) : (
                 <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: t.color }} /> {t.label}</span>
               ))}
-            </div>
-            <div className="flex flex-wrap gap-2 mt-1.5">
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: INK }} /> 출장·휴가</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: 'transparent', border: `1px solid ${INK}` }} /> 개인일정</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: WEEKEND_BG, border: `1px solid ${WEEKEND_TEXT}` }} /> 금·토·일(제외)</span>
@@ -1286,6 +1238,31 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             })()}
           </Card>
 
+          <Card style={{ borderColor: '#EFC94C', borderWidth: 1.5 }}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: INK }}>📍 오늘 모임장소</div>
+              {currentMember && <button onClick={() => setShowLocEdit(!showLocEdit)} className="text-xs underline underline-offset-2" style={{ color: MUTE }}>{todayLocation ? '변경' : '설정'}</button>}
+            </div>
+            {todayLocation ? (
+              <div className="text-sm mt-1" style={{ color: NEUTRAL_TEXT }}>{todayLocation.location} <span className="text-xs" style={{ color: MUTE }}>· {dispName(todayLocation.updated_by, isLoggedIn)} 설정</span></div>
+            ) : <p className="text-sm mt-1" style={{ color: MUTE }}>아직 정해지지 않았어요.</p>}
+            {showLocEdit && currentMember && (
+              <div className="mt-3 pt-3 space-y-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => setLocation('도서관 세미나실')} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>도서관 세미나실</button>
+                  <button onClick={() => setLocation('도서관 안쪽 테이블')} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>도서관 안쪽 테이블</button>
+                  <button onClick={() => setLocCustomMode(!locCustomMode)} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: locCustomMode ? '#3A2E10' : NEUTRAL_BG, color: locCustomMode ? '#EFC94C' : NEUTRAL_TEXT }}>수기작성</button>
+                </div>
+                {locCustomMode && (
+                  <div className="flex gap-2">
+                    <input value={locCustomInput} onChange={(e) => setLocCustomInput(e.target.value)} placeholder="장소 직접 입력" className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                    <PrimaryBtn onClick={() => setLocation(locCustomInput)} icon={Check}>저장</PrimaryBtn>
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+
           {monthBirthdays.length > 0 && (
             <Card>
               <div className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: INK }}><Cake size={16} style={{ color: '#F0A87C' }} /> 이 달의 생일 🎉</div>
@@ -1320,28 +1297,6 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               ))}
             </div>
           </Card>
-
-          <Card>
-            <div className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: INK }}><BookOpen size={16} style={{ color: '#EFC94C' }} /> 이번 달 독서시간</div>
-            <div className="space-y-3">
-              {monthReadingRows.map((r) => (
-                <div key={r.id}>
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs w-4 text-center shrink-0" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.rank === 1 && r.totalMin > 0 ? '🏆' : r.rank}</span>
-                      <Stamp role={r.role} size={24} tilt={0} /><span style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>
-                    </div>
-                    <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtHM(r.totalMin)}</span>
-                  </div>
-                  <div className="w-full h-2 rounded-full overflow-hidden flex gap-[1.5px]" style={{ background: NEUTRAL_BG }}>
-                    {r.segments.map((segMin, i) => (
-                      <div key={i} className="h-full rounded-[1px]" style={{ width: `${(segMin / maxMonthReadingMin) * 100}%`, background: READING_SEGMENT_COLORS[i % READING_SEGMENT_COLORS.length] }} />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
         </>
       ) : (
         <>
@@ -1349,46 +1304,20 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
           <Card>
             <div className="text-sm font-semibold mb-1" style={{ color: INK }}>전체 누적 출석률</div>
             <div className="text-xs mb-3" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>지금까지 총 출결 {totalSessions}회</div>
-            <div className="space-y-3">
+            <div className="grid grid-cols-3 gap-4">
               {allTimeRows.map((r) => {
                 const gaugeColor = r.rate >= 80 ? '#7FDCCF' : r.rate >= 50 ? '#EFC94C' : '#F0A87C';
                 return (
-                  <div key={r.id} className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Stamp role={r.role} size={24} tilt={0} /><span className="truncate" style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{totalSessions}회</span>
-                      <div className="relative rounded-full" style={{ width: 34, height: 34, background: `conic-gradient(${gaugeColor} ${r.rate * 3.6}deg, ${NEUTRAL_BG} ${r.rate * 3.6}deg 360deg)` }}>
-                        <div className="absolute inset-[3px] rounded-full flex items-center justify-center" style={{ background: CARD_BG }}>
-                          <span style={{ fontSize: 9, color: gaugeColor, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600 }}>{r.rate}%</span>
-                        </div>
+                  <div key={r.id} className="flex flex-col items-center gap-1.5 text-center">
+                    <span className="text-xs truncate max-w-full" style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>
+                    <div className="relative rounded-full shrink-0" style={{ width: 56, height: 56, background: `conic-gradient(${gaugeColor} ${r.rate * 3.6}deg, ${NEUTRAL_BG} ${r.rate * 3.6}deg 360deg)` }}>
+                      <div className="absolute inset-[4px] rounded-full flex items-center justify-center" style={{ background: CARD_BG }}>
+                        <span style={{ fontSize: 12, color: gaugeColor, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700 }}>{r.present}/{totalSessions}</span>
                       </div>
                     </div>
                   </div>
                 );
               })}
-            </div>
-          </Card>
-          <Card>
-            <div className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: INK }}><BookOpen size={16} style={{ color: '#EFC94C' }} /> 누적 독서시간 (전체 기간)</div>
-            <div className="space-y-3">
-              {totalReadingRows.map((r) => (
-                <div key={r.id}>
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs w-4 text-center shrink-0" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.rank === 1 && r.totalMin > 0 ? '🏆' : r.rank}</span>
-                      <Stamp role={r.role} size={24} tilt={0} /><span style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>
-                    </div>
-                    <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtHM(r.totalMin)}</span>
-                  </div>
-                  <div className="w-full h-2 rounded-full overflow-hidden flex gap-[1.5px]" style={{ background: NEUTRAL_BG }}>
-                    {r.segments.map((segMin, i) => (
-                      <div key={i} className="h-full rounded-[1px]" style={{ width: `${(segMin / maxReadingMin) * 100}%`, background: READING_SEGMENT_COLORS[i % READING_SEGMENT_COLORS.length] }} />
-                    ))}
-                  </div>
-                </div>
-              ))}
             </div>
           </Card>
         </>
