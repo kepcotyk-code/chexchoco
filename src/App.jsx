@@ -995,7 +995,6 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     if (r.rate !== lastRate) { lastRank = i + 1; lastRate = r.rate; }
     return { ...r, rank: lastRank };
   });
-  const monthSessionIds = new Set(sessionsInMonth.map((s) => s.id));
   const withRank = (rowsUnranked) => {
     let lastVal = null; let lastRank = 0;
     return rowsUnranked.map((r, i) => {
@@ -1004,8 +1003,13 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     });
   };
   const monthReadingRows = withRank(members.map((m) => {
-    const totalMin = checkins.filter((c) => c.member_id === m.id && monthSessionIds.has(c.session_id)).reduce((sum, c) => { const d = durationMin(c.check_in_at, c.check_out_at); return sum + (d !== null && d > 0 ? d : 0); }, 0);
-    return { ...m, totalMin };
+    const segments = sortedSessionsInMonth.map((s) => {
+      const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
+      const d = c ? durationMin(c.check_in_at, c.check_out_at) : null;
+      return d !== null && d > 0 ? d : 0;
+    }).filter((d) => d > 0);
+    const totalMin = segments.reduce((sum, d) => sum + d, 0);
+    return { ...m, totalMin, segments };
   }).sort((a, b) => b.totalMin - a.totalMin));
   const maxMonthReadingMin = Math.max(1, ...monthReadingRows.map((r) => r.totalMin));
 
@@ -1015,9 +1019,15 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     sessions.forEach((s) => { const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id); const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null; if (dur !== null && dur >= 30) present++; });
     return { ...m, present, rate: totalSessions ? Math.round((present / totalSessions) * 100) : 0 };
   });
+  const sortedAllSessions = [...sessions].filter((s) => s.date <= todayStr()).sort((a, b) => a.date.localeCompare(b.date));
   const totalReadingRows = withRank(members.map((m) => {
-    const totalMin = checkins.filter((c) => c.member_id === m.id).reduce((sum, c) => { const d = durationMin(c.check_in_at, c.check_out_at); return sum + (d !== null && d > 0 ? d : 0); }, 0);
-    return { ...m, totalMin };
+    const segments = sortedAllSessions.map((s) => {
+      const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
+      const d = c ? durationMin(c.check_in_at, c.check_out_at) : null;
+      return d !== null && d > 0 ? d : 0;
+    }).filter((d) => d > 0);
+    const totalMin = segments.reduce((sum, d) => sum + d, 0);
+    return { ...m, totalMin, segments };
   }).sort((a, b) => b.totalMin - a.totalMin));
   const maxReadingMin = Math.max(1, ...totalReadingRows.map((r) => r.totalMin));
 
@@ -1035,8 +1045,9 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     .filter((s) => isMonToThu(s.date) && weekKeyOf(s.date) === thisWeekKey && s.date <= todayStr())
     .sort((a, b) => a.date.localeCompare(b.date));
   const thisWeekQualifies = weekQualifiesForPenalty(todayStr(), calendarDays);
+  const todayDow = new Date(`${todayStr()}T00:00:00`).getDay(); // 0=일 1=월 2=화 3=수 4=목
   const warningMemberIds = new Set();
-  if (thisWeekQualifies) {
+  if (thisWeekQualifies && todayDow >= 3) {
     const monTue = thisWeekSessionsSoFar.slice(0, 2);
     if (monTue.length === 2) {
       members.forEach((m) => {
@@ -1153,11 +1164,13 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               ) : (
                 <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: t.color }} /> {t.label}</span>
               ))}
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: WEEKEND_BG, border: `1px solid ${WEEKEND_TEXT}` }} /> 금·토·일(제외)</span>
             </div>
-            <div className="flex flex-wrap gap-2 mt-1.5">
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: INK }} /> 출장·휴가</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: 'transparent', border: `1px solid ${INK}` }} /> 개인일정</span>
+            <div className="flex flex-wrap items-center justify-between gap-2 mt-1.5">
+              <div className="flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: INK }} /> 출장·휴가</span>
+                <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: 'transparent', border: `1px solid ${INK}` }} /> 개인일정</span>
+              </div>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: WEEKEND_BG, border: `1px solid ${WEEKEND_TEXT}` }} /> 금·토·일(제외)</span>
             </div>
             {(() => {
               const todayExcused = members.filter((m) => absenceExcuses.some((e) => e.date === todayStr() && e.member_id === m.id));
@@ -1286,7 +1299,11 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                     </div>
                     <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtHM(r.totalMin)}</span>
                   </div>
-                  <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: NEUTRAL_BG }}><div className="h-full rounded-full" style={{ width: `${(r.totalMin / maxMonthReadingMin) * 100}%`, background: '#EFC94C' }} /></div>
+                  <div className="w-full h-2 rounded-full overflow-hidden flex gap-[1.5px]" style={{ background: NEUTRAL_BG }}>
+                    {r.segments.map((segMin, i) => (
+                      <div key={i} className="h-full rounded-[1px]" style={{ width: `${(segMin / maxMonthReadingMin) * 100}%`, background: '#EFC94C' }} />
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1322,7 +1339,11 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                     </div>
                     <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtHM(r.totalMin)}</span>
                   </div>
-                  <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: NEUTRAL_BG }}><div className="h-full rounded-full" style={{ width: `${(r.totalMin / maxReadingMin) * 100}%`, background: '#EFC94C' }} /></div>
+                  <div className="w-full h-2 rounded-full overflow-hidden flex gap-[1.5px]" style={{ background: NEUTRAL_BG }}>
+                    {r.segments.map((segMin, i) => (
+                      <div key={i} className="h-full rounded-[1px]" style={{ width: `${(segMin / maxReadingMin) * 100}%`, background: '#EFC94C' }} />
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
