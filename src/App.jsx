@@ -178,7 +178,7 @@ const computeWeeklyPenalties = (sessions, checkins, calendarDays, members, absen
 };
 
 /* ---------- Supabase data layer ---------- */
-const TABLES = ['members', 'notices', 'notice_views', 'sessions', 'checkins', 'penalty_completions', 'calendar_days', 'settings', 'photos', 'absence_excuses'];
+const TABLES = ['members', 'notices', 'notice_views', 'sessions', 'checkins', 'penalty_completions', 'calendar_days', 'settings', 'photos', 'absence_excuses', 'meeting_locations'];
 
 async function fetchAll() {
   const results = await Promise.all(TABLES.map((t) => supabase.from(t).select('*')));
@@ -221,6 +221,7 @@ export default function App() {
   const [settings, setSettings] = useState([]);
   const [photos, setPhotos] = useState([]);
   const [absenceExcuses, setAbsenceExcuses] = useState([]);
+  const [meetingLocations, setMeetingLocations] = useState([]);
   const [currentUserId, setCurrentUserId] = useState(() => localStorage.getItem('chexchoco-current-user') || null);
   const [tab, setTab] = useState('notice');
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -233,7 +234,7 @@ export default function App() {
       const data = await fetchAll();
       setMembers(data.members); setNotices(data.notices); setNoticeViews(data.notice_views);
       setSessions(data.sessions); setCheckins(data.checkins); setPenaltyCompletions(data.penalty_completions);
-      setCalendarDays(data.calendar_days); setSettings(data.settings); setPhotos(data.photos); setAbsenceExcuses(data.absence_excuses);
+      setCalendarDays(data.calendar_days); setSettings(data.settings); setPhotos(data.photos); setAbsenceExcuses(data.absence_excuses); setMeetingLocations(data.meeting_locations);
       setError('');
     } catch (e) { setError('데이터를 불러오지 못했어요. 새로고침해 주세요.'); }
     setLoaded(true);
@@ -372,7 +373,7 @@ export default function App() {
         {tab === 'notice' && <NoticeScreen notices={notices} noticeViews={noticeViews} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} />}
         {tab === 'gallery' && <GalleryScreen photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} />}
         {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} />}
-        {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} currentMember={currentMember} />}
+        {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} currentMember={currentMember} meetingLocations={meetingLocations} />}
         {tab === 'users' && <UsersScreen members={members} sortedMembers={sortedMembers} currentUserId={currentUserId} setIdentity={setIdentity} canManage={canManageUsers} notices={notices} sessions={sessions} checkins={checkins} reload={reload} />}
         {tab === 'admin' && canManageAttendance && <AdminScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} setPenaltyRule={setPenaltyRule} penaltyCompletions={penaltyCompletions} reload={reload} calendarDays={calendarDays} absenceExcuses={absenceExcuses} />}
       </div>
@@ -971,8 +972,18 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
 }
 
 /* ---------------- 대시보드 ---------------- */
-function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyCompletions, canManage, calendarDays, reload, absenceExcuses, currentMember }) {
+function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyCompletions, canManage, calendarDays, reload, absenceExcuses, currentMember, meetingLocations }) {
   const isLoggedIn = !!currentMember;
+  const [showLocEdit, setShowLocEdit] = useState(false);
+  const [locCustomMode, setLocCustomMode] = useState(false);
+  const [locCustomInput, setLocCustomInput] = useState('');
+  const todayLocation = meetingLocations.find((l) => l.date === todayStr());
+  const setLocation = async (loc) => {
+    if (!currentMember || !loc.trim()) return;
+    await upsertRow('meeting_locations', { date: todayStr(), location: loc.trim(), updated_by: currentMember.name, updated_at: new Date().toISOString() }, 'date');
+    await reload();
+    setShowLocEdit(false); setLocCustomMode(false); setLocCustomInput('');
+  };
   const [cursor, setCursor] = useState(new Date());
   const [viewMode, setViewMode] = useState('month');
   const [selectedDate, setSelectedDate] = useState(null);
@@ -1093,6 +1104,30 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
 
   return (
     <div className="space-y-4">
+      <Card style={{ borderColor: '#7FA8D9', borderWidth: 1.5 }}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: INK }}>📍 오늘 모임장소</div>
+          {currentMember && <button onClick={() => setShowLocEdit(!showLocEdit)} className="text-xs underline underline-offset-2" style={{ color: MUTE }}>{todayLocation ? '변경' : '설정'}</button>}
+        </div>
+        {todayLocation ? (
+          <div className="text-sm mt-1" style={{ color: NEUTRAL_TEXT }}>{todayLocation.location} <span className="text-xs" style={{ color: MUTE }}>· {dispName(todayLocation.updated_by, isLoggedIn)} 설정</span></div>
+        ) : <p className="text-sm mt-1" style={{ color: MUTE }}>아직 정해지지 않았어요.</p>}
+        {showLocEdit && currentMember && (
+          <div className="mt-3 pt-3 space-y-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => setLocation('도서관 세미나실')} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>도서관 세미나실</button>
+              <button onClick={() => setLocation('도서관 안쪽 테이블')} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>도서관 안쪽 테이블</button>
+              <button onClick={() => setLocCustomMode(!locCustomMode)} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: locCustomMode ? '#1E2A38' : NEUTRAL_BG, color: locCustomMode ? '#7FA8D9' : NEUTRAL_TEXT }}>수기작성</button>
+            </div>
+            {locCustomMode && (
+              <div className="flex gap-2">
+                <input value={locCustomInput} onChange={(e) => setLocCustomInput(e.target.value)} placeholder="장소 직접 입력" className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                <PrimaryBtn onClick={() => setLocation(locCustomInput)} icon={Check}>저장</PrimaryBtn>
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
       {birthdayFolksToday.length > 0 && (
         <Card className="text-center">
           <div className="flex items-center justify-center gap-2 mb-1">
