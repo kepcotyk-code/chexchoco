@@ -31,6 +31,7 @@ const MANAGE_ROLES = ['회장', '간사', '총무'];
 const roleMeta = (role) => ROLES.find((r) => r.key === role) || ROLES[3];
 const roleOrder = (role) => { const i = ROLES.findIndex((r) => r.key === role); return i === -1 ? 99 : i; };
 
+const READING_SEGMENT_COLORS = ['#F5DE8A', '#EFC94C', '#D9A93A', '#C99A2E', '#B98A22', '#A97A18'];
 const DAY_TYPES = [
   { key: '독서일', label: '독서일', color: '#7FA8D9', bg: '#1E2A38' },
   { key: '휴무일', label: '휴무일', color: '#E0958C', bg: '#3A2420' },
@@ -1165,11 +1166,9 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: t.color }} /> {t.label}</span>
               ))}
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 mt-1.5">
-              <div className="flex flex-wrap gap-2">
-                <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: INK }} /> 출장·휴가</span>
-                <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: 'transparent', border: `1px solid ${INK}` }} /> 개인일정</span>
-              </div>
+            <div className="flex flex-wrap gap-2 mt-1.5">
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: INK }} /> 출장·휴가</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: 'transparent', border: `1px solid ${INK}` }} /> 개인일정</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: WEEKEND_BG, border: `1px solid ${WEEKEND_TEXT}` }} /> 금·토·일(제외)</span>
             </div>
             {(() => {
@@ -1177,7 +1176,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               if (todayExcused.length === 0) return null;
               return (
                 <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-                  <div className="text-xs mb-1.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(todayStr())} 참석불가</div>
+                  <div className="text-xs mb-1.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>오늘 참석불가</div>
                   <div className="flex flex-wrap gap-1.5">
                     {todayExcused.map((m) => {
                       const e = absenceExcuses.find((ee) => ee.date === todayStr() && ee.member_id === m.id);
@@ -1301,7 +1300,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                   </div>
                   <div className="w-full h-2 rounded-full overflow-hidden flex gap-[1.5px]" style={{ background: NEUTRAL_BG }}>
                     {r.segments.map((segMin, i) => (
-                      <div key={i} className="h-full rounded-[1px]" style={{ width: `${(segMin / maxMonthReadingMin) * 100}%`, background: '#EFC94C' }} />
+                      <div key={i} className="h-full rounded-[1px]" style={{ width: `${(segMin / maxMonthReadingMin) * 100}%`, background: READING_SEGMENT_COLORS[i % READING_SEGMENT_COLORS.length] }} />
                     ))}
                   </div>
                 </div>
@@ -1316,15 +1315,24 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             <div className="text-sm font-semibold mb-1" style={{ color: INK }}>전체 누적 출석률</div>
             <div className="text-xs mb-3" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>지금까지 총 출결 {totalSessions}회</div>
             <div className="space-y-3">
-              {allTimeRows.map((r) => (
-                <div key={r.id}>
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <div className="flex items-center gap-2"><Stamp role={r.role} size={24} tilt={0} /><span style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span></div>
-                    <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{totalSessions}회 · {r.rate}%</span>
+              {allTimeRows.map((r) => {
+                const gaugeColor = r.rate >= 80 ? '#7FDCCF' : r.rate >= 50 ? '#EFC94C' : '#F0A87C';
+                return (
+                  <div key={r.id} className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Stamp role={r.role} size={24} tilt={0} /><span className="truncate" style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{totalSessions}회</span>
+                      <div className="relative rounded-full" style={{ width: 34, height: 34, background: `conic-gradient(${gaugeColor} ${r.rate * 3.6}deg, ${NEUTRAL_BG} ${r.rate * 3.6}deg 360deg)` }}>
+                        <div className="absolute inset-[3px] rounded-full flex items-center justify-center" style={{ background: CARD_BG }}>
+                          <span style={{ fontSize: 9, color: gaugeColor, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600 }}>{r.rate}%</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: NEUTRAL_BG }}><div className="h-full rounded-full" style={{ width: `${r.rate}%`, background: r.rate >= 80 ? '#7FDCCF' : r.rate >= 50 ? '#EFC94C' : '#F0A87C' }} /></div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </Card>
           <Card>
@@ -1341,7 +1349,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                   </div>
                   <div className="w-full h-2 rounded-full overflow-hidden flex gap-[1.5px]" style={{ background: NEUTRAL_BG }}>
                     {r.segments.map((segMin, i) => (
-                      <div key={i} className="h-full rounded-[1px]" style={{ width: `${(segMin / maxReadingMin) * 100}%`, background: '#EFC94C' }} />
+                      <div key={i} className="h-full rounded-[1px]" style={{ width: `${(segMin / maxReadingMin) * 100}%`, background: READING_SEGMENT_COLORS[i % READING_SEGMENT_COLORS.length] }} />
                     ))}
                   </div>
                 </div>
