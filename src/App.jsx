@@ -204,7 +204,7 @@ const computeWeeklyPenalties = (sessions, checkins, calendarDays, members, absen
 };
 
 /* ---------- Supabase data layer ---------- */
-const TABLES = ['members', 'notices', 'notice_views', 'sessions', 'checkins', 'penalty_completions', 'calendar_days', 'settings', 'photos', 'absence_excuses', 'meeting_locations'];
+const TABLES = ['members', 'notices', 'notice_views', 'sessions', 'checkins', 'penalty_completions', 'calendar_days', 'settings', 'photos', 'absence_excuses', 'meeting_locations', 'dues_payments', 'expenses'];
 
 async function fetchAll() {
   const results = await Promise.all(TABLES.map((t) => supabase.from(t).select('*')));
@@ -248,6 +248,8 @@ export default function App() {
   const [photos, setPhotos] = useState([]);
   const [absenceExcuses, setAbsenceExcuses] = useState([]);
   const [meetingLocations, setMeetingLocations] = useState([]);
+  const [duesPayments, setDuesPayments] = useState([]);
+  const [expenses, setExpenses] = useState([]);
   const [currentUserId, setCurrentUserId] = useState(() => localStorage.getItem('chexchoco-current-user') || null);
   const [tab, setTab] = useState('notice');
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -260,7 +262,7 @@ export default function App() {
       const data = await fetchAll();
       setMembers(data.members); setNotices(data.notices); setNoticeViews(data.notice_views);
       setSessions(data.sessions); setCheckins(data.checkins); setPenaltyCompletions(data.penalty_completions);
-      setCalendarDays(data.calendar_days); setSettings(data.settings); setPhotos(data.photos); setAbsenceExcuses(data.absence_excuses); setMeetingLocations(data.meeting_locations);
+      setCalendarDays(data.calendar_days); setSettings(data.settings); setPhotos(data.photos); setAbsenceExcuses(data.absence_excuses); setMeetingLocations(data.meeting_locations); setDuesPayments(data.dues_payments); setExpenses(data.expenses);
       setError('');
     } catch (e) { setError('데이터를 불러오지 못했어요. 새로고침해 주세요.'); }
     setLoaded(true);
@@ -302,6 +304,7 @@ export default function App() {
     { key: 'dashboard', label: '대시보드', icon: BarChart3 },
     { key: 'gallery', label: '포토', icon: ImageIcon },
     { key: 'users', label: '멤버', icon: Users },
+    ...(canManageUsers ? [{ key: 'treasury', label: '회계', icon: Wallet }] : []),
     ...(canManageAttendance ? [{ key: 'admin', label: '설정', icon: Settings2 }] : []),
   ];
 
@@ -401,6 +404,7 @@ export default function App() {
         {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} meetingLocations={meetingLocations} />}
         {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} currentMember={currentMember} />}
         {tab === 'users' && <UsersScreen members={members} sortedMembers={sortedMembers} currentUserId={currentUserId} setIdentity={setIdentity} canManage={canManageUsers} notices={notices} sessions={sessions} checkins={checkins} reload={reload} />}
+        {tab === 'treasury' && canManageUsers && <TreasuryScreen members={sortedMembers} duesPayments={duesPayments} expenses={expenses} currentMember={currentMember} reload={reload} />}
         {tab === 'admin' && canManageAttendance && <AdminScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} setPenaltyRule={setPenaltyRule} penaltyCompletions={penaltyCompletions} reload={reload} calendarDays={calendarDays} absenceExcuses={absenceExcuses} />}
       </div>
     </div>
@@ -1556,6 +1560,128 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
 }
 
 /* ---------------- 출석관리 (간사 전용) ---------------- */
+/* ---------------- 회계 (총무 관리) ---------------- */
+function TreasuryScreen({ members, duesPayments, expenses, currentMember, reload }) {
+  const [cursor, setCursor] = useState(new Date());
+  const monthKey = `${cursor.getFullYear()}-${pad(cursor.getMonth() + 1)}`;
+  const shift = (delta) => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1));
+
+  const [defaultAmount, setDefaultAmount] = useState('10000');
+  const duesForMonth = duesPayments.filter((d) => d.month === monthKey);
+  const getDues = (memberId) => duesForMonth.find((d) => d.member_id === memberId);
+  const togglePaid = async (memberId) => {
+    const existing = getDues(memberId);
+    if (existing) {
+      await updateRow('dues_payments', 'id', existing.id, { paid: !existing.paid, paid_at: !existing.paid ? new Date().toISOString() : null });
+    } else {
+      const amt = parseInt(defaultAmount, 10) || 0;
+      await insertRow('dues_payments', { id: uid('dp'), member_id: memberId, month: monthKey, amount: amt, paid: true, paid_at: new Date().toISOString() });
+    }
+    await reload();
+  };
+  const totalDuesThisMonth = duesForMonth.filter((d) => d.paid).reduce((sum, d) => sum + Number(d.amount), 0);
+
+  const [expDate, setExpDate] = useState(todayStr());
+  const [expDesc, setExpDesc] = useState('');
+  const [expAmount, setExpAmount] = useState('');
+  const expensesForMonth = expenses.filter((e) => e.date.startsWith(monthKey)).sort((a, b) => b.date.localeCompare(a.date));
+  const totalExpensesThisMonth = expensesForMonth.reduce((sum, e) => sum + Number(e.amount), 0);
+  const addExpense = async () => {
+    if (!expDesc.trim() || !expAmount) return;
+    await insertRow('expenses', { id: uid('ex'), date: expDate, description: expDesc.trim(), amount: parseInt(expAmount, 10) || 0, recorded_by: currentMember?.name || '', created_at: new Date().toISOString() });
+    await reload();
+    setExpDesc(''); setExpAmount('');
+  };
+  const removeExpense = async (id) => { await deleteRow('expenses', 'id', id); await reload(); };
+
+  const totalDuesAllTime = duesPayments.filter((d) => d.paid).reduce((sum, d) => sum + Number(d.amount), 0);
+  const totalExpensesAllTime = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
+  const balance = totalDuesAllTime - totalExpensesAllTime;
+  const fmtWon = (n) => `${n.toLocaleString('ko-KR')}원`;
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <div className="flex items-center justify-between mb-1">
+          <button onClick={() => shift(-1)} className="p-1.5" style={{ color: MUTE }}><ChevronLeft size={18} /></button>
+          <div className="font-semibold" style={{ color: INK, fontFamily: "'Fraunces', serif" }}>{cursor.getFullYear()}년 {cursor.getMonth() + 1}월</div>
+          <button onClick={() => shift(1)} className="p-1.5" style={{ color: MUTE }}><ChevronRight size={18} /></button>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="text-sm font-semibold mb-1" style={{ color: INK }}>종합 장부</div>
+        <div className="grid grid-cols-2 gap-2 mt-2 text-center">
+          <div className="rounded-xl py-2" style={{ background: '#12302C' }}>
+            <div className="text-[11px]" style={{ color: MUTE }}>이번 달 회비 수입</div>
+            <div className="font-semibold" style={{ color: '#7FDCCF' }}>{fmtWon(totalDuesThisMonth)}</div>
+          </div>
+          <div className="rounded-xl py-2" style={{ background: '#3A2213' }}>
+            <div className="text-[11px]" style={{ color: MUTE }}>이번 달 지출</div>
+            <div className="font-semibold" style={{ color: '#F0A87C' }}>{fmtWon(totalExpensesThisMonth)}</div>
+          </div>
+        </div>
+        <div className="mt-2 pt-2 flex items-center justify-between" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+          <span className="text-xs" style={{ color: MUTE }}>전체 누적 잔액</span>
+          <span className="font-semibold" style={{ color: balance >= 0 ? '#7FDCCF' : '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(balance)}</span>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-sm font-semibold" style={{ color: INK }}>회비 납부 현황</div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs" style={{ color: MUTE }}>기본 금액</span>
+            <input type="number" value={defaultAmount} onChange={(e) => setDefaultAmount(e.target.value)} className="w-20 rounded-lg border px-2 py-1 text-xs outline-none" style={inputStyle} />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          {members.map((m) => {
+            const d = getDues(m.id);
+            const paid = d?.paid;
+            return (
+              <div key={m.id} className="flex items-center justify-between py-1.5" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                <div className="flex items-center gap-2 min-w-0"><Stamp role={m.role} size={24} tilt={0} /><span className="text-sm truncate" style={{ color: INK }}>{m.name}</span></div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {d && <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(Number(d.amount))}</span>}
+                  <button onClick={() => togglePaid(m.id)} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: paid ? '#12302C' : NEUTRAL_BG, color: paid ? '#7FDCCF' : MUTE }}>{paid ? <Check size={12} /> : null} {paid ? '완납' : '미납'}</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      <Card className="space-y-2">
+        <div className="text-sm font-semibold" style={{ color: INK }}>지출 내역</div>
+        <div className="flex gap-2">
+          <input type="date" value={expDate} onChange={(e) => setExpDate(e.target.value)} className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+          <input value={expDesc} onChange={(e) => setExpDesc(e.target.value)} placeholder="내역 (예: 간식비)" className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+        </div>
+        <div className="flex gap-2">
+          <input type="number" value={expAmount} onChange={(e) => setExpAmount(e.target.value)} placeholder="금액" className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+          <PrimaryBtn onClick={addExpense} icon={Plus}>등록</PrimaryBtn>
+        </div>
+        <div className="pt-2 space-y-1.5" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+          {expensesForMonth.length === 0 && <p className="text-sm py-2" style={{ color: MUTE }}>이번 달 지출 내역이 없어요.</p>}
+          {expensesForMonth.map((e) => (
+            <div key={e.id} className="flex items-center justify-between text-sm py-1">
+              <div className="min-w-0">
+                <div style={{ color: INK }}>{e.description}</div>
+                <div className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(e.date)}{e.recorded_by && ` · ${e.recorded_by}`}</div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span style={{ color: '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(Number(e.amount))}</span>
+                <button onClick={() => removeExpense(e.id)} className="p-1" style={{ color: MUTE }}><Trash2 size={14} /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule, penaltyCompletions, reload, calendarDays, absenceExcuses }) {
   const [date, setDate] = useState(todayStr());
   const session = sessions.find((s) => s.date === date);
