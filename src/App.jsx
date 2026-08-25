@@ -1717,7 +1717,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
 
   // 회식 정산 계산기 — 차수별로 정산 방식(회비/각출)과 참석자를 선택해 1인당 징수액 계산
   const SETTLE_MODES = [
-    { key: 'club', label: '회비에서 정산' },
+    { key: 'club', label: '회비 차감 후 정산' },
     { key: 'split', label: '각출 정산' },
   ];
   const [roundSettlement, setRoundSettlement] = useState({});
@@ -1762,7 +1762,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
 
   // 차수별 징수 내역(개인별 배분·완납 여부) — N분의 1 나머지는 참석 순서상 앞사람부터 1원씩 더 배분
   const getRoundCollections = (roundId) => dinnerCollections.filter((c) => c.expense_id === roundId);
-  const generateCollections = async (e, s) => {
+  const generateCollections = async (e, s, opts = {}) => {
     if (s.collection <= 0 || s.attendees.length === 0) return;
     const orderedIds = members.filter((m) => s.attendees.includes(m.id)).map((m) => m.id);
     const base = Math.floor(s.collection / orderedIds.length);
@@ -1781,6 +1781,13 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
       const prev = existingMap[mid];
       if (prev) { if (Number(prev.amount) !== amt) await updateRow('dinner_collections', 'id', prev.id, { amount: amt }); }
       else await insertRow('dinner_collections', { id: uid('dc'), expense_id: e.id, member_id: mid, amount: amt, paid: false, paid_at: null });
+    }
+    if (!opts.skipReload) await reload();
+  };
+  const generateAllCollections = async () => {
+    for (const s of dinnerSettlements) {
+      const e = dinnerExpenses.find((x) => x.id === s.id);
+      if (e) await generateCollections(e, s, { skipReload: true });
     }
     await reload();
   };
@@ -1801,11 +1808,6 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
     .filter((m) => finalMemberTotalsMap[m.id])
     .map((m) => ({ member: m, ...finalMemberTotalsMap[m.id] }))
     .sort((a, b) => b.amount - a.amount);
-
-  // 지난 회식 목록 — 날짜를 선택해 바로 그 회식으로 이동
-  const dinnerByDate = {};
-  expenses.forEach((e) => { if (dinnerRoundRe.test(e.description)) { (dinnerByDate[e.date] = dinnerByDate[e.date] || []).push(e); } });
-  const recentDinnerDates = Object.keys(dinnerByDate).sort((a, b) => b.localeCompare(a)).slice(0, 8);
 
   // 미납자 명단 복사
   const [duesCopied, setDuesCopied] = useState(false);
@@ -1874,25 +1876,6 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
         </div>
       </Card>
 
-      {recentDinnerDates.length > 0 && (
-        <Card className="space-y-1.5">
-          <div className="text-sm font-semibold mb-1" style={{ color: INK }}>지난 회식 목록</div>
-          {recentDinnerDates.map((date) => {
-            const rounds = dinnerByDate[date];
-            const total = rounds.reduce((sum, e) => sum + Number(e.amount), 0);
-            return (
-              <button key={date} onClick={() => setDinnerDate(date)} className="w-full flex items-center justify-between py-1.5 text-left" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-                <div>
-                  <div className="text-sm" style={{ color: date === dinnerDate ? '#EFC94C' : INK }}>{fmtDate(date)}</div>
-                  <div className="text-[11px]" style={{ color: MUTE }}>{rounds.length}차까지</div>
-                </div>
-                <span className="text-sm font-semibold" style={{ color: '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(total)}</span>
-              </button>
-            );
-          })}
-        </Card>
-      )}
-
       <Card className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="text-sm font-semibold" style={{ color: INK }}>회식비 정산</div>
@@ -1911,11 +1894,11 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
                       <button onClick={() => requestDelete(() => removeExpense(e.id), '이 지출 내역을 삭제할까요?')} className="p-1" style={{ color: MUTE }}><Trash2 size={14} /></button>
                     </div>
                   </div>
-                  <input value={getRestaurantValue(e)} onChange={(ev) => setRestaurantEdits((prev) => ({ ...prev, [e.id]: ev.target.value }))} onBlur={() => saveRestaurant(e)} placeholder="식당명 (선택)" className="w-full rounded-lg border px-2 py-1.5 text-xs outline-none" style={inputStyle} />
-                  <div className="flex flex-wrap gap-1.5">
+                  <input value={getRestaurantValue(e)} onChange={(ev) => setRestaurantEdits((prev) => ({ ...prev, [e.id]: ev.target.value }))} onBlur={() => saveRestaurant(e)} placeholder="식당명" className="w-full rounded-lg border px-2 py-1.5 text-xs outline-none" style={inputStyle} />
+                  <div className="grid grid-cols-2 gap-2">
                     {SETTLE_MODES.map((sm) => (
-                      <button key={sm.key} onClick={() => setRoundMode(s.id, sm.key)} className="text-[11px] rounded-full px-2.5 py-1 font-semibold"
-                        style={{ background: s.mode === sm.key ? '#3A2E10' : CARD_BG, color: s.mode === sm.key ? '#EFC94C' : MUTE }}>{sm.label}</button>
+                      <button key={sm.key} onClick={() => setRoundMode(s.id, sm.key)} className="rounded-xl px-3 py-2.5 text-sm font-semibold border"
+                        style={{ background: s.mode === sm.key ? '#3A2E10' : CARD_BG, color: s.mode === sm.key ? '#EFC94C' : MUTE, borderColor: s.mode === sm.key ? '#EFC94C' : LINE }}>{sm.label}</button>
                     ))}
                   </div>
                   {s.mode === 'split' && (
@@ -1957,7 +1940,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
                   )}
                   <div className="pt-1 space-y-1" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
                     <div className="flex items-center justify-between text-xs">
-                      <span style={{ color: MUTE }}>참석 {s.count}명 · 1인당 평균 징수액</span>
+                      <span style={{ color: MUTE }}>참석 {s.count}명 · 1인당 평균 부담액</span>
                       <span className="font-semibold" style={{ color: '#EFC94C' }}>{fmtWon(s.perPerson)}</span>
                     </div>
                     <div className="flex items-center justify-between text-xs">
@@ -1970,10 +1953,8 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
                     const paidCount = roundCollections.filter((c) => c.paid).length;
                     return (
                       <div className="pt-1 space-y-1.5" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px]" style={{ color: MUTE }}>개인별 납부내역{roundCollections.length > 0 ? ` · 완납 ${paidCount}/${roundCollections.length}명` : ''}</span>
-                          <button onClick={() => generateCollections(e, s)} className="text-[11px] underline underline-offset-2" style={{ color: MUTE }}>{roundCollections.length > 0 ? '내역 갱신' : '납부내역 생성'}</button>
-                        </div>
+                        <div className="text-[11px]" style={{ color: MUTE }}>개인별 납부내역{roundCollections.length > 0 ? ` · 완납 ${paidCount}/${roundCollections.length}명` : ''}</div>
+                        <button onClick={() => generateCollections(e, s)} className="w-full rounded-xl py-2.5 text-sm font-semibold" style={{ background: NEUTRAL_BG, color: '#EFC94C' }}>{roundCollections.length > 0 ? '차수별 개인 부담금 갱신' : '차수별 개인 부담금 생성'}</button>
                         {roundCollections.length > 0 && (
                           <div className="space-y-1">
                             {members.filter((m) => s.attendees.includes(m.id)).map((m) => {
@@ -2005,6 +1986,9 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
               <div className="flex items-center justify-between text-sm">
                 <span style={{ color: MUTE }}>회식 정산 후 최종 결론 잔액</span>
                 <span className="font-semibold" style={{ color: finalBalanceAfterDinner >= 0 ? '#7FDCCF' : '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(finalBalanceAfterDinner)}</span>
+              </div>
+              <div className="flex justify-end pt-1">
+                <button onClick={generateAllCollections} className="rounded-xl px-4 py-2 text-xs font-semibold" style={{ background: BTN_BG, color: BTN_TEXT }}>최종 부담액 생성</button>
               </div>
             </div>
             {finalMemberTotals.length > 0 && (
