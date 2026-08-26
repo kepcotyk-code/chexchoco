@@ -261,6 +261,22 @@ export default function App() {
   const [deletePinInput, setDeletePinInput] = useState('');
   const [deletePinError, setDeletePinError] = useState('');
 
+  // 전역 토스트 — 저장/삭제 등 액션 성공·실패를 짧게 알려줌
+  const [toast, setToast] = useState(null); // { message, kind: 'success' | 'error' }
+  const showToast = (message, kind = 'success') => {
+    setToast({ message, kind, key: Date.now() });
+  };
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2600);
+    return () => clearTimeout(t);
+  }, [toast]);
+  useEffect(() => {
+    const handler = () => showToast('요청 처리 중 문제가 발생했어요. 다시 시도해 주세요.', 'error');
+    window.addEventListener('unhandledrejection', handler);
+    return () => window.removeEventListener('unhandledrejection', handler);
+  }, []);
+
   const reload = async () => {
     try {
       const data = await fetchAll();
@@ -296,15 +312,17 @@ export default function App() {
   // 삭제 시 실수 방지용 재확인(로그인 PIN) — PIN이 설정된 계정이면 PIN 입력, 아니면 한 번 더 확인만
   const requestDelete = (onConfirm, message = '정말 삭제할까요?') => { setPendingDelete({ onConfirm, message }); setDeletePinInput(''); setDeletePinError(''); };
   const cancelDelete = () => { setPendingDelete(null); setDeletePinInput(''); setDeletePinError(''); };
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (currentMember?.pin && deletePinInput !== currentMember.pin) { setDeletePinError('PIN이 일치하지 않아요.'); return; }
     const action = pendingDelete?.onConfirm;
     cancelDelete();
-    if (action) action();
+    if (!action) return;
+    try { await action(); showToast('삭제했어요.', 'success'); }
+    catch (e) { showToast('삭제에 실패했어요. 다시 시도해 주세요.', 'error'); }
   };
   const noManagerExists = !members.some((m) => MANAGE_ROLES.includes(m.role));
   const canManageUsers = noManagerExists || (currentMember ? MANAGE_ROLES.includes(currentMember.role) : false);
-  const canManageAttendance = currentMember ? currentMember.role === '간사' : false;
+  const canManageAttendance = currentMember ? MANAGE_ROLES.includes(currentMember.role) : false;
 
   const sortedMembers = useMemo(() => [...members].sort((a, b) => {
     const ro = roleOrder(a.role) - roleOrder(b.role);
@@ -428,6 +446,13 @@ export default function App() {
           </div>
         )}
 
+        {toast && (
+          <div key={toast.key} className="fixed left-1/2 z-[60] px-4 py-2.5 rounded-xl text-sm font-semibold shadow-lg"
+            style={{ bottom: 24, transform: 'translateX(-50%)', background: toast.kind === 'error' ? '#3A2213' : '#12302C', color: toast.kind === 'error' ? '#F0A87C' : '#7FDCCF' }}>
+            {toast.message}
+          </div>
+        )}
+
         <div className="flex gap-1.5 mb-4 overflow-x-auto pb-1">
           {TABS.map((t) => {
             const Icon = t.icon; const active = tab === t.key;
@@ -442,11 +467,11 @@ export default function App() {
         </div>
 
         {tab === 'notice' && <NoticeScreen notices={notices} noticeViews={noticeViews} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} requestDelete={requestDelete} />}
-        {tab === 'gallery' && <GalleryScreen photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} requestDelete={requestDelete} />}
+        {tab === 'gallery' && <GalleryScreen photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} requestDelete={requestDelete} showToast={showToast} />}
         {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} meetingLocations={meetingLocations} />}
         {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} currentMember={currentMember} />}
         {tab === 'users' && <UsersScreen members={members} sortedMembers={sortedMembers} currentUserId={currentUserId} setIdentity={setIdentity} canManage={canManageUsers} notices={notices} sessions={sessions} checkins={checkins} reload={reload} requestDelete={requestDelete} />}
-        {tab === 'treasury' && canManageUsers && <TreasuryScreen members={sortedMembers} duesPayments={duesPayments} expenses={expenses} dinnerCollections={dinnerCollections} currentMember={currentMember} reload={reload} requestDelete={requestDelete} />}
+        {tab === 'treasury' && canManageUsers && <TreasuryScreen members={sortedMembers} duesPayments={duesPayments} expenses={expenses} dinnerCollections={dinnerCollections} currentMember={currentMember} reload={reload} requestDelete={requestDelete} showToast={showToast} />}
         {tab === 'admin' && canManageAttendance && <AdminScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} setPenaltyRule={setPenaltyRule} penaltyCompletions={penaltyCompletions} reload={reload} calendarDays={calendarDays} absenceExcuses={absenceExcuses} requestDelete={requestDelete} />}
       </div>
     </div>
@@ -678,7 +703,7 @@ function compressImage(file) {
     reader.readAsDataURL(file);
   });
 }
-function GalleryScreen({ photos, currentMember, canManage, reload, members, sessions, checkins, requestDelete }) {
+function GalleryScreen({ photos, currentMember, canManage, reload, members, sessions, checkins, requestDelete, showToast }) {
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [viewingId, setViewingId] = useState(null);
@@ -712,10 +737,29 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     await reload();
     setViewingId(null);
   };
-  const viewingIdx = sorted.findIndex((p) => p.id === viewingId);
-  const viewing = viewingIdx >= 0 ? sorted[viewingIdx] : null;
-  const showPrev = () => { if (viewingIdx > 0) { setViewingId(sorted[viewingIdx - 1].id); setEditingDate(false); setEditingCaption(false); } };
-  const showNext = () => { if (viewingIdx >= 0 && viewingIdx < sorted.length - 1) { setViewingId(sorted[viewingIdx + 1].id); setEditingDate(false); setEditingCaption(false); } };
+
+  const participantsFor = (photo) => {
+    const date = photo.created_at.slice(0, 10);
+    const session = sessions.find((s) => s.date === date);
+    if (!session) return [];
+    const ids = checkins.filter((c) => c.session_id === session.id).map((c) => c.member_id);
+    return members.filter((m) => ids.includes(m.id));
+  };
+
+  // 캡션 / 게시자 / 그날 참석자 이름으로 검색
+  const [searchQuery, setSearchQuery] = useState('');
+  const q = searchQuery.trim().toLowerCase();
+  const filtered = !q ? sorted : sorted.filter((p) => {
+    if ((p.caption || '').toLowerCase().includes(q)) return true;
+    if ((p.uploader_name || '').toLowerCase().includes(q)) return true;
+    return participantsFor(p).some((m) => m.name.toLowerCase().includes(q));
+  });
+
+  const navList = q ? filtered : sorted;
+  const viewingIdx = navList.findIndex((p) => p.id === viewingId);
+  const viewing = viewingIdx >= 0 ? navList[viewingIdx] : null;
+  const showPrev = () => { if (viewingIdx > 0) { setViewingId(navList[viewingIdx - 1].id); setEditingDate(false); setEditingCaption(false); } };
+  const showNext = () => { if (viewingIdx >= 0 && viewingIdx < navList.length - 1) { setViewingId(navList[viewingIdx + 1].id); setEditingDate(false); setEditingCaption(false); } };
   const saveDate = async () => {
     if (!viewing || !dateInput) return;
     const time = viewing.created_at.slice(11); // 기존 시각(HH:mm:ss.sssZ)은 그대로 유지
@@ -730,14 +774,6 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     setEditingCaption(false);
   };
 
-  const participantsFor = (photo) => {
-    const date = photo.created_at.slice(0, 10);
-    const session = sessions.find((s) => s.date === date);
-    if (!session) return [];
-    const ids = checkins.filter((c) => c.session_id === session.id).map((c) => c.member_id);
-    return members.filter((m) => ids.includes(m.id));
-  };
-
   return (
     <div className="space-y-4">
       <div>
@@ -749,11 +785,17 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         {!currentMember && <p className="text-xs mt-1.5" style={{ color: MUTE }}>상단에서 본인을 먼저 선택해야 업로드할 수 있어요.</p>}
         {error && <p className="text-xs mt-1.5" style={{ color: '#F0A87C' }}>{error}</p>}
       </div>
+      {photos.length > 0 && (
+        <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="캡션, 게시자, 참석자 이름으로 검색"
+          className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none" style={inputStyle} />
+      )}
       {sorted.length === 0 ? (
         <Card><p className="text-sm text-center py-6" style={{ color: MUTE }}>아직 올라온 사진이 없어요.</p></Card>
+      ) : filtered.length === 0 ? (
+        <Card><p className="text-sm text-center py-6" style={{ color: MUTE }}>검색 결과가 없어요.</p></Card>
       ) : (
         <div className="grid grid-cols-3 gap-2">
-          {sorted.map((p) => (
+          {filtered.map((p) => (
             <button key={p.id} onClick={() => { setViewingId(p.id); setEditingDate(false); setEditingCaption(false); }} className="relative aspect-square rounded-lg overflow-hidden" style={{ background: NEUTRAL_BG }}>
               <img src={publicUrl('photos', p.file_path)} className="w-full h-full object-cover" alt="" loading="lazy" />
               {p.caption && <div className="absolute bottom-1 right-1.5" style={{ color: 'rgba(255,255,255,0.85)', textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}><FileText size={12} /></div>}
@@ -1171,7 +1213,8 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     if (r.missedAll && !isWeekCompleted(w.weekKey, r.member.id)) penaltyByMember[r.member.id].pending += 1;
   }));
 
-  // 이번 주(진행 중) 월·화 모두 미참석 → 벌칙 예상 경고
+  // 이번 주(진행 중) 지금까지 열린 독서일을 전부 결석한 경우 → 벌칙 예상 경고
+  // (하루라도 출석/사유 있으면 그 시점에 바로 해제되어야 하므로, 월·화만 보지 않고 오늘까지의 모든 세션을 확인한다)
   const thisWeekKey = weekKeyOf(todayStr());
   const thisWeekSessionsSoFar = [...sessions]
     .filter((s) => isMonToThu(s.date) && weekKeyOf(s.date) === thisWeekKey && s.date <= todayStr())
@@ -1179,20 +1222,17 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   const thisWeekQualifies = weekQualifiesForPenalty(todayStr(), calendarDays);
   const todayDow = new Date(`${todayStr()}T00:00:00`).getDay(); // 0=일 1=월 2=화 3=수 4=목
   const warningMemberIds = new Set();
-  if (thisWeekQualifies && todayDow >= 3) {
-    const monTue = thisWeekSessionsSoFar.slice(0, 2);
-    if (monTue.length === 2) {
-      members.forEach((m) => {
-        const bothMissed = monTue.every((s) => {
-          const excused = absenceExcuses.some((e) => e.date === s.date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason));
-          if (excused) return false;
-          const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
-          const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
-          return !(dur !== null && dur >= 30);
-        });
-        if (bothMissed) warningMemberIds.add(m.id);
+  if (thisWeekQualifies && todayDow >= 3 && thisWeekSessionsSoFar.length > 0) {
+    members.forEach((m) => {
+      const relevant = thisWeekSessionsSoFar.filter((s) => !absenceExcuses.some((e) => e.date === s.date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason)));
+      if (relevant.length === 0) return; // 지금까지의 날짜가 전부 출장/휴가 사유면 경고 대상 아님
+      const attendedAny = relevant.some((s) => {
+        const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
+        const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
+        return dur !== null && dur >= 30;
       });
-    }
+      if (!attendedAny) warningMemberIds.add(m.id);
+    });
   }
 
   const isCurrentMonth = ms === monthStr(new Date());
@@ -1399,7 +1439,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       )}
                     </span>
                     <Stamp role={r.role} size={24} tilt={0} /><span className="truncate" style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>
-                    {isCurrentMonth && warningMemberIds.has(r.id) && <span title="이번 주 월·화 모두 미참석 — 벌칙유의" className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0" style={{ background: '#3A2213', color: '#F0A87C' }}>⚠️ 벌칙유의</span>}
+                    {isCurrentMonth && warningMemberIds.has(r.id) && <span title="이번 주 열린 독서일을 지금까지 모두 결석 — 벌칙유의" className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0" style={{ background: '#3A2213', color: '#F0A87C' }}>⚠️ 벌칙유의</span>}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {penaltyByMember[r.id]?.pending > 0 && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}><Gavel size={10} /> 벌칙 대상 {penaltyByMember[r.id].pending}</span>}
@@ -1618,10 +1658,24 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
 
 /* ---------------- 출석관리 (간사 전용) ---------------- */
 /* ---------------- 회계 (총무 관리) ---------------- */
-function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, currentMember, reload, requestDelete }) {
+function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, currentMember, reload, requestDelete, showToast }) {
   const [cursor, setCursor] = useState(new Date());
   const monthKey = `${cursor.getFullYear()}-${pad(cursor.getMonth() + 1)}`;
   const shift = (delta) => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1));
+
+  // 카드 접기/펼치기
+  const [duesOpen, setDuesOpen] = useState(true);
+  const [dinnerOpen, setDinnerOpen] = useState(true);
+  const [expenseOpen, setExpenseOpen] = useState(true);
+  const SectionHeader = ({ title, open, onToggle, right }) => (
+    <div className="flex items-center justify-between">
+      <button onClick={onToggle} className="flex items-center gap-1.5">
+        {open ? <ChevronUp size={15} style={{ color: MUTE }} /> : <ChevronDown size={15} style={{ color: MUTE }} />}
+        <span className="text-sm font-semibold" style={{ color: INK }}>{title}</span>
+      </button>
+      {right}
+    </div>
+  );
 
   const [defaultAmount, setDefaultAmount] = useState('5000');
   const duesForMonth = duesPayments.filter((d) => d.month === monthKey);
@@ -1671,6 +1725,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
       else await insertRow('dues_payments', { id: uid('dp'), member_id: m.id, month: monthKey, amount: amt, paid: true, paid_at: new Date().toISOString() });
     }
     await reload();
+    showToast?.('일괄 납부 처리했어요.', 'success');
   };
 
   const [expDate, setExpDate] = useState(todayStr());
@@ -1683,6 +1738,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
     await insertRow('expenses', { id: uid('ex'), date: expDate, description: expDesc.trim(), amount: parseInt(expAmount, 10) || 0, recorded_by: currentMember?.name || '', created_at: new Date().toISOString() });
     await reload();
     setExpDesc(''); setExpAmount('');
+    showToast?.('지출 내역을 등록했어요.', 'success');
   };
   const removeExpense = async (id) => { await deleteRow('expenses', 'id', id); await reload(); };
 
@@ -1699,6 +1755,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
     await insertRow('expenses', { id: uid('ex'), date: dinnerDate, description: `회식 ${nextDinnerRound}차`, amount: parseInt(dinnerAmount, 10) || 0, recorded_by: currentMember?.name || '', created_at: new Date().toISOString() });
     await reload();
     setDinnerAmount('');
+    showToast?.(`회식 ${nextDinnerRound}차를 등록했어요.`, 'success');
   };
 
   // 식당명 수정
@@ -1812,9 +1869,11 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
     try {
       await generateAllCollections();
       setDinnerActionMsg('');
+      showToast?.('최종 부담액을 생성했어요.', 'success');
     } catch (err) {
       console.error(err);
       setDinnerActionMsg('부담금 생성에 실패했어요. Supabase에 dinner_collections 테이블이 만들어져 있는지 확인해 주세요.');
+      showToast?.('부담금 생성에 실패했어요.', 'error');
     }
   };
 
@@ -1831,7 +1890,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
     .map((m) => ({ member: m, ...finalMemberTotalsMap[m.id] }))
     .sort((a, b) => b.amount - a.amount);
 
-  // 미납자 명단 복사 (회비 + 회식비 미납 내역 함께)
+  // 미납자 명단 공유 (회비 + 회식비 미납 내역 함께) — 모바일에서는 공유 시트, 아니면 클립보드 복사
   const [duesCopied, setDuesCopied] = useState(false);
   const copyUnpaidList = async () => {
     const unpaidNames = members.filter((m) => !getDues(m.id)?.paid).map((m) => m.name);
@@ -1841,8 +1900,21 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
       .map((m) => `${m.name} ${fmtWon(unpaidDinnerByMember[m.id])}`);
     const dinnerBlock = dinnerLines.length ? `\n\n[회식비 미납]\n${dinnerLines.join('\n')}` : '';
     const text = `[${cursor.getFullYear()}.${cursor.getMonth() + 1}]\n${duesLine}${dinnerBlock}`;
-    try { await navigator.clipboard.writeText(text); setDuesCopied(true); setTimeout(() => setDuesCopied(false), 2000); } catch (err) {}
+    if (navigator.share) {
+      try { await navigator.share({ text }); return; } catch (err) { /* 공유 취소 시 아무 것도 안 함 */ return; }
+    }
+    try { await navigator.clipboard.writeText(text); setDuesCopied(true); setTimeout(() => setDuesCopied(false), 2000); showToast?.('미납자 명단을 복사했어요.', 'success'); } catch (err) { showToast?.('복사에 실패했어요.', 'error'); }
   };
+
+  // 월별 수입·지출 추이 (최근 6개월)
+  const trendMonths = Array.from({ length: 6 }).map((_, i) => { const d = new Date(cursor.getFullYear(), cursor.getMonth() - 5 + i, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; });
+  const trendStats = trendMonths.map((mk) => {
+    const income = duesPayments.filter((d) => d.paid && d.month === mk).reduce((sum, d) => sum + Number(d.amount), 0)
+      + dinnerCollections.filter((c) => c.paid && expenses.find((e) => e.id === c.expense_id)?.date.startsWith(mk)).reduce((sum, c) => sum + Number(c.amount), 0);
+    const expense = expenses.filter((e) => e.date.startsWith(mk)).reduce((sum, e) => sum + Number(e.amount), 0);
+    return { mk, income, expense };
+  });
+  const trendMax = Math.max(1, ...trendStats.flatMap((t) => [t.income, t.expense]));
 
   return (
     <div className="space-y-4">
@@ -1873,14 +1945,36 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
       </Card>
 
       <Card>
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-sm font-semibold" style={{ color: INK }}>회비 납부 현황</div>
+        <div className="text-sm font-semibold mb-3" style={{ color: INK }}>월별 수입·지출 추이 (최근 6개월)</div>
+        <div className="flex items-end justify-between gap-1.5" style={{ height: 96 }}>
+          {trendStats.map((t) => (
+            <div key={t.mk} className="flex-1 flex items-end justify-center gap-1" style={{ height: '100%' }}>
+              <div className="rounded-t-sm" style={{ width: 9, height: `${Math.max(2, (t.income / trendMax) * 100)}%`, background: '#7FDCCF' }} title={`수입 ${fmtWon(t.income)}`} />
+              <div className="rounded-t-sm" style={{ width: 9, height: `${Math.max(2, (t.expense / trendMax) * 100)}%`, background: '#F0A87C' }} title={`지출 ${fmtWon(t.expense)}`} />
+            </div>
+          ))}
+        </div>
+        <div className="flex items-center justify-between mt-1.5">
+          {trendStats.map((t) => (
+            <span key={t.mk} className="flex-1 text-center text-[10px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{t.mk.slice(5)}월</span>
+          ))}
+        </div>
+        <div className="flex items-center gap-3 mt-2 pt-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+          <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="inline-block rounded-sm" style={{ width: 8, height: 8, background: '#7FDCCF' }} /> 수입</span>
+          <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="inline-block rounded-sm" style={{ width: 8, height: 8, background: '#F0A87C' }} /> 지출</span>
+        </div>
+      </Card>
+
+      <Card>
+        <SectionHeader title="회비 납부 현황" open={duesOpen} onToggle={() => setDuesOpen((v) => !v)} right={
           <div className="flex items-center gap-1.5">
             <span className="text-xs" style={{ color: MUTE }}>기본 금액</span>
             <input type="number" value={defaultAmount} onChange={(e) => setDefaultAmount(e.target.value)} className="w-20 rounded-lg border px-2 py-1 text-xs outline-none" style={inputStyle} />
           </div>
-        </div>
-        <div className="space-y-1.5">
+        } />
+        {duesOpen && (
+          <>
+        <div className="space-y-1.5 mt-2">
           {members.map((m) => {
             const d = getDues(m.id);
             const paid = d?.paid;
@@ -1905,13 +1999,16 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
           <PrimaryBtn onClick={bulkPayAll} disabled={unpaidCount === 0} icon={Check}>미납 {unpaidCount}명 일괄 납부 처리</PrimaryBtn>
           <button onClick={copyUnpaidList} className="w-full rounded-xl py-2 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: duesCopied ? '#7FDCCF' : MUTE }}>{duesCopied ? '복사했어요 ✓' : '미납자 명단 복사'}</button>
         </div>
+          </>
+        )}
       </Card>
 
       <Card className="space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="text-sm font-semibold" style={{ color: INK }}>회식비 정산</div>
+        <SectionHeader title="회식비 정산" open={dinnerOpen} onToggle={() => setDinnerOpen((v) => !v)} right={
           <input type="date" value={dinnerDate} onChange={(e) => setDinnerDate(e.target.value)} className="rounded-lg border px-2 py-1 text-xs outline-none" style={inputStyle} />
-        </div>
+        } />
+        {dinnerOpen && (
+          <>
         {dinnerExpenses.length > 0 && (
           <div className="space-y-2" style={{ borderTop: `1px solid ${ROW_LINE}`, paddingTop: 8 }}>
             {dinnerSettlements.map((s) => {
@@ -1998,7 +2095,10 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
             {dinnerActionMsg && <p className="text-xs text-center" style={{ color: '#F0A87C' }}>{dinnerActionMsg}</p>}
             {finalMemberTotals.length > 0 && (
               <div className="pt-2 mt-1" style={{ borderTop: `1px dashed ${ROW_LINE}` }}>
-                <div className="text-xs font-semibold mb-2" style={{ color: INK }}>회식 최종 정산표 (차수별 부담액 · 합계)</div>
+                <div className="flex items-center gap-1.5 mb-2">
+                  <span className="text-xs font-semibold" style={{ color: INK }}>회식 최종 정산표 (차수별 부담액 · 합계)</span>
+                  {finalMemberTotals.every((f) => f.paid) && <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: '#12302C', color: '#7FDCCF' }}>정산 완료 ✓</span>}
+                </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
                     <thead>
@@ -2037,10 +2137,14 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
           <input type="number" value={dinnerAmount} onChange={(e) => setDinnerAmount(e.target.value)} placeholder="금액" className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
           <PrimaryBtn onClick={addDinnerRound} icon={Plus}>추가</PrimaryBtn>
         </div>
+          </>
+        )}
       </Card>
 
       <Card className="space-y-2">
-        <div className="text-sm font-semibold" style={{ color: INK }}>지출 내역</div>
+        <SectionHeader title="지출 내역" open={expenseOpen} onToggle={() => setExpenseOpen((v) => !v)} />
+        {expenseOpen && (
+          <>
         <div className="flex gap-2">
           <input type="date" value={expDate} onChange={(e) => setExpDate(e.target.value)} className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
           <input value={expDesc} onChange={(e) => setExpDesc(e.target.value)} placeholder="내역 (예: 간식비)" className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
@@ -2064,6 +2168,8 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
             </div>
           ))}
         </div>
+          </>
+        )}
       </Card>
     </div>
   );
