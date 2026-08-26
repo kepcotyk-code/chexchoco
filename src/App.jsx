@@ -1658,6 +1658,10 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
 
   // 일괄 납부 처리 — 이번 달 미납 회원 전체를 각자 현재 금액(또는 기본 금액)으로 완납 처리
   const unpaidCount = members.filter((m) => !getDues(m.id)?.paid).length;
+
+  // 멤버별 미납 회식비 합계 (전체 기간, 회비와는 별개로 회비 카드에 참고 표시)
+  const unpaidDinnerByMember = {};
+  dinnerCollections.forEach((c) => { if (!c.paid) unpaidDinnerByMember[c.member_id] = (unpaidDinnerByMember[c.member_id] || 0) + Number(c.amount); });
   const bulkPayAll = async () => {
     for (const m of members) {
       const existing = getDues(m.id);
@@ -1827,13 +1831,16 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
     .map((m) => ({ member: m, ...finalMemberTotalsMap[m.id] }))
     .sort((a, b) => b.amount - a.amount);
 
-  // 미납자 명단 복사
+  // 미납자 명단 복사 (회비 + 회식비 미납 내역 함께)
   const [duesCopied, setDuesCopied] = useState(false);
   const copyUnpaidList = async () => {
     const unpaidNames = members.filter((m) => !getDues(m.id)?.paid).map((m) => m.name);
-    const text = unpaidNames.length
-      ? `[${cursor.getFullYear()}.${cursor.getMonth() + 1} 회비 미납자]\n${unpaidNames.join(', ')}`
-      : `${cursor.getFullYear()}.${cursor.getMonth() + 1} 회비 미납자가 없어요 🎉`;
+    const duesLine = unpaidNames.length ? `[회비 미납]\n${unpaidNames.join(', ')}` : '[회비 미납] 없음 🎉';
+    const dinnerLines = members
+      .filter((m) => unpaidDinnerByMember[m.id] > 0)
+      .map((m) => `${m.name} ${fmtWon(unpaidDinnerByMember[m.id])}`);
+    const dinnerBlock = dinnerLines.length ? `\n\n[회식비 미납]\n${dinnerLines.join('\n')}` : '';
+    const text = `[${cursor.getFullYear()}.${cursor.getMonth() + 1}]\n${duesLine}${dinnerBlock}`;
     try { await navigator.clipboard.writeText(text); setDuesCopied(true); setTimeout(() => setDuesCopied(false), 2000); } catch (err) {}
   };
 
@@ -1879,7 +1886,13 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
             const paid = d?.paid;
             return (
               <div key={m.id} className="flex items-center justify-between py-1.5" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-                <div className="flex items-center gap-2 min-w-0"><Stamp role={m.role} size={24} tilt={0} /><span className="text-sm truncate" style={{ color: INK }}>{m.name}</span></div>
+                <div className="flex items-center gap-2 min-w-0">
+                  <Stamp role={m.role} size={24} tilt={0} />
+                  <div className="min-w-0">
+                    <span className="text-sm truncate" style={{ color: INK }}>{m.name}</span>
+                    {unpaidDinnerByMember[m.id] > 0 && <div className="text-[10px]" style={{ color: '#F0A87C' }}>회식비 미납 {fmtWon(unpaidDinnerByMember[m.id])}</div>}
+                  </div>
+                </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <input type="number" value={getAmountValue(m)} onChange={(e) => setAmountEdits((prev) => ({ ...prev, [m.id]: e.target.value }))} onBlur={() => saveAmount(m.id)} className="w-20 rounded-lg border px-2 py-1 text-xs outline-none text-right" style={inputStyle} />
                   <button onClick={() => togglePaid(m.id)} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: paid ? '#12302C' : NEUTRAL_BG, color: paid ? '#7FDCCF' : MUTE }}>{paid ? <Check size={12} /> : null} {paid ? '완납' : '미납'}</button>
