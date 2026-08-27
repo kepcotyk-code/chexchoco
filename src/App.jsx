@@ -1306,7 +1306,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 <div key={w} className="text-center text-[11px] font-semibold" style={{ color: '#8A6B3F', fontFamily: "'IBM Plex Mono', monospace" }}>{w}</div>
               ))}
             </div>
-            <div className="grid grid-cols-7 gap-1.5">
+            <div className="grid grid-cols-7 gap-1">
               {monthGrid.map((date, idx) => {
                 if (!date) return <div key={idx} />;
                 const day = parseInt(date.slice(8, 10), 10);
@@ -1320,39 +1320,31 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const hasPersonal = absenceExcuses.some((e) => e.date === date && e.reason === '개인일정');
                 const birthdayFolks = members.filter((m) => m.birthday && mdOf(m.birthday) === date.slice(5, 10));
                 const hasBirthday = birthdayFolks.length > 0;
-                // 책 페이지 색: 특별 유형이 있으면 그 색, 없으면 크림색 종이
-                const cellBg = metas.length === 0 ? '#F7EFDC' : metas.length === 1 ? metas[0].bg : `linear-gradient(to bottom, ${metas.map((m, i) => `${m.bg} ${(i * 100) / metas.length}%, ${m.bg} ${((i + 1) * 100) / metas.length}%`).join(', ')})`;
-                const textColor = metas.length > 0 ? metas[0].color : '#5C3D22';
-                let borderStyle = isToday ? '2px solid #C0392B' : selectedDate === date ? `2px solid ${textColor}` : `1px dashed rgba(90,54,26,0.4)`;
-                if (hasFeast) borderStyle = '1.5px solid rgba(192, 57, 43, 0.6)';
+                // 크림색 카드 위에서 잘 보이도록, 유형별로 진한 톤을 따로 지정 (기존 DAY_TYPES 색은 어두운 배경용이라 그대로 쓰면 흐릿해짐)
+                const LIGHT_TYPE_COLOR = { '휴무일': '#B5453A', '토론회': '#8A6B1E' };
+                const bookColor = metas.length > 0 ? (LIGHT_TYPE_COLOR[metas[0].key] || '#5C3D22') : '#8B6A42';
+                const numberColor = metas.length > 0 ? (LIGHT_TYPE_COLOR[metas[0].key] || '#5C3D22') : '#5C3D22';
                 return (
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
-                    className="relative aspect-square flex items-center justify-center text-xs"
-                    style={{
-                      background: cellBg,
-                      color: textColor,
-                      border: borderStyle,
-                      borderRadius: '10px 10px 4px 4px',
-                      fontWeight: 500,
-                      boxShadow: [
-                        '0 1px 1px rgba(90,54,26,0.15)',
-                        'inset 3px 0 3px -3px rgba(90,54,26,0.4)',
-                        'inset -3px 0 3px -3px rgba(90,54,26,0.4)',
-                        '1.5px 1.5px 0 -0.5px rgba(90,54,26,0.14)',
-                      ].join(', '),
-                    }}>
-                    <span className="absolute top-0 right-0" style={{ width: 0, height: 0, borderStyle: 'solid', borderWidth: '0 6px 6px 0', borderColor: `transparent rgba(90,54,26,0.22) transparent transparent`, borderTopRightRadius: 3 }} />
-                    <span className="relative" style={{ fontFamily: "'Fraunces', serif" }}>{day}</span>
+                    className="relative aspect-square flex items-center justify-center">
+                    {(isToday || selectedDate === date || hasFeast) && (
+                      <span className="absolute inset-0.5 rounded-lg" style={{
+                        border: isToday ? '1.5px solid #C0392B' : hasFeast ? '1.5px dashed rgba(192,57,43,0.55)' : `1.5px solid ${numberColor}`,
+                        background: selectedDate === date ? 'rgba(90,54,26,0.07)' : 'transparent',
+                      }} />
+                    )}
+                    <BookOpen size={24} strokeWidth={1.3} style={{ color: bookColor, opacity: 0.5 }} />
+                    <span className="absolute text-[11px] font-semibold" style={{ color: numberColor, fontFamily: "'Fraunces', serif" }}>{day}</span>
                     {hasReading && (
                       <span className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ transform: 'rotate(-11deg)' }}>
-                        <span className="rounded-full flex items-center justify-center" style={{ width: '82%', height: '82%', border: '1.5px solid rgba(178,58,52,0.68)', color: 'rgba(178,58,52,0.75)', fontSize: 8, fontWeight: 800, mixBlendMode: 'multiply' }}>독서</span>
+                        <span className="rounded-full flex items-center justify-center" style={{ width: '70%', height: '70%', border: '1.3px solid rgba(178,58,52,0.68)', color: 'rgba(178,58,52,0.8)', fontSize: 7, fontWeight: 800, mixBlendMode: 'multiply' }}>독서</span>
                       </span>
                     )}
-                    {hasBirthday && <span className="absolute top-0.5 right-0.5" style={{ color: '#C0392B' }}><Cake size={10} /></span>}
+                    {hasBirthday && <span className="absolute top-0 right-0" style={{ color: '#C0392B' }}><Cake size={10} /></span>}
                     {(hasExempt || hasPersonal) && (
-                      <span className="absolute bottom-1 flex items-center gap-0.5">
-                        {hasExempt && <span className="rounded-full" style={{ width: 4, height: 4, background: textColor }} />}
-                        {hasPersonal && <span className="rounded-full" style={{ width: 4, height: 4, background: 'transparent', border: `1px solid ${textColor}` }} />}
+                      <span className="absolute bottom-0 flex items-center gap-0.5">
+                        {hasExempt && <span className="rounded-full" style={{ width: 4, height: 4, background: numberColor }} />}
+                        {hasPersonal && <span className="rounded-full" style={{ width: 4, height: 4, background: 'transparent', border: `1px solid ${numberColor}` }} />}
                       </span>
                     )}
                   </button>
@@ -1366,7 +1358,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               ) : t.key === '독서일' ? (
                 <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 10, height: 10, border: '1.3px solid rgba(178,58,52,0.7)' }} /> {t.label} (도장)</span>
               ) : (
-                <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: t.color }} /> {t.label}</span>
+                <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: t.key === '휴무일' ? '#B5453A' : t.key === '토론회' ? '#8A6B1E' : t.color }} /> {t.label}</span>
               ))}
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: INK }} /> 출장·휴가</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: 'transparent', border: `1px solid ${INK}` }} /> 개인일정</span>
