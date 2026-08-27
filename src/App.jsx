@@ -362,6 +362,7 @@ export default function App() {
             </button>
           </div>
           <h1 className="text-center text-4xl font-semibold" style={{ fontFamily: "'Fraunces', serif", color: INK }}>책스초코</h1>
+          <div className="text-xs text-center mt-1 italic" style={{ color: '#C9A97E' }}>오늘도 책 한 페이지, 성장 한 스푼 🤎</div>
         </div>
 
         {recentPhotos.length > 0 && (
