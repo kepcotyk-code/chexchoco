@@ -1044,9 +1044,6 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
                   ) : (
                     <div className="text-sm text-center" style={{ color: MUTE }}>
                       체크인 {fmtTime(myCheckin.check_in_at)}{myCheckin.checkin_loc_ok === false && ' 📍'} → 체크아웃 {fmtTime(myCheckin.check_out_at)}{myCheckin.checkout_loc_ok === false && ' 📍'}
-                      <div className="font-semibold mt-1" style={{ color: durationMin(myCheckin.check_in_at, myCheckin.check_out_at) >= 30 ? '#7FDCCF' : '#F0A87C' }}>
-                        {durationMin(myCheckin.check_in_at, myCheckin.check_out_at)}분 · {durationMin(myCheckin.check_in_at, myCheckin.check_out_at) >= 30 ? '출석 인정' : '30분 미만'}
-                      </div>
                       {(myCheckin.checkin_loc_ok === false || myCheckin.checkout_loc_ok === false) && <div className="text-[11px] mt-1" style={{ color: '#F0A87C' }}>📍 모임장소 위치가 확인되지 않았어요 (출석 인정에는 영향 없어요)</div>}
                       <button onClick={resetMyCheckin} className="text-xs underline underline-offset-2 mt-2 block mx-auto" style={{ color: MUTE }}>초기화</button>
                     </div>
@@ -1177,13 +1174,15 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   const shift = (delta) => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1));
 
   const sortedSessionsInMonth = [...sessionsInMonth].sort((a, b) => a.date.localeCompare(b.date));
+  // 30분 이상: 정상 출석(1일), 15분 이상 30분 미만: 절반 인정(0.5일), 그 외: 결석
+  const attendanceStatus = (dur) => (dur !== null && dur >= 30 ? 'full' : dur !== null && dur >= 15 ? 'half' : 'none');
   const rowsUnranked = members.map((m) => {
     const flags = sortedSessionsInMonth.map((s) => {
       const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
       const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
-      return dur !== null && dur >= 30;
+      return attendanceStatus(dur);
     });
-    const present = flags.filter(Boolean).length;
+    const present = flags.reduce((sum, f) => sum + (f === 'full' ? 1 : f === 'half' ? 0.5 : 0), 0);
     return { ...m, present, flags, rate: totalDays ? Math.round((present / totalDays) * 100) : 0 };
   }).sort((a, b) => b.rate - a.rate);
   let lastRate = null; let lastRank = 0;
@@ -1201,7 +1200,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   const totalSessions = sessions.filter((s) => s.date <= todayStr()).length;
   const allTimeRows = withRank(members.map((m) => {
     let present = 0;
-    sessions.forEach((s) => { const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id); const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null; if (dur !== null && dur >= 30) present++; });
+    sessions.forEach((s) => { const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id); const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null; const st = attendanceStatus(dur); present += st === 'full' ? 1 : st === 'half' ? 0.5 : 0; });
     return { ...m, present, rate: totalSessions ? Math.round((present / totalSessions) * 100) : 0 };
   }).sort((a, b) => b.rate - a.rate), 'rate');
 
@@ -1444,8 +1443,12 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                   <div className="flex items-center gap-2 shrink-0">
                     {penaltyByMember[r.id]?.pending > 0 && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}><Gavel size={10} /> 벌칙 대상 {penaltyByMember[r.id].pending}</span>}
                     <div className="flex items-center gap-1">
-                      {r.flags.map((attended, i) => (
-                        <span key={i} className="rounded-full" style={{ width: 9, height: 9, background: attended ? '#7FDCCF' : 'transparent', border: attended ? 'none' : `1.5px solid ${LINE}` }} />
+                      {r.flags.map((status, i) => (
+                        <span key={i} className="rounded-full" style={{
+                          width: 9, height: 9,
+                          background: status === 'full' ? '#7FDCCF' : status === 'half' ? 'linear-gradient(90deg, #7FDCCF 50%, transparent 50%)' : 'transparent',
+                          border: status === 'full' ? 'none' : `1.5px solid ${LINE}`,
+                        }} />
                       ))}
                     </div>
                     <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{totalDays} · {r.rate}%</span>
