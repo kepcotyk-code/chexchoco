@@ -107,6 +107,8 @@ const monthStr = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)
 const fmtTime = (iso) => { if (!iso) return '—'; const d = new Date(iso); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const fmtDate = (s) => { if (!s) return ''; const [y, m, d] = s.slice(0, 10).split('-'); return `${y}.${m}.${d}`; };
 const durationMin = (inIso, outIso) => { if (!inIso || !outIso) return null; return Math.round((new Date(outIso) - new Date(inIso)) / 60000); };
+// 30분 이상: 1일 인정, 15분 이상 30분 미만: 0.5일 인정, 그 외: 0
+const attendanceEquivalent = (dur) => (dur !== null && dur >= 30 ? 1 : dur !== null && dur >= 15 ? 0.5 : 0);
 const fmtHM = (totalMin) => { const h = Math.floor(totalMin / 60); const m = totalMin % 60; if (h === 0) return `${m}분`; if (m === 0) return `${h}시간`; return `${h}시간 ${m}분`; };
 const mdOf = (birthday) => birthday ? birthday.slice(5, 10) : null;
 const fmtMD = (md) => { const [m, d] = md.split('-'); return `${parseInt(m, 10)}월 ${parseInt(d, 10)}일`; };
@@ -178,7 +180,8 @@ const weekKeyOf = (dateStr) => {
 const EXEMPT_EXCUSE_REASONS = ['출장', '휴가']; // 벌칙 계산에서 제외되는 사유 (개인일정은 제외 안 됨 — 결석으로 그대로 집계)
 
 // 주 단위 벌칙 계산: 월~목 4일이 모두 독서일이고 이미 다 지난 "완결된 주"에서,
-// 4일 전부 결석(30분 미만 포함)한 멤버만 그 주의 벌칙 대상이 됨.
+// 4일간 출석 환산 합계가 1일 미만(= 30분 이상 출석이 하나도 없고, 15~29분 출석도 2회 미만)인 멤버만 그 주의 벌칙 대상이 됨.
+// (15~29분 출석은 0.5일로 환산되므로, 그런 날이 2번이면 1일로 합산되어 벌칙에서 제외됨)
 const computeWeeklyPenalties = (sessions, checkins, calendarDays, members, absenceExcuses = []) => {
   const eligible = filterPenaltyEligibleSessions(sessions.filter((s) => s.date < todayStr()), calendarDays);
   const byWeek = {};
@@ -191,12 +194,12 @@ const computeWeeklyPenalties = (sessions, checkins, calendarDays, members, absen
         // 출장/휴가 사유가 있는 날만 그 멤버에 한해 판단 대상에서 제외 (개인일정은 제외 안 됨)
         const relevant = sorted.filter((s) => !absenceExcuses.some((e) => e.date === s.date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason)));
         if (relevant.length === 0) return { member: m, missedAll: false }; // 4일 다 사유 있으면 벌칙 대상 아님
-        const attendedAny = relevant.some((s) => {
+        const totalEquivalent = relevant.reduce((sum, s) => {
           const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
           const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
-          return dur !== null && dur >= 30;
-        });
-        return { member: m, missedAll: !attendedAny };
+          return sum + attendanceEquivalent(dur);
+        }, 0);
+        return { member: m, missedAll: totalEquivalent < 1 };
       });
       return { weekKey: wk, sessions: sorted, results };
     })
@@ -1174,10 +1177,12 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   const shift = (delta) => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1));
 
   const sortedSessionsInMonth = [...sessionsInMonth].sort((a, b) => a.date.localeCompare(b.date));
-  // 30분 이상: 정상 출석(1일), 15분 이상 30분 미만: 절반 인정(0.5일), 그 외: 결석
+  // 30분 이상: 정상 출석(1일), 15분 이상 30분 미만: 절반 인정(0.5일), 출장/휴가 사유: 별도 표시, 그 외: 결석
   const attendanceStatus = (dur) => (dur !== null && dur >= 30 ? 'full' : dur !== null && dur >= 15 ? 'half' : 'none');
   const rowsUnranked = members.map((m) => {
     const flags = sortedSessionsInMonth.map((s) => {
+      const excused = absenceExcuses.some((e) => e.date === s.date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason));
+      if (excused) return 'excused';
       const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
       const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
       return attendanceStatus(dur);
@@ -1225,12 +1230,12 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     members.forEach((m) => {
       const relevant = thisWeekSessionsSoFar.filter((s) => !absenceExcuses.some((e) => e.date === s.date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason)));
       if (relevant.length === 0) return; // 지금까지의 날짜가 전부 출장/휴가 사유면 경고 대상 아님
-      const attendedAny = relevant.some((s) => {
+      const totalEquivalent = relevant.reduce((sum, s) => {
         const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
         const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
-        return dur !== null && dur >= 30;
-      });
-      if (!attendedAny) warningMemberIds.add(m.id);
+        return sum + attendanceEquivalent(dur);
+      }, 0);
+      if (totalEquivalent < 1) warningMemberIds.add(m.id);
     });
   }
 
@@ -1425,7 +1430,13 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
           )}
 
           <Card>
-            <div className="text-sm font-semibold mb-3" style={{ color: INK }}>이번 달 출석률</div>
+            <div className="text-sm font-semibold mb-2" style={{ color: INK }}>이번 달 출석률</div>
+            <div className="flex flex-wrap items-center gap-2.5 mb-3">
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FDCCF' }} />출석</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: 'linear-gradient(90deg, #7FDCCF 50%, transparent 50%)', border: `1px solid ${LINE}` }} />15~29분</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FA8D9' }} />출장·휴가</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
+            </div>
             <div className="space-y-3">
               {rows.map((r, idx) => (
                 <div key={r.id} className="flex items-center justify-between gap-3">
@@ -1446,9 +1457,9 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       {r.flags.map((status, i) => (
                         <span key={i} className="rounded-full" style={{
                           width: 9, height: 9,
-                          background: status === 'full' ? '#7FDCCF' : status === 'half' ? 'linear-gradient(90deg, #7FDCCF 50%, transparent 50%)' : 'transparent',
-                          border: status === 'full' ? 'none' : `1.5px solid ${LINE}`,
-                        }} />
+                          background: status === 'full' ? '#7FDCCF' : status === 'half' ? 'linear-gradient(90deg, #7FDCCF 50%, transparent 50%)' : status === 'excused' ? '#7FA8D9' : 'transparent',
+                          border: status === 'full' || status === 'excused' ? 'none' : `1.5px solid ${LINE}`,
+                        }} title={status === 'excused' ? '출장·휴가' : undefined} />
                       ))}
                     </div>
                     <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{totalDays} · {r.rate}%</span>
