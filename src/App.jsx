@@ -362,6 +362,7 @@ export default function App() {
             </button>
           </div>
           <h1 className="text-center text-4xl font-semibold" style={{ fontFamily: "'Fraunces', serif", color: INK }}>책스초코</h1>
+          <div className="text-xs text-center mt-1 italic" style={{ color: '#C9A97E' }}>오늘도 책 한 페이지, 성장 한 스푼 🤎</div>
         </div>
 
         {recentPhotos.length > 0 && (
@@ -1281,16 +1282,15 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <button onClick={() => shift(1)} className="p-1.5" style={{ color: MUTE }}><ChevronRight size={18} /></button>
             </div>
             <div className="text-xs text-center" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>이번 달 출결 {totalDays}회</div>
-            <div className="text-[11px] text-center mt-1 italic" style={{ color: '#C9A97E' }}>오늘도 책 한 페이지, 성장 한 스푼 🍫</div>
           </Card>
 
-          <Card style={{ background: 'radial-gradient(ellipse at 50% 0%, #3A2A17 0%, #241B10 70%)', borderColor: '#4A3620' }}>
-            <div className="grid grid-cols-7 gap-1.5 mb-2.5">
+          <Card style={{ background: '#231B10' }}>
+            <div className="grid grid-cols-7 gap-1 mb-2">
               {['일', '월', '화', '수', '목', '금', '토'].map((w) => (
-                <div key={w} className="text-center text-[11px] font-bold py-0.5 rounded-md" style={{ color: '#3A2410', background: '#D8B27C', fontFamily: "'IBM Plex Mono', monospace" }}>{w}</div>
+                <div key={w} className="text-center text-[11px]" style={{ color: '#C9A97E', fontFamily: "'IBM Plex Mono', monospace" }}>{w}</div>
               ))}
             </div>
-            <div className="grid grid-cols-7 gap-1.5">
+            <div className="grid grid-cols-7 gap-1">
               {monthGrid.map((date, idx) => {
                 if (!date) return <div key={idx} />;
                 const day = parseInt(date.slice(8, 10), 10);
@@ -1302,26 +1302,24 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const dow = new Date(`${date}T00:00:00`).getDay();
                 const isWeekendDefault = metas.length === 0 && (dow === 0 || dow === 5 || dow === 6);
                 const bgStyle = metas.length === 0
-                  ? (hasFeast ? dayTypeMeta('회식일').bg : (isWeekendDefault ? 'linear-gradient(135deg, #8F5B32, #5C3419)' : 'linear-gradient(135deg, #7A4B26, #4A2C15)'))
+                  ? (hasFeast ? dayTypeMeta('회식일').bg : (isWeekendDefault ? '#3D2E1B' : '#332714'))
                   : metas.length === 1 ? metas[0].bg
                   : `linear-gradient(to bottom, ${metas.map((m, i) => `${m.bg} ${(i * 100) / metas.length}%, ${m.bg} ${((i + 1) * 100) / metas.length}%`).join(', ')})`;
-                const textColor = metas.length > 0 ? metas[0].color : (hasFeast ? dayTypeMeta('회식일').color : '#F2EEE3');
+                const textColor = metas.length > 0 ? metas[0].color : (hasFeast ? dayTypeMeta('회식일').color : '#D9C7A8');
                 const hasExempt = absenceExcuses.some((e) => e.date === date && EXEMPT_EXCUSE_REASONS.includes(e.reason));
                 const hasPersonal = absenceExcuses.some((e) => e.date === date && e.reason === '개인일정');
                 const birthdayFolks = members.filter((m) => m.birthday && mdOf(m.birthday) === date.slice(5, 10));
                 const hasBirthday = birthdayFolks.length > 0;
-                let borderStyle = isToday ? '2px solid #EFC94C' : selectedDate === date ? `2px solid ${textColor}` : '1.5px solid rgba(0,0,0,0.35)';
-                if (hasFeast) borderStyle = '1.5px solid rgba(229, 72, 77, 0.75)';
-                // 첵스 초코볼처럼 보이도록: 크리스크로스 와플 텍스처 + 큐브 베벨(입체) 음영
-                const waffleTexture = 'repeating-linear-gradient(45deg, rgba(0,0,0,0.22) 0px, rgba(0,0,0,0.22) 1px, transparent 1px, transparent 5px), repeating-linear-gradient(-45deg, rgba(0,0,0,0.22) 0px, rgba(0,0,0,0.22) 1px, transparent 1px, transparent 5px)';
+                let borderStyle = isToday ? `1.5px solid ${INK}` : selectedDate === date ? `1.5px solid ${textColor}` : '1px solid transparent';
+                if (hasFeast) borderStyle = '1.5px solid rgba(229, 72, 77, 0.65)';
                 return (
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
-                    className="relative aspect-square flex items-center justify-center text-xs font-bold rounded-md"
-                    style={{ background: `${waffleTexture}, ${bgStyle}`, color: textColor, border: borderStyle, boxShadow: 'inset 1.5px 1.5px 0 rgba(255,255,255,0.18), inset -1.5px -1.5px 0 rgba(0,0,0,0.4)' }}>
-                    <span className="relative" style={{ fontFamily: "'Fraunces', serif", textShadow: '0 1px 1px rgba(0,0,0,0.4)' }}>{day}</span>
-                    {hasBirthday && <span className="absolute top-1 right-1" style={{ color: '#FFD27A' }}><Cake size={10} /></span>}
+                    className="relative aspect-square rounded-lg flex items-center justify-center text-xs"
+                    style={{ background: bgStyle, color: textColor, border: borderStyle }}>
+                    {day}
+                    {hasBirthday && <span className="absolute top-0.5 right-0.5" style={{ color: '#F0A87C' }}><Cake size={10} /></span>}
                     {(hasExempt || hasPersonal) && (
-                      <span className="absolute bottom-1.5 flex items-center gap-0.5">
+                      <span className="absolute bottom-1 flex items-center gap-0.5">
                         {hasExempt && <span className="rounded-full" style={{ width: 4, height: 4, background: textColor }} />}
                         {hasPersonal && <span className="rounded-full" style={{ width: 4, height: 4, background: 'transparent', border: `1px solid ${textColor}` }} />}
                       </span>
@@ -1339,7 +1337,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               ))}
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: INK }} /> 출장·휴가</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: 'transparent', border: `1px solid ${INK}` }} /> 개인일정</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#B99A6B' }} /> 금·토·일(제외)</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#3D2E1B' }} /> 금·토·일(제외)</span>
             </div>
             {(() => {
               const todayExcused = members.filter((m) => absenceExcuses.some((e) => e.date === todayStr() && e.member_id === m.id));
