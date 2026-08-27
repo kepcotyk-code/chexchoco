@@ -32,6 +32,8 @@ const roleMeta = (role) => ROLES.find((r) => r.key === role) || ROLES[3];
 const roleOrder = (role) => { const i = ROLES.findIndex((r) => r.key === role); return i === -1 ? 99 : i; };
 
 const READING_SEGMENT_COLORS = ['#F5DE8A', '#EFC94C', '#D9A93A', '#C99A2E', '#B98A22', '#A97A18'];
+// 펼쳐진 책 스티커 모양 (둥근 하단 + 위쪽 가운데가 살짝 꺼진 두 페이지)
+const BOOK_PATH = 'M20,18 Q20,8 30,10 Q42,13 50,20 Q58,13 70,10 Q80,8 80,18 L80,60 Q80,80 50,80 Q20,80 20,60 Z';
 const DAY_TYPES = [
   { key: '독서일', label: '독서일', color: '#7FA8D9', bg: '#1E2A38' },
   { key: '휴무일', label: '휴무일', color: '#E0958C', bg: '#3A2420' },
@@ -1323,37 +1325,29 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 // 크림색 카드 위에서 잘 보이도록, 유형별로 진한 톤(테두리)과 옅은 페이지색을 따로 지정
                 const LIGHT_TYPE_COLOR = { '휴무일': '#B5453A', '토론회': '#8A6B1E' };
                 const PAGE_TINT = { '휴무일': '#F7E2DE', '토론회': '#F6EFC9' };
-                const edgeColor = metas.length > 0 ? (LIGHT_TYPE_COLOR[metas[0].key] || '#8B6A42') : '#8B6A42';
+                const edgeColor = metas.length > 0 ? (LIGHT_TYPE_COLOR[metas[0].key] || '#5A3A1E') : '#5A3A1E';
                 const numberColor = metas.length > 0 ? (LIGHT_TYPE_COLOR[metas[0].key] || '#5C3D22') : '#5C3D22';
-                const pageColor = metas.length > 0 ? (PAGE_TINT[metas[0].key] || '#FDFBF2') : '#FDFBF2';
+                const pageColor = metas.length > 0 ? (PAGE_TINT[metas[0].key] || '#FEFCF4') : '#FEFCF4';
                 return (
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
                     className="relative aspect-square flex items-center justify-center">
-                    {/* 펼쳐진 책: 흰 페이지 + 가운데 접힌 책등 그림자 + 갈색 표지 테두리 */}
-                    <span className="absolute inset-0" style={{
-                      background: pageColor,
-                      border: `1.5px solid ${edgeColor}`,
-                      borderRadius: '5px 5px 7px 7px / 5px 5px 9px 9px',
-                      boxShadow: [
-                        'inset 5px 0 5px -4px rgba(90,54,26,0.45)',
-                        'inset -5px 0 5px -4px rgba(90,54,26,0.45)',
-                        '0 1.5px 1.5px rgba(90,54,26,0.18)',
-                      ].join(', '),
-                    }} />
-                    <span className="absolute top-0.5 bottom-0.5 left-1/2" style={{ width: 1, background: `rgba(90,54,26,0.3)`, transform: 'translateX(-50%)' }} />
+                    {/* 펼쳐진 책 스티커: 둥근 하단 + 안쪽 점선 스티치 + 아주 희미한 책등 중앙선 */}
+                    <svg viewBox="0 0 100 90" className="absolute inset-0 w-full h-full" style={{ overflow: 'visible' }}>
+                      <path d={BOOK_PATH} fill={pageColor} stroke={edgeColor} strokeWidth="6" strokeLinejoin="round" />
+                      <path d={BOOK_PATH} fill="none" stroke={edgeColor} strokeWidth="1.3" strokeDasharray="3 2.6" opacity="0.55"
+                        transform="translate(50 49) scale(0.82) translate(-50 -49)" />
+                      <line x1="50" y1="23" x2="50" y2="77" stroke={edgeColor} strokeWidth="1" opacity="0.12" />
+                    </svg>
                     {(isToday || selectedDate === date) && (
-                      <span className="absolute inset-0" style={{
-                        border: isToday ? '2px solid #C0392B' : `2px solid ${numberColor}`,
-                        borderRadius: '5px 5px 7px 7px / 5px 5px 9px 9px',
-                      }} />
+                      <span className="absolute inset-0" style={{ border: isToday ? '2px solid #C0392B' : `2px solid ${numberColor}`, borderRadius: '30% / 26%' }} />
                     )}
                     {hasFeast && (
-                      <span className="absolute -inset-0.5" style={{ border: '1.5px dashed rgba(192,57,43,0.6)', borderRadius: '7px 7px 9px 9px / 7px 7px 11px 11px' }} />
+                      <span className="absolute -inset-0.5" style={{ border: '1.5px dashed rgba(192,57,43,0.6)', borderRadius: '30% / 26%' }} />
                     )}
                     <span className="relative text-sm font-semibold" style={{ color: numberColor, fontFamily: "'Fraunces', serif" }}>{day}</span>
                     {hasReading && (
                       <span className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ transform: 'rotate(-11deg)' }}>
-                        <span className="rounded-full flex items-center justify-center" style={{ width: '68%', height: '68%', border: '1.3px solid rgba(178,58,52,0.68)', color: 'rgba(178,58,52,0.8)', fontSize: 7, fontWeight: 800, mixBlendMode: 'multiply' }}>독서</span>
+                        <span className="rounded-full flex items-center justify-center" style={{ width: '64%', height: '64%', border: '1.3px solid rgba(178,58,52,0.68)', color: 'rgba(178,58,52,0.8)', fontSize: 7, fontWeight: 800, mixBlendMode: 'multiply' }}>독서</span>
                       </span>
                     )}
                     {hasBirthday && <span className="absolute top-0 right-0.5" style={{ color: '#C0392B' }}><Cake size={10} /></span>}
