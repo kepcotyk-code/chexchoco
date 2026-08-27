@@ -1284,10 +1284,26 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             <div className="text-[11px] text-center mt-1 italic" style={{ color: '#C9A97E' }}>오늘도 책 한 페이지, 성장 한 스푼 🍫</div>
           </Card>
 
-          <Card style={{ background: 'radial-gradient(ellipse at 50% 0%, #3A2A17 0%, #241B10 70%)', borderColor: '#4A3620' }}>
-            <div className="grid grid-cols-7 gap-1.5 mb-2.5">
+          <Card style={{
+            background: [
+              'radial-gradient(circle at 14% 18%, rgba(90,54,26,0.4) 0 5px, transparent 6px)',
+              'radial-gradient(circle at 42% 10%, rgba(90,54,26,0.32) 0 4px, transparent 5px)',
+              'radial-gradient(circle at 74% 20%, rgba(90,54,26,0.4) 0 6px, transparent 7px)',
+              'radial-gradient(circle at 90% 42%, rgba(90,54,26,0.32) 0 4px, transparent 5px)',
+              'radial-gradient(circle at 8% 48%, rgba(90,54,26,0.34) 0 5px, transparent 6px)',
+              'radial-gradient(circle at 58% 46%, rgba(90,54,26,0.3) 0 4px, transparent 5px)',
+              'radial-gradient(circle at 30% 70%, rgba(90,54,26,0.34) 0 5px, transparent 6px)',
+              'radial-gradient(circle at 68% 78%, rgba(90,54,26,0.3) 0 4px, transparent 5px)',
+              'radial-gradient(circle at 92% 85%, rgba(90,54,26,0.34) 0 5px, transparent 6px)',
+              'radial-gradient(circle at 15% 92%, rgba(90,54,26,0.28) 0 4px, transparent 5px)',
+              'radial-gradient(ellipse at 50% 50%, #F8F1E2 0%, #EFE1C3 55%, #DEC593 100%)',
+            ].join(', '),
+            border: '5px solid #F2EADA',
+            borderRadius: 26,
+          }}>
+            <div className="grid grid-cols-7 gap-1 mb-2">
               {['일', '월', '화', '수', '목', '금', '토'].map((w) => (
-                <div key={w} className="text-center text-[11px] font-bold py-0.5 rounded-md" style={{ color: '#3A2410', background: '#D8B27C', fontFamily: "'IBM Plex Mono', monospace" }}>{w}</div>
+                <div key={w} className="text-center text-[11px] font-semibold" style={{ color: '#8A6B3F', fontFamily: "'IBM Plex Mono', monospace" }}>{w}</div>
               ))}
             </div>
             <div className="grid grid-cols-7 gap-1.5">
@@ -1296,32 +1312,35 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const day = parseInt(date.slice(8, 10), 10);
                 const types = getDayTypes(date);
                 const hasFeast = types.includes('회식일');
-                const fillTypes = types.filter((t) => t !== '회식일'); // 회식일은 테두리로만 표시, 채우기 색에서는 제외
+                const hasReading = types.includes('독서일'); // 독서일은 도장 형태로 별도 표시
+                const fillTypes = types.filter((t) => t !== '회식일' && t !== '독서일');
                 const metas = fillTypes.map(dayTypeMeta).filter(Boolean);
                 const isToday = date === todayStr();
-                const dow = new Date(`${date}T00:00:00`).getDay();
-                const isWeekendDefault = metas.length === 0 && (dow === 0 || dow === 5 || dow === 6);
-                const bgStyle = metas.length === 0
-                  ? (hasFeast ? dayTypeMeta('회식일').bg : (isWeekendDefault ? 'linear-gradient(135deg, #8F5B32, #5C3419)' : 'linear-gradient(135deg, #7A4B26, #4A2C15)'))
-                  : metas.length === 1 ? metas[0].bg
-                  : `linear-gradient(to bottom, ${metas.map((m, i) => `${m.bg} ${(i * 100) / metas.length}%, ${m.bg} ${((i + 1) * 100) / metas.length}%`).join(', ')})`;
-                const textColor = metas.length > 0 ? metas[0].color : (hasFeast ? dayTypeMeta('회식일').color : '#F2EEE3');
                 const hasExempt = absenceExcuses.some((e) => e.date === date && EXEMPT_EXCUSE_REASONS.includes(e.reason));
                 const hasPersonal = absenceExcuses.some((e) => e.date === date && e.reason === '개인일정');
                 const birthdayFolks = members.filter((m) => m.birthday && mdOf(m.birthday) === date.slice(5, 10));
                 const hasBirthday = birthdayFolks.length > 0;
-                let borderStyle = isToday ? '2px solid #EFC94C' : selectedDate === date ? `2px solid ${textColor}` : '1.5px solid rgba(0,0,0,0.35)';
-                if (hasFeast) borderStyle = '1.5px solid rgba(229, 72, 77, 0.75)';
-                // 첵스 초코볼처럼 보이도록: 크리스크로스 와플 텍스처 + 큐브 베벨(입체) 음영
-                const waffleTexture = 'repeating-linear-gradient(45deg, rgba(0,0,0,0.22) 0px, rgba(0,0,0,0.22) 1px, transparent 1px, transparent 5px), repeating-linear-gradient(-45deg, rgba(0,0,0,0.22) 0px, rgba(0,0,0,0.22) 1px, transparent 1px, transparent 5px)';
+                // 책 페이지 색: 특별 유형이 있으면 그 색, 없으면 크림색 종이
+                const cellBg = metas.length === 0 ? '#F7EFDC' : metas.length === 1 ? metas[0].bg : `linear-gradient(to bottom, ${metas.map((m, i) => `${m.bg} ${(i * 100) / metas.length}%, ${m.bg} ${((i + 1) * 100) / metas.length}%`).join(', ')})`;
+                const textColor = metas.length > 0 ? metas[0].color : '#5C3D22';
+                let borderStyle = isToday ? '2px solid #C0392B' : selectedDate === date ? `2px solid ${textColor}` : `1px dashed rgba(90,54,26,0.4)`;
+                if (hasFeast) borderStyle = '1.5px solid rgba(192, 57, 43, 0.6)';
                 return (
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
-                    className="relative aspect-square flex items-center justify-center text-xs font-bold rounded-md"
-                    style={{ background: `${waffleTexture}, ${bgStyle}`, color: textColor, border: borderStyle, boxShadow: 'inset 1.5px 1.5px 0 rgba(255,255,255,0.18), inset -1.5px -1.5px 0 rgba(0,0,0,0.4)' }}>
-                    <span className="relative" style={{ fontFamily: "'Fraunces', serif", textShadow: '0 1px 1px rgba(0,0,0,0.4)' }}>{day}</span>
-                    {hasBirthday && <span className="absolute top-1 right-1" style={{ color: '#FFD27A' }}><Cake size={10} /></span>}
+                    className="relative aspect-square flex items-center justify-center text-xs font-semibold"
+                    style={{ background: cellBg, color: textColor, border: borderStyle, borderRadius: '9px 9px 3px 3px', boxShadow: '0 1px 1px rgba(90,54,26,0.15)' }}>
+                    {metas.length === 0 && !hasReading && (
+                      <span className="absolute top-1 bottom-1 left-1/2" style={{ width: 1, background: 'rgba(90,54,26,0.25)', transform: 'translateX(-50%)' }} />
+                    )}
+                    <span className="relative" style={{ fontFamily: "'Fraunces', serif" }}>{day}</span>
+                    {hasReading && (
+                      <span className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ transform: 'rotate(-11deg)' }}>
+                        <span className="rounded-full flex items-center justify-center" style={{ width: '82%', height: '82%', border: '1.5px solid rgba(178,58,52,0.68)', color: 'rgba(178,58,52,0.75)', fontSize: 8, fontWeight: 800, mixBlendMode: 'multiply' }}>독서</span>
+                      </span>
+                    )}
+                    {hasBirthday && <span className="absolute top-0.5 right-0.5" style={{ color: '#C0392B' }}><Cake size={10} /></span>}
                     {(hasExempt || hasPersonal) && (
-                      <span className="absolute bottom-1.5 flex items-center gap-0.5">
+                      <span className="absolute bottom-1 flex items-center gap-0.5">
                         {hasExempt && <span className="rounded-full" style={{ width: 4, height: 4, background: textColor }} />}
                         {hasPersonal && <span className="rounded-full" style={{ width: 4, height: 4, background: 'transparent', border: `1px solid ${textColor}` }} />}
                       </span>
@@ -1334,12 +1353,13 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Cake size={11} style={{ color: '#F0A87C' }} /> 생일</span>
               {DAY_TYPES.map((t) => t.key === '회식일' ? (
                 <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'transparent', border: '1.5px solid rgba(229, 72, 77, 0.65)' }} /> {t.label}</span>
+              ) : t.key === '독서일' ? (
+                <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 10, height: 10, border: '1.3px solid rgba(178,58,52,0.7)' }} /> {t.label} (도장)</span>
               ) : (
                 <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: t.color }} /> {t.label}</span>
               ))}
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: INK }} /> 출장·휴가</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: 'transparent', border: `1px solid ${INK}` }} /> 개인일정</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#B99A6B' }} /> 금·토·일(제외)</span>
             </div>
             {(() => {
               const todayExcused = members.filter((m) => absenceExcuses.some((e) => e.date === todayStr() && e.member_id === m.id));
