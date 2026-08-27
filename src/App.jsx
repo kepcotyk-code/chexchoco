@@ -362,6 +362,7 @@ export default function App() {
             </button>
           </div>
           <h1 className="text-center text-4xl font-semibold" style={{ fontFamily: "'Fraunces', serif", color: INK }}>책스초코</h1>
+          <div className="text-xs text-center mt-1 italic" style={{ color: '#C9A97E' }}>오늘도 책 한 페이지, 성장 한 스푼 🤎</div>
         </div>
 
         {recentPhotos.length > 0 && (
@@ -1281,7 +1282,6 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <button onClick={() => shift(1)} className="p-1.5" style={{ color: MUTE }}><ChevronRight size={18} /></button>
             </div>
             <div className="text-xs text-center" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>이번 달 출결 {totalDays}회</div>
-            <div className="text-[11px] text-center mt-1 italic" style={{ color: '#C9A97E' }}>오늘도 책 한 페이지, 성장 한 스푼 🍫</div>
           </Card>
 
           <Card style={{
@@ -1327,11 +1327,21 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 if (hasFeast) borderStyle = '1.5px solid rgba(192, 57, 43, 0.6)';
                 return (
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
-                    className="relative aspect-square flex items-center justify-center text-xs font-semibold"
-                    style={{ background: cellBg, color: textColor, border: borderStyle, borderRadius: '9px 9px 3px 3px', boxShadow: '0 1px 1px rgba(90,54,26,0.15)' }}>
-                    {metas.length === 0 && !hasReading && (
-                      <span className="absolute top-1 bottom-1 left-1/2" style={{ width: 1, background: 'rgba(90,54,26,0.25)', transform: 'translateX(-50%)' }} />
-                    )}
+                    className="relative aspect-square flex items-center justify-center text-xs"
+                    style={{
+                      background: cellBg,
+                      color: textColor,
+                      border: borderStyle,
+                      borderRadius: '10px 10px 4px 4px',
+                      fontWeight: 500,
+                      boxShadow: [
+                        '0 1px 1px rgba(90,54,26,0.15)',
+                        'inset 3px 0 3px -3px rgba(90,54,26,0.4)',
+                        'inset -3px 0 3px -3px rgba(90,54,26,0.4)',
+                        '1.5px 1.5px 0 -0.5px rgba(90,54,26,0.14)',
+                      ].join(', '),
+                    }}>
+                    <span className="absolute top-0 right-0" style={{ width: 0, height: 0, borderStyle: 'solid', borderWidth: '0 6px 6px 0', borderColor: `transparent rgba(90,54,26,0.22) transparent transparent`, borderTopRightRadius: 3 }} />
                     <span className="relative" style={{ fontFamily: "'Fraunces', serif" }}>{day}</span>
                     {hasReading && (
                       <span className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ transform: 'rotate(-11deg)' }}>
