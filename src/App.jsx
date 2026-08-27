@@ -1320,29 +1320,45 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const hasPersonal = absenceExcuses.some((e) => e.date === date && e.reason === '개인일정');
                 const birthdayFolks = members.filter((m) => m.birthday && mdOf(m.birthday) === date.slice(5, 10));
                 const hasBirthday = birthdayFolks.length > 0;
-                // 크림색 카드 위에서 잘 보이도록, 유형별로 진한 톤을 따로 지정 (기존 DAY_TYPES 색은 어두운 배경용이라 그대로 쓰면 흐릿해짐)
+                // 크림색 카드 위에서 잘 보이도록, 유형별로 진한 톤(테두리)과 옅은 페이지색을 따로 지정
                 const LIGHT_TYPE_COLOR = { '휴무일': '#B5453A', '토론회': '#8A6B1E' };
-                const bookColor = metas.length > 0 ? (LIGHT_TYPE_COLOR[metas[0].key] || '#5C3D22') : '#8B6A42';
+                const PAGE_TINT = { '휴무일': '#F7E2DE', '토론회': '#F6EFC9' };
+                const edgeColor = metas.length > 0 ? (LIGHT_TYPE_COLOR[metas[0].key] || '#8B6A42') : '#8B6A42';
                 const numberColor = metas.length > 0 ? (LIGHT_TYPE_COLOR[metas[0].key] || '#5C3D22') : '#5C3D22';
+                const pageColor = metas.length > 0 ? (PAGE_TINT[metas[0].key] || '#FDFBF2') : '#FDFBF2';
                 return (
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
                     className="relative aspect-square flex items-center justify-center">
-                    {(isToday || selectedDate === date || hasFeast) && (
-                      <span className="absolute inset-0.5 rounded-lg" style={{
-                        border: isToday ? '1.5px solid #C0392B' : hasFeast ? '1.5px dashed rgba(192,57,43,0.55)' : `1.5px solid ${numberColor}`,
-                        background: selectedDate === date ? 'rgba(90,54,26,0.07)' : 'transparent',
+                    {/* 펼쳐진 책: 흰 페이지 + 가운데 접힌 책등 그림자 + 갈색 표지 테두리 */}
+                    <span className="absolute inset-0" style={{
+                      background: pageColor,
+                      border: `1.5px solid ${edgeColor}`,
+                      borderRadius: '5px 5px 7px 7px / 5px 5px 9px 9px',
+                      boxShadow: [
+                        'inset 5px 0 5px -4px rgba(90,54,26,0.45)',
+                        'inset -5px 0 5px -4px rgba(90,54,26,0.45)',
+                        '0 1.5px 1.5px rgba(90,54,26,0.18)',
+                      ].join(', '),
+                    }} />
+                    <span className="absolute top-0.5 bottom-0.5 left-1/2" style={{ width: 1, background: `rgba(90,54,26,0.3)`, transform: 'translateX(-50%)' }} />
+                    {(isToday || selectedDate === date) && (
+                      <span className="absolute inset-0" style={{
+                        border: isToday ? '2px solid #C0392B' : `2px solid ${numberColor}`,
+                        borderRadius: '5px 5px 7px 7px / 5px 5px 9px 9px',
                       }} />
                     )}
-                    <BookOpen size={24} strokeWidth={1.3} style={{ color: bookColor, opacity: 0.5 }} />
-                    <span className="absolute text-[11px] font-semibold" style={{ color: numberColor, fontFamily: "'Fraunces', serif" }}>{day}</span>
+                    {hasFeast && (
+                      <span className="absolute -inset-0.5" style={{ border: '1.5px dashed rgba(192,57,43,0.6)', borderRadius: '7px 7px 9px 9px / 7px 7px 11px 11px' }} />
+                    )}
+                    <span className="relative text-sm font-semibold" style={{ color: numberColor, fontFamily: "'Fraunces', serif" }}>{day}</span>
                     {hasReading && (
                       <span className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ transform: 'rotate(-11deg)' }}>
-                        <span className="rounded-full flex items-center justify-center" style={{ width: '70%', height: '70%', border: '1.3px solid rgba(178,58,52,0.68)', color: 'rgba(178,58,52,0.8)', fontSize: 7, fontWeight: 800, mixBlendMode: 'multiply' }}>독서</span>
+                        <span className="rounded-full flex items-center justify-center" style={{ width: '68%', height: '68%', border: '1.3px solid rgba(178,58,52,0.68)', color: 'rgba(178,58,52,0.8)', fontSize: 7, fontWeight: 800, mixBlendMode: 'multiply' }}>독서</span>
                       </span>
                     )}
-                    {hasBirthday && <span className="absolute top-0 right-0" style={{ color: '#C0392B' }}><Cake size={10} /></span>}
+                    {hasBirthday && <span className="absolute top-0 right-0.5" style={{ color: '#C0392B' }}><Cake size={10} /></span>}
                     {(hasExempt || hasPersonal) && (
-                      <span className="absolute bottom-0 flex items-center gap-0.5">
+                      <span className="absolute bottom-0.5 flex items-center gap-0.5">
                         {hasExempt && <span className="rounded-full" style={{ width: 4, height: 4, background: numberColor }} />}
                         {hasPersonal && <span className="rounded-full" style={{ width: 4, height: 4, background: 'transparent', border: `1px solid ${numberColor}` }} />}
                       </span>
