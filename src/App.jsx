@@ -1275,10 +1275,13 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
           <Card>
             <div className="flex items-center justify-between mb-1">
               <button onClick={() => shift(-1)} className="p-1.5" style={{ color: MUTE }}><ChevronLeft size={18} /></button>
-              <div className="font-semibold" style={{ color: INK, fontFamily: "'Fraunces', serif" }}>{cursor.getFullYear()}년 {cursor.getMonth() + 1}월</div>
+              <div className="flex items-center gap-1.5 font-semibold" style={{ color: INK, fontFamily: "'Fraunces', serif" }}>
+                <BookOpen size={15} style={{ color: '#F0A87C' }} />{cursor.getFullYear()}년 {cursor.getMonth() + 1}월
+              </div>
               <button onClick={() => shift(1)} className="p-1.5" style={{ color: MUTE }}><ChevronRight size={18} /></button>
             </div>
             <div className="text-xs text-center" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>이번 달 출결 {totalDays}회</div>
+            <div className="text-[11px] text-center mt-1 italic" style={{ color: '#C9A97E' }}>오늘도 책 한 페이지, 성장 한 스푼 🍫</div>
           </Card>
 
           <Card>
@@ -1305,13 +1308,17 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const hasPersonal = absenceExcuses.some((e) => e.date === date && e.reason === '개인일정');
                 const birthdayFolks = members.filter((m) => m.birthday && mdOf(m.birthday) === date.slice(5, 10));
                 const hasBirthday = birthdayFolks.length > 0;
-                let borderStyle = isToday ? `1.5px solid ${INK}` : selectedDate === date ? `1.5px solid ${textColor}` : '1px solid transparent';
+                let borderStyle = isToday ? `1.5px solid ${INK}` : selectedDate === date ? `1.5px solid ${textColor}` : (metas.length === 0 && !hasFeast ? `1px dashed ${LINE}` : '1px solid transparent');
                 if (hasFeast) borderStyle = '1.5px solid rgba(229, 72, 77, 0.65)';
+                const cellBg = metas.length === 0 && !hasFeast && !isWeekendDefault ? '#2A2013' : bgStyle;
                 return (
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
-                    className="relative aspect-square rounded-lg flex items-center justify-center text-xs"
-                    style={{ background: bgStyle, color: textColor, border: borderStyle }}>
-                    {day}
+                    className="relative aspect-square flex items-center justify-center text-xs"
+                    style={{ background: cellBg, color: textColor, border: borderStyle, borderRadius: '9px 9px 3px 3px' }}>
+                    {metas.length === 0 && !hasFeast && (
+                      <span className="absolute top-1 bottom-1 left-1/2" style={{ width: 1, background: LINE, transform: 'translateX(-50%)' }} />
+                    )}
+                    <span className="relative">{day}</span>
                     {hasBirthday && <span className="absolute top-0.5 right-0.5" style={{ color: '#F0A87C' }}><Cake size={10} /></span>}
                     {(hasExempt || hasPersonal) && (
                       <span className="absolute bottom-1 flex items-center gap-0.5">
