@@ -1301,26 +1301,27 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const isToday = date === todayStr();
                 const dow = new Date(`${date}T00:00:00`).getDay();
                 const isWeekendDefault = metas.length === 0 && (dow === 0 || dow === 5 || dow === 6);
-                const isPlain = metas.length === 0 && !hasFeast; // 특별한 지정 없는 기본 날짜 — 크림색 책갈피 스티커로 표시
                 const bgStyle = metas.length === 0
-                  ? (hasFeast ? dayTypeMeta('회식일').bg : (isWeekendDefault ? '#B99A6B' : '#E8D2A6'))
+                  ? (hasFeast ? dayTypeMeta('회식일').bg : (isWeekendDefault ? 'linear-gradient(135deg, #8F5B32, #5C3419)' : 'linear-gradient(135deg, #7A4B26, #4A2C15)'))
                   : metas.length === 1 ? metas[0].bg
                   : `linear-gradient(to bottom, ${metas.map((m, i) => `${m.bg} ${(i * 100) / metas.length}%, ${m.bg} ${((i + 1) * 100) / metas.length}%`).join(', ')})`;
-                const textColor = metas.length > 0 ? metas[0].color : (hasFeast ? dayTypeMeta('회식일').color : '#4A2E12');
+                const textColor = metas.length > 0 ? metas[0].color : (hasFeast ? dayTypeMeta('회식일').color : '#F2EEE3');
                 const hasExempt = absenceExcuses.some((e) => e.date === date && EXEMPT_EXCUSE_REASONS.includes(e.reason));
                 const hasPersonal = absenceExcuses.some((e) => e.date === date && e.reason === '개인일정');
                 const birthdayFolks = members.filter((m) => m.birthday && mdOf(m.birthday) === date.slice(5, 10));
                 const hasBirthday = birthdayFolks.length > 0;
-                let borderStyle = isToday ? '2px solid #EFC94C' : selectedDate === date ? `2px solid ${isPlain ? '#4A2E12' : textColor}` : (isPlain ? '1.5px dashed #8B5E34' : '1.5px solid transparent');
+                let borderStyle = isToday ? '2px solid #EFC94C' : selectedDate === date ? `2px solid ${textColor}` : '1.5px solid rgba(0,0,0,0.35)';
                 if (hasFeast) borderStyle = '1.5px solid rgba(229, 72, 77, 0.75)';
+                // 첵스 초코볼처럼 보이도록: 크리스크로스 와플 텍스처 + 큐브 베벨(입체) 음영
+                const waffleTexture = 'repeating-linear-gradient(45deg, rgba(0,0,0,0.22) 0px, rgba(0,0,0,0.22) 1px, transparent 1px, transparent 5px), repeating-linear-gradient(-45deg, rgba(0,0,0,0.22) 0px, rgba(0,0,0,0.22) 1px, transparent 1px, transparent 5px)';
                 return (
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
-                    className="relative aspect-square flex items-center justify-center text-xs font-bold"
-                    style={{ background: bgStyle, color: textColor, border: borderStyle, clipPath: 'polygon(0 0, 100% 0, 100% 78%, 50% 100%, 0 78%)', boxShadow: isPlain ? '0 1px 0 rgba(0,0,0,0.15)' : 'none' }}>
-                    <span className="relative" style={{ fontFamily: "'Fraunces', serif" }}>{day}</span>
-                    {hasBirthday && <span className="absolute top-1 right-1.5" style={{ color: '#C0392B' }}><Cake size={10} /></span>}
+                    className="relative aspect-square flex items-center justify-center text-xs font-bold rounded-md"
+                    style={{ background: `${waffleTexture}, ${bgStyle}`, color: textColor, border: borderStyle, boxShadow: 'inset 1.5px 1.5px 0 rgba(255,255,255,0.18), inset -1.5px -1.5px 0 rgba(0,0,0,0.4)' }}>
+                    <span className="relative" style={{ fontFamily: "'Fraunces', serif", textShadow: '0 1px 1px rgba(0,0,0,0.4)' }}>{day}</span>
+                    {hasBirthday && <span className="absolute top-1 right-1" style={{ color: '#FFD27A' }}><Cake size={10} /></span>}
                     {(hasExempt || hasPersonal) && (
-                      <span className="absolute bottom-2.5 flex items-center gap-0.5">
+                      <span className="absolute bottom-1.5 flex items-center gap-0.5">
                         {hasExempt && <span className="rounded-full" style={{ width: 4, height: 4, background: textColor }} />}
                         {hasPersonal && <span className="rounded-full" style={{ width: 4, height: 4, background: 'transparent', border: `1px solid ${textColor}` }} />}
                       </span>
