@@ -1284,11 +1284,13 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             <div className="text-[11px] text-center mt-1 italic" style={{ color: '#C9A97E' }}>오늘도 책 한 페이지, 성장 한 스푼 🍫</div>
           </Card>
 
-          <Card>
-            <div className="grid grid-cols-7 gap-1 mb-2">
-              {['일', '월', '화', '수', '목', '금', '토'].map((w) => <div key={w} className="text-center text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{w}</div>)}
+          <Card style={{ background: 'radial-gradient(ellipse at 50% 0%, #3A2A17 0%, #241B10 70%)', borderColor: '#4A3620' }}>
+            <div className="grid grid-cols-7 gap-1.5 mb-2.5">
+              {['일', '월', '화', '수', '목', '금', '토'].map((w) => (
+                <div key={w} className="text-center text-[11px] font-bold py-0.5 rounded-md" style={{ color: '#3A2410', background: '#D8B27C', fontFamily: "'IBM Plex Mono', monospace" }}>{w}</div>
+              ))}
             </div>
-            <div className="grid grid-cols-7 gap-1">
+            <div className="grid grid-cols-7 gap-1.5">
               {monthGrid.map((date, idx) => {
                 if (!date) return <div key={idx} />;
                 const day = parseInt(date.slice(8, 10), 10);
@@ -1299,31 +1301,28 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const isToday = date === todayStr();
                 const dow = new Date(`${date}T00:00:00`).getDay();
                 const isWeekendDefault = metas.length === 0 && (dow === 0 || dow === 5 || dow === 6);
+                const isPlain = metas.length === 0 && !hasFeast; // 특별한 지정 없는 기본 날짜 — 크림색 책갈피 스티커로 표시
                 const bgStyle = metas.length === 0
-                  ? (hasFeast ? dayTypeMeta('회식일').bg : (isWeekendDefault ? WEEKEND_BG : NEUTRAL_BG))
+                  ? (hasFeast ? dayTypeMeta('회식일').bg : (isWeekendDefault ? '#B99A6B' : '#E8D2A6'))
                   : metas.length === 1 ? metas[0].bg
                   : `linear-gradient(to bottom, ${metas.map((m, i) => `${m.bg} ${(i * 100) / metas.length}%, ${m.bg} ${((i + 1) * 100) / metas.length}%`).join(', ')})`;
-                const textColor = metas.length > 0 ? metas[0].color : (hasFeast ? dayTypeMeta('회식일').color : (isWeekendDefault ? WEEKEND_TEXT : MUTE));
+                const textColor = metas.length > 0 ? metas[0].color : (hasFeast ? dayTypeMeta('회식일').color : '#4A2E12');
                 const hasExempt = absenceExcuses.some((e) => e.date === date && EXEMPT_EXCUSE_REASONS.includes(e.reason));
                 const hasPersonal = absenceExcuses.some((e) => e.date === date && e.reason === '개인일정');
                 const birthdayFolks = members.filter((m) => m.birthday && mdOf(m.birthday) === date.slice(5, 10));
                 const hasBirthday = birthdayFolks.length > 0;
-                let borderStyle = isToday ? `1.5px solid ${INK}` : selectedDate === date ? `1.5px solid ${textColor}` : (metas.length === 0 && !hasFeast ? `1px dashed ${LINE}` : '1px solid transparent');
-                if (hasFeast) borderStyle = '1.5px solid rgba(229, 72, 77, 0.65)';
-                const cellBg = metas.length === 0 && !hasFeast && !isWeekendDefault ? '#2A2013' : bgStyle;
+                let borderStyle = isToday ? '2px solid #EFC94C' : selectedDate === date ? `2px solid ${isPlain ? '#4A2E12' : textColor}` : (isPlain ? '1.5px dashed #8B5E34' : '1.5px solid transparent');
+                if (hasFeast) borderStyle = '1.5px solid rgba(229, 72, 77, 0.75)';
                 return (
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
-                    className="relative aspect-square flex items-center justify-center text-xs"
-                    style={{ background: cellBg, color: textColor, border: borderStyle, borderRadius: '9px 9px 3px 3px' }}>
-                    {metas.length === 0 && !hasFeast && (
-                      <span className="absolute top-1 bottom-1 left-1/2" style={{ width: 1, background: LINE, transform: 'translateX(-50%)' }} />
-                    )}
-                    <span className="relative">{day}</span>
-                    {hasBirthday && <span className="absolute top-0.5 right-0.5" style={{ color: '#F0A87C' }}><Cake size={10} /></span>}
+                    className="relative aspect-square flex items-center justify-center text-xs font-bold"
+                    style={{ background: bgStyle, color: textColor, border: borderStyle, clipPath: 'polygon(0 0, 100% 0, 100% 78%, 50% 100%, 0 78%)', boxShadow: isPlain ? '0 1px 0 rgba(0,0,0,0.15)' : 'none' }}>
+                    <span className="relative" style={{ fontFamily: "'Fraunces', serif" }}>{day}</span>
+                    {hasBirthday && <span className="absolute top-1 right-1.5" style={{ color: '#C0392B' }}><Cake size={10} /></span>}
                     {(hasExempt || hasPersonal) && (
-                      <span className="absolute bottom-1 flex items-center gap-0.5">
-                        {hasExempt && <span className="rounded-full" style={{ width: 4, height: 4, background: INK }} />}
-                        {hasPersonal && <span className="rounded-full" style={{ width: 4, height: 4, background: 'transparent', border: `1px solid ${INK}` }} />}
+                      <span className="absolute bottom-2.5 flex items-center gap-0.5">
+                        {hasExempt && <span className="rounded-full" style={{ width: 4, height: 4, background: textColor }} />}
+                        {hasPersonal && <span className="rounded-full" style={{ width: 4, height: 4, background: 'transparent', border: `1px solid ${textColor}` }} />}
                       </span>
                     )}
                   </button>
@@ -1339,7 +1338,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               ))}
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: INK }} /> 출장·휴가</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: 'transparent', border: `1px solid ${INK}` }} /> 개인일정</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: WEEKEND_BG, border: `1px solid ${WEEKEND_TEXT}` }} /> 금·토·일(제외)</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#B99A6B' }} /> 금·토·일(제외)</span>
             </div>
             {(() => {
               const todayExcused = members.filter((m) => absenceExcuses.some((e) => e.date === todayStr() && e.member_id === m.id));
