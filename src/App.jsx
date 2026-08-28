@@ -36,7 +36,7 @@ const READING_SEGMENT_COLORS = ['#F5DE8A', '#EFC94C', '#D9A93A', '#C99A2E', '#B9
 const BOOK_PATH = 'M0.0,51.2 Q0.0,12.0 4.0,8.5 Q8.0,5.0 12.0,3.5 Q16.0,2.0 20.0,1.2 Q24.0,0.5 27.0,0.2 Q30.0,0.0 35.0,0.5 Q40.0,1.0 45.0,2.0 Q50.0,3.0 54.0,5.0 Q58.0,7.0 60.0,8.2 Q62.0,9.5 64.0,8.2 Q66.0,7.0 70.0,5.0 Q74.0,3.0 79.0,1.8 Q84.0,0.5 87.0,0.2 Q90.0,0.0 93.0,0.2 Q96.0,0.5 100.0,1.2 Q104.0,2.0 108.0,3.0 Q112.0,4.0 116.0,7.2 Q120.0,10.5 120.0,51.0 Q120.0,91.6 117.0,93.2 Q114.0,94.7 111.0,93.8 Q108.0,93.0 104.0,92.0 Q100.0,91.0 97.0,90.5 Q94.0,90.0 89.0,90.0 Q84.0,90.0 81.0,90.5 Q78.0,91.0 74.0,92.5 Q70.0,94.0 66.0,96.0 Q62.0,98.0 60.0,98.0 Q58.0,98.0 54.0,96.0 Q50.0,94.0 45.5,92.5 Q41.0,91.0 38.0,90.5 Q35.0,90.0 30.0,90.0 Q25.0,90.0 21.5,90.5 Q18.0,91.0 14.0,92.2 Q10.0,93.5 7.0,94.1 Q4.0,94.7 2.0,92.6 Q0.0,90.5 0.0,51.2 Z';
 // 안쪽 점선 스티치 전용 경로 — 단순 축소가 아니라 각 지점에서 테두리와 "일정한 거리"를 유지하도록 계산해서,
 // 가운데 V자 노치처럼 오목한 지점에서도 테두리와 점선이 겹치지 않음
-const BOOK_STITCH_PATH = 'M6.0,51.4 Q6.0,14.7 8.6,12.5 Q11.1,10.2 14.4,9.0 Q17.6,7.8 21.2,7.1 Q24.8,6.5 27.4,6.2 Q30.0,6.0 34.5,6.5 Q39.1,6.9 43.6,7.8 Q48.0,8.7 51.5,10.5 Q55.1,12.2 58.5,14.4 Q62.0,16.6 65.5,14.4 Q68.9,12.2 72.5,10.5 Q76.1,8.7 80.5,7.5 Q85.0,6.4 87.5,6.2 Q90.0,6.0 92.6,6.2 Q95.2,6.5 99.0,7.2 Q102.7,7.9 106.0,8.7 Q109.3,9.5 111.6,11.4 Q114.0,13.4 114.0,50.7 Q114.0,87.9 113.7,88.1 Q113.4,88.3 111.4,87.7 Q109.5,87.2 105.4,86.2 Q101.2,85.1 97.9,84.6 Q94.5,84.0 89.0,84.0 Q83.5,84.0 80.0,84.6 Q76.4,85.2 72.0,86.8 Q67.6,88.5 64.1,90.2 Q60.6,92.0 60.0,92.0 Q59.4,92.0 55.9,90.2 Q52.3,88.4 47.4,86.8 Q42.5,85.2 39.0,84.6 Q35.5,84.0 30.0,84.0 Q24.6,84.0 20.6,84.6 Q16.7,85.1 12.6,86.4 Q8.5,87.7 7.3,87.9 Q6.1,88.2 6.0,88.1 Q6.0,88.1 6.0,51.4 Z';
+const BOOK_STITCH_PATH = 'M6.6,51.4 Q6.6,15.0 9.0,12.9 Q11.4,10.8 14.6,9.6 Q17.8,8.4 21.3,7.7 Q24.9,7.0 27.4,6.8 Q29.9,6.6 34.5,7.1 Q39.0,7.5 43.4,8.4 Q47.8,9.3 51.3,11.0 Q54.8,12.8 58.4,15.0 Q62.0,17.3 65.6,15.0 Q69.2,12.8 72.8,11.0 Q76.3,9.2 80.7,8.1 Q85.1,7.0 87.5,6.8 Q90.0,6.6 92.6,6.8 Q95.1,7.0 98.9,7.7 Q102.6,8.5 105.8,9.2 Q109.0,10.0 111.2,11.8 Q113.4,13.6 113.4,50.6 Q113.4,87.6 113.3,87.6 Q113.3,87.6 111.5,87.1 Q109.7,86.6 105.5,85.6 Q101.3,84.5 97.9,84.0 Q94.5,83.4 89.0,83.4 Q83.5,83.4 79.9,84.0 Q76.3,84.6 71.8,86.3 Q67.4,87.9 63.9,89.7 Q60.4,91.4 60.0,91.4 Q59.6,91.4 56.0,89.6 Q52.5,87.9 47.6,86.2 Q42.6,84.6 39.1,84.0 Q35.5,83.4 30.0,83.4 Q24.5,83.4 20.5,84.0 Q16.5,84.5 12.5,85.8 Q8.4,87.1 7.3,87.3 Q6.3,87.5 6.4,87.7 Q6.6,87.9 6.6,51.4 Z';
 const DAY_TYPES = [
   { key: '독서일', label: '독서일', color: '#7FA8D9', bg: '#1E2A38' },
   { key: '휴무일', label: '휴무일', color: '#E0958C', bg: '#3A2420' },
@@ -1317,7 +1317,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const day = parseInt(date.slice(8, 10), 10);
                 const types = getDayTypes(date);
                 const hasFeast = types.includes('회식일');
-                const hasReading = types.includes('독서일'); // 독서일은 도장 형태로 별도 표시
+                const hasReading = types.includes('독서일') && date < todayStr(); // 지난(이미 지난) 독서일만 접힌 책 모양으로 표시
                 const fillTypes = types.filter((t) => t !== '회식일' && t !== '독서일');
                 const metas = fillTypes.map(dayTypeMeta).filter(Boolean);
                 const isToday = date === todayStr();
@@ -1334,33 +1334,45 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 return (
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
                     className="relative aspect-square flex items-center justify-center">
-                    {/* 펼쳐진 책 스티커: 참고 이미지 실제 윤곽선 좌표를 추출해 재현 (상단 V자 + 하단 물결형 스캘럽) */}
-                    <svg viewBox="0 0 120 98.4" className="absolute inset-0 w-full h-full" style={{ overflow: 'visible' }}>
-                      <path d={BOOK_PATH} fill={pageColor} stroke={edgeColor} strokeWidth="5" strokeLinejoin="round" />
-                      <path d={BOOK_STITCH_PATH} fill="none" stroke={edgeColor} strokeWidth="1.4" strokeDasharray="2.5 2" opacity="0.75" />
-                      <line x1="60" y1="20" x2="60" y2="80" stroke={edgeColor} strokeWidth="1" opacity="0.12" />
-                      {(isToday || selectedDate === date) && (
-                        <path d={BOOK_PATH} fill="none" stroke={isToday ? '#C0392B' : numberColor} strokeWidth="4"
-                          transform="translate(60 49) scale(1.07) translate(-60 -49)" />
-                      )}
-                      {hasFeast && (
-                        <path d={BOOK_PATH} fill="none" stroke="rgba(192,57,43,0.65)" strokeWidth="3" strokeDasharray="4 3"
-                          transform="translate(60 49) scale(1.16) translate(-60 -49)" />
-                      )}
-                    </svg>
-                    <span className="relative text-sm font-semibold" style={{ color: numberColor, fontFamily: "'Fraunces', serif" }}>{day}</span>
-                    {hasReading && (
-                      <span className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ transform: 'rotate(-11deg)' }}>
-                        <span className="rounded-full flex items-center justify-center" style={{ width: '64%', height: '64%', border: '1.3px solid rgba(178,58,52,0.68)', color: 'rgba(178,58,52,0.8)', fontSize: 7, fontWeight: 800, mixBlendMode: 'multiply' }}>독서</span>
-                      </span>
+                    {hasReading ? (
+                      // 지난 독서일: 접힌(닫힌) 책 모양 — 곡선 없는 직선형 가죽 표지 + 점선 스티치 테두리
+                      <svg viewBox="0 0 120 98.4" className="absolute inset-0 w-full h-full" style={{ overflow: 'visible' }}>
+                        <rect x="15" y="8" width="90" height="82" rx="5" fill="#4A2E1C" stroke="#2E1B0F" strokeWidth="2.5" />
+                        <rect x="22" y="15" width="76" height="68" rx="2" fill="none" stroke="#D8B27C" strokeWidth="1.4" strokeDasharray="3 2.4" />
+                        {(isToday || selectedDate === date) && (
+                          <rect x="12" y="5" width="96" height="88" rx="6" fill="none" stroke={isToday ? '#C0392B' : '#D8B27C'} strokeWidth="2.5" />
+                        )}
+                        {hasFeast && (
+                          <rect x="8" y="1" width="104" height="96" rx="8" fill="none" stroke="rgba(192,57,43,0.65)" strokeWidth="2.5" strokeDasharray="4 3" />
+                        )}
+                      </svg>
+                    ) : (
+                      // 그 외: 펼쳐진 책 스티커 (참고 이미지 실제 윤곽선 좌표를 추출해 재현)
+                      <svg viewBox="0 0 120 98.4" className="absolute inset-0 w-full h-full" style={{ overflow: 'visible' }}>
+                        <path d={BOOK_PATH} fill={pageColor} stroke={edgeColor} strokeWidth="5" strokeLinejoin="round" />
+                        <path d={BOOK_STITCH_PATH} fill="none" stroke={edgeColor} strokeWidth="1.5" strokeDasharray="2.8 2.2" opacity="0.78" />
+                        <line x1="60" y1="20" x2="60" y2="80" stroke={edgeColor} strokeWidth="1" opacity="0.12" />
+                        {(isToday || selectedDate === date) && (
+                          <path d={BOOK_PATH} fill="none" stroke={isToday ? '#C0392B' : numberColor} strokeWidth="4"
+                            transform="translate(60 49) scale(1.07) translate(-60 -49)" />
+                        )}
+                        {hasFeast && (
+                          <path d={BOOK_PATH} fill="none" stroke="rgba(192,57,43,0.65)" strokeWidth="3" strokeDasharray="4 3"
+                            transform="translate(60 49) scale(1.16) translate(-60 -49)" />
+                        )}
+                      </svg>
                     )}
+                    <span className="relative text-sm font-semibold" style={{ color: hasReading ? '#F2EEE3' : numberColor, fontFamily: "'Fraunces', serif" }}>{day}</span>
                     {hasBirthday && <span className="absolute top-0 right-0.5" style={{ color: '#C0392B' }}><Cake size={10} /></span>}
-                    {(hasExempt || hasPersonal) && (
-                      <span className="absolute bottom-0.5 flex items-center gap-0.5">
-                        {hasExempt && <span className="rounded-full" style={{ width: 4, height: 4, background: numberColor }} />}
-                        {hasPersonal && <span className="rounded-full" style={{ width: 4, height: 4, background: 'transparent', border: `1px solid ${numberColor}` }} />}
-                      </span>
-                    )}
+                    {(hasExempt || hasPersonal) && (() => {
+                      const dotColor = hasReading ? '#F2EEE3' : numberColor;
+                      return (
+                        <span className="absolute bottom-0.5 flex items-center gap-0.5">
+                          {hasExempt && <span className="rounded-full" style={{ width: 4, height: 4, background: dotColor }} />}
+                          {hasPersonal && <span className="rounded-full" style={{ width: 4, height: 4, background: 'transparent', border: `1px solid ${dotColor}` }} />}
+                        </span>
+                      );
+                    })()}
                   </button>
                 );
               })}
@@ -1370,7 +1382,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               {DAY_TYPES.map((t) => t.key === '회식일' ? (
                 <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'transparent', border: '1.5px solid rgba(229, 72, 77, 0.65)' }} /> {t.label}</span>
               ) : t.key === '독서일' ? (
-                <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 10, height: 10, border: '1.3px solid rgba(178,58,52,0.7)' }} /> {t.label} (도장)</span>
+                <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-sm" style={{ width: 10, height: 8, background: '#4A2E1C', border: '1.3px solid #2E1B0F' }} /> {t.label} (지난 날은 접힌 책)</span>
               ) : (
                 <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: t.key === '휴무일' ? '#B5453A' : t.key === '토론회' ? '#8A6B1E' : t.color }} /> {t.label}</span>
               ))}
