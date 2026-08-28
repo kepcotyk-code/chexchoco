@@ -32,8 +32,6 @@ const roleMeta = (role) => ROLES.find((r) => r.key === role) || ROLES[3];
 const roleOrder = (role) => { const i = ROLES.findIndex((r) => r.key === role); return i === -1 ? 99 : i; };
 
 const READING_SEGMENT_COLORS = ['#F5DE8A', '#EFC94C', '#D9A93A', '#C99A2E', '#B98A22', '#A97A18'];
-// 펼쳐진 책 스티커 모양 (둥근 하단 + 위쪽 가운데가 살짝 꺼진 두 페이지)
-const BOOK_PATH = 'M20,18 Q20,8 30,10 Q42,13 50,20 Q58,13 70,10 Q80,8 80,18 L80,60 Q80,80 50,80 Q20,80 20,60 Z';
 const DAY_TYPES = [
   { key: '독서일', label: '독서일', color: '#7FA8D9', bg: '#1E2A38' },
   { key: '휴무일', label: '휴무일', color: '#E0958C', bg: '#3A2420' },
@@ -1331,18 +1329,15 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 return (
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
                     className="relative aspect-square flex items-center justify-center">
-                    {/* 펼쳐진 책 스티커: 둥근 하단 + 안쪽 점선 스티치 + 아주 희미한 책등 중앙선 */}
-                    <svg viewBox="0 0 100 90" className="absolute inset-0 w-full h-full" style={{ overflow: 'visible' }}>
-                      <path d={BOOK_PATH} fill={pageColor} stroke={edgeColor} strokeWidth="6" strokeLinejoin="round" />
-                      <path d={BOOK_PATH} fill="none" stroke={edgeColor} strokeWidth="1.3" strokeDasharray="3 2.6" opacity="0.55"
-                        transform="translate(50 49) scale(0.82) translate(-50 -49)" />
-                      <line x1="50" y1="23" x2="50" y2="77" stroke={edgeColor} strokeWidth="1" opacity="0.12" />
-                    </svg>
+                    {/* 펼쳐진 책 스티커: 위아래 모두 완만한 반원 곡선 + 안쪽 점선 스티치 + 아주 희미한 책등 중앙선 */}
+                    <span className="absolute inset-0" style={{ background: pageColor, border: `1.8px solid ${edgeColor}`, borderRadius: '50% / 38%' }} />
+                    <span className="absolute" style={{ inset: 4, border: `1px dashed ${edgeColor}`, opacity: 0.5, borderRadius: '50% / 38%' }} />
+                    <span className="absolute top-1.5 bottom-1.5 left-1/2" style={{ width: 1, background: edgeColor, opacity: 0.12, transform: 'translateX(-50%)' }} />
                     {(isToday || selectedDate === date) && (
-                      <span className="absolute inset-0" style={{ border: isToday ? '2px solid #C0392B' : `2px solid ${numberColor}`, borderRadius: '30% / 26%' }} />
+                      <span className="absolute inset-0" style={{ border: isToday ? '2px solid #C0392B' : `2px solid ${numberColor}`, borderRadius: '50% / 38%' }} />
                     )}
                     {hasFeast && (
-                      <span className="absolute -inset-0.5" style={{ border: '1.5px dashed rgba(192,57,43,0.6)', borderRadius: '30% / 26%' }} />
+                      <span className="absolute -inset-0.5" style={{ border: '1.5px dashed rgba(192,57,43,0.6)', borderRadius: '50% / 38%' }} />
                     )}
                     <span className="relative text-sm font-semibold" style={{ color: numberColor, fontFamily: "'Fraunces', serif" }}>{day}</span>
                     {hasReading && (
