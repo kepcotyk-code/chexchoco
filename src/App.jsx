@@ -1325,12 +1325,14 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const hasPersonal = absenceExcuses.some((e) => e.date === date && e.reason === '개인일정');
                 const birthdayFolks = members.filter((m) => m.birthday && mdOf(m.birthday) === date.slice(5, 10));
                 const hasBirthday = birthdayFolks.length > 0;
+                const dow = new Date(`${date}T00:00:00`).getDay();
+                const isWeekendDefault = metas.length === 0 && !hasFeast && !hasReading && (dow === 0 || dow === 5 || dow === 6); // 금·토·일은 기본적으로 독서일 아님 — 은은하게 구분
                 // 크림색 카드 위에서 잘 보이도록, 유형별로 진한 톤(테두리)과 옅은 페이지색을 따로 지정
                 const LIGHT_TYPE_COLOR = { '휴무일': '#B5453A', '토론회': '#8A6B1E' };
                 const PAGE_TINT = { '휴무일': '#F7E2DE', '토론회': '#F6EFC9' };
                 const edgeColor = metas.length > 0 ? (LIGHT_TYPE_COLOR[metas[0].key] || '#5A3A1E') : '#5A3A1E';
-                const numberColor = metas.length > 0 ? (LIGHT_TYPE_COLOR[metas[0].key] || '#5C3D22') : '#5C3D22';
-                const pageColor = metas.length > 0 ? (PAGE_TINT[metas[0].key] || '#FEFCF4') : '#FEFCF4';
+                const numberColor = metas.length > 0 ? (LIGHT_TYPE_COLOR[metas[0].key] || '#5C3D22') : (isWeekendDefault ? '#9C8F76' : '#5C3D22');
+                const pageColor = metas.length > 0 ? (PAGE_TINT[metas[0].key] || '#FEFCF4') : (isWeekendDefault ? '#EFE8D8' : '#FEFCF4');
                 // 오늘=굵은 테두리, 선택=중간 굵기, 회식일=빨간 테두리로 단순화 (겹침 없이 테두리 하나로 표시)
                 const mainStrokeWidth = isToday ? 8 : selectedDate === date ? 6.5 : 5;
                 const closedStrokeWidth = isToday ? 5 : selectedDate === date ? 4 : 2.5;
@@ -1365,11 +1367,12 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       </svg>
                     )}
                     <span className="relative text-sm font-semibold" style={{ color: hasReading ? '#F2EEE3' : numberColor, fontFamily: "'Fraunces', serif" }}>{day}</span>
-                    {hasBirthday && <span className="absolute top-0 right-0.5" style={{ color: '#C0392B' }}><Cake size={10} /></span>}
+                    {metas.some((m) => m.key === '휴무일') && !hasReading && <span className="absolute top-2 left-2" style={{ color: edgeColor, opacity: 0.7 }}><Lock size={9} /></span>}
+                    {hasBirthday && <span className="absolute top-2 right-2" style={{ color: '#C0392B' }}><Cake size={10} /></span>}
                     {(hasExempt || hasPersonal) && (() => {
                       const dotColor = hasReading ? '#F2EEE3' : numberColor;
                       return (
-                        <span className="absolute bottom-0.5 flex items-center gap-0.5">
+                        <span className="absolute bottom-1.5 flex items-center gap-0.5">
                           {hasExempt && <span className="rounded-full" style={{ width: 4, height: 4, background: dotColor }} />}
                           {hasPersonal && <span className="rounded-full" style={{ width: 4, height: 4, background: 'transparent', border: `1px solid ${dotColor}` }} />}
                         </span>
@@ -1385,9 +1388,12 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'transparent', border: '1.5px solid rgba(229, 72, 77, 0.65)' }} /> {t.label}</span>
               ) : t.key === '독서일' ? (
                 <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-sm" style={{ width: 10, height: 8, background: '#4A2E1C', border: '1.3px solid #2E1B0F' }} /> {t.label} (지난 날은 접힌 책)</span>
+              ) : t.key === '휴무일' ? (
+                <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Lock size={9} style={{ color: '#B5453A' }} /> {t.label}</span>
               ) : (
-                <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: t.key === '휴무일' ? '#B5453A' : t.key === '토론회' ? '#8A6B1E' : t.color }} /> {t.label}</span>
+                <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: t.key === '토론회' ? '#8A6B1E' : t.color }} /> {t.label}</span>
               ))}
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#EFE8D8', border: `1px solid ${LINE}` }} /> 금·토·일(기본)</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: INK }} /> 출장·휴가</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: 'transparent', border: `1px solid ${INK}` }} /> 개인일정</span>
             </div>
