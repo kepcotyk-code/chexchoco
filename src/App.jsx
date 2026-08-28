@@ -1331,35 +1331,37 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const edgeColor = metas.length > 0 ? (LIGHT_TYPE_COLOR[metas[0].key] || '#5A3A1E') : '#5A3A1E';
                 const numberColor = metas.length > 0 ? (LIGHT_TYPE_COLOR[metas[0].key] || '#5C3D22') : '#5C3D22';
                 const pageColor = metas.length > 0 ? (PAGE_TINT[metas[0].key] || '#FEFCF4') : '#FEFCF4';
+                // 오늘=굵은 테두리, 선택=중간 굵기, 회식일=빨간 테두리로 단순화 (겹침 없이 테두리 하나로 표시)
+                const mainStrokeWidth = isToday ? 8 : selectedDate === date ? 6.5 : 5;
+                const closedStrokeWidth = isToday ? 5 : selectedDate === date ? 4 : 2.5;
                 return (
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
                     className="relative aspect-square flex items-center justify-center">
                     {hasReading ? (
-                      // 지난 독서일: 접힌(닫힌) 책 모양 — 곡선 없는 직선형 가죽 표지 + 점선 스티치 테두리
+                      // 지난 독서일: 접힌(닫힌) 책 모양 — 입체감 있는 3D 가죽 표지(그러데이션+그림자+페이지 두께)
                       <svg viewBox="0 0 120 98.4" className="absolute inset-0 w-full h-full" style={{ overflow: 'visible' }}>
-                        <rect x="15" y="8" width="90" height="82" rx="5" fill="#4A2E1C" stroke="#2E1B0F" strokeWidth="2.5" />
+                        <defs>
+                          <linearGradient id={`cover-${date}`} x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0%" stopColor="#6B4A30" />
+                            <stop offset="55%" stopColor="#4A2E1C" />
+                            <stop offset="100%" stopColor="#331D10" />
+                          </linearGradient>
+                        </defs>
+                        <ellipse cx="62" cy="94" rx="46" ry="6" fill="rgba(0,0,0,0.18)" />
+                        <rect x="19" y="12" width="90" height="80" rx="5" fill="#2E1B0F" />
+                        <line x1="107" y1="16" x2="107" y2="88" stroke="#D8B27C" strokeWidth="1" opacity="0.5" />
+                        <line x1="104" y1="14" x2="104" y2="90" stroke="#D8B27C" strokeWidth="1" opacity="0.3" />
+                        <rect x="15" y="8" width="90" height="82" rx="5" fill={`url(#cover-${date})`}
+                          stroke={hasFeast ? '#C0392B' : '#2E1B0F'} strokeWidth={closedStrokeWidth} />
+                        <rect x="15" y="8" width="6" height="82" rx="3" fill="white" opacity="0.08" />
                         <rect x="22" y="15" width="76" height="68" rx="2" fill="none" stroke="#D8B27C" strokeWidth="1.4" strokeDasharray="3 2.4" />
-                        {(isToday || selectedDate === date) && (
-                          <rect x="12" y="5" width="96" height="88" rx="6" fill="none" stroke={isToday ? '#C0392B' : '#D8B27C'} strokeWidth="2.5" />
-                        )}
-                        {hasFeast && (
-                          <rect x="8" y="1" width="104" height="96" rx="8" fill="none" stroke="rgba(192,57,43,0.65)" strokeWidth="2.5" strokeDasharray="4 3" />
-                        )}
                       </svg>
                     ) : (
                       // 그 외: 펼쳐진 책 스티커 (참고 이미지 실제 윤곽선 좌표를 추출해 재현)
                       <svg viewBox="0 0 120 98.4" className="absolute inset-0 w-full h-full" style={{ overflow: 'visible' }}>
-                        <path d={BOOK_PATH} fill={pageColor} stroke={edgeColor} strokeWidth="5" strokeLinejoin="round" />
+                        <path d={BOOK_PATH} fill={pageColor} stroke={hasFeast ? '#C0392B' : edgeColor} strokeWidth={mainStrokeWidth} strokeLinejoin="round" />
                         <path d={BOOK_STITCH_PATH} fill="none" stroke={edgeColor} strokeWidth="1.5" strokeDasharray="2.8 2.2" opacity="0.78" />
                         <line x1="60" y1="20" x2="60" y2="80" stroke={edgeColor} strokeWidth="1" opacity="0.12" />
-                        {(isToday || selectedDate === date) && (
-                          <path d={BOOK_PATH} fill="none" stroke={isToday ? '#C0392B' : numberColor} strokeWidth="4"
-                            transform="translate(60 49) scale(1.07) translate(-60 -49)" />
-                        )}
-                        {hasFeast && (
-                          <path d={BOOK_PATH} fill="none" stroke="rgba(192,57,43,0.65)" strokeWidth="3" strokeDasharray="4 3"
-                            transform="translate(60 49) scale(1.16) translate(-60 -49)" />
-                        )}
                       </svg>
                     )}
                     <span className="relative text-sm font-semibold" style={{ color: hasReading ? '#F2EEE3' : numberColor, fontFamily: "'Fraunces', serif" }}>{day}</span>
