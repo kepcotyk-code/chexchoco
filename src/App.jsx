@@ -32,6 +32,11 @@ const roleMeta = (role) => ROLES.find((r) => r.key === role) || ROLES[3];
 const roleOrder = (role) => { const i = ROLES.findIndex((r) => r.key === role); return i === -1 ? 99 : i; };
 
 const READING_SEGMENT_COLORS = ['#F5DE8A', '#EFC94C', '#D9A93A', '#C99A2E', '#B98A22', '#A97A18'];
+// 펼쳐진 책 스티커 모양 — 참고 이미지의 실제 윤곽선 좌표를 추출해 그대로 반영 (상단 V자 + 하단 물결형 스캘럽)
+const BOOK_PATH = 'M0.0,51.2 Q0.0,12.0 4.0,8.5 Q8.0,5.0 12.0,3.5 Q16.0,2.0 20.0,1.2 Q24.0,0.5 27.0,0.2 Q30.0,0.0 35.0,0.5 Q40.0,1.0 45.0,2.0 Q50.0,3.0 54.0,5.0 Q58.0,7.0 60.0,8.2 Q62.0,9.5 64.0,8.2 Q66.0,7.0 70.0,5.0 Q74.0,3.0 79.0,1.8 Q84.0,0.5 87.0,0.2 Q90.0,0.0 93.0,0.2 Q96.0,0.5 100.0,1.2 Q104.0,2.0 108.0,3.0 Q112.0,4.0 116.0,7.2 Q120.0,10.5 120.0,51.0 Q120.0,91.6 117.0,93.2 Q114.0,94.7 111.0,93.8 Q108.0,93.0 104.0,92.0 Q100.0,91.0 97.0,90.5 Q94.0,90.0 89.0,90.0 Q84.0,90.0 81.0,90.5 Q78.0,91.0 74.0,92.5 Q70.0,94.0 66.0,96.0 Q62.0,98.0 60.0,98.0 Q58.0,98.0 54.0,96.0 Q50.0,94.0 45.5,92.5 Q41.0,91.0 38.0,90.5 Q35.0,90.0 30.0,90.0 Q25.0,90.0 21.5,90.5 Q18.0,91.0 14.0,92.2 Q10.0,93.5 7.0,94.1 Q4.0,94.7 2.0,92.6 Q0.0,90.5 0.0,51.2 Z';
+// 안쪽 점선 스티치 전용 경로 — 단순 축소가 아니라 각 지점에서 테두리와 "일정한 거리"를 유지하도록 계산해서,
+// 가운데 V자 노치처럼 오목한 지점에서도 테두리와 점선이 겹치지 않음
+const BOOK_STITCH_PATH = 'M6.0,51.4 Q6.0,14.7 8.6,12.5 Q11.1,10.2 14.4,9.0 Q17.6,7.8 21.2,7.1 Q24.8,6.5 27.4,6.2 Q30.0,6.0 34.5,6.5 Q39.1,6.9 43.6,7.8 Q48.0,8.7 51.5,10.5 Q55.1,12.2 58.5,14.4 Q62.0,16.6 65.5,14.4 Q68.9,12.2 72.5,10.5 Q76.1,8.7 80.5,7.5 Q85.0,6.4 87.5,6.2 Q90.0,6.0 92.6,6.2 Q95.2,6.5 99.0,7.2 Q102.7,7.9 106.0,8.7 Q109.3,9.5 111.6,11.4 Q114.0,13.4 114.0,50.7 Q114.0,87.9 113.7,88.1 Q113.4,88.3 111.4,87.7 Q109.5,87.2 105.4,86.2 Q101.2,85.1 97.9,84.6 Q94.5,84.0 89.0,84.0 Q83.5,84.0 80.0,84.6 Q76.4,85.2 72.0,86.8 Q67.6,88.5 64.1,90.2 Q60.6,92.0 60.0,92.0 Q59.4,92.0 55.9,90.2 Q52.3,88.4 47.4,86.8 Q42.5,85.2 39.0,84.6 Q35.5,84.0 30.0,84.0 Q24.6,84.0 20.6,84.6 Q16.7,85.1 12.6,86.4 Q8.5,87.7 7.3,87.9 Q6.1,88.2 6.0,88.1 Q6.0,88.1 6.0,51.4 Z';
 const DAY_TYPES = [
   { key: '독서일', label: '독서일', color: '#7FA8D9', bg: '#1E2A38' },
   { key: '휴무일', label: '휴무일', color: '#E0958C', bg: '#3A2420' },
@@ -1329,16 +1334,20 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 return (
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
                     className="relative aspect-square flex items-center justify-center">
-                    {/* 펼쳐진 책 스티커: 위아래 모두 완만한 반원 곡선 + 안쪽 점선 스티치 + 아주 희미한 책등 중앙선 */}
-                    <span className="absolute inset-0" style={{ background: pageColor, border: `1.8px solid ${edgeColor}`, borderRadius: '50% / 38%' }} />
-                    <span className="absolute" style={{ inset: 4, border: `1px dashed ${edgeColor}`, opacity: 0.5, borderRadius: '50% / 38%' }} />
-                    <span className="absolute top-1.5 bottom-1.5 left-1/2" style={{ width: 1, background: edgeColor, opacity: 0.12, transform: 'translateX(-50%)' }} />
-                    {(isToday || selectedDate === date) && (
-                      <span className="absolute inset-0" style={{ border: isToday ? '2px solid #C0392B' : `2px solid ${numberColor}`, borderRadius: '50% / 38%' }} />
-                    )}
-                    {hasFeast && (
-                      <span className="absolute -inset-0.5" style={{ border: '1.5px dashed rgba(192,57,43,0.6)', borderRadius: '50% / 38%' }} />
-                    )}
+                    {/* 펼쳐진 책 스티커: 참고 이미지 실제 윤곽선 좌표를 추출해 재현 (상단 V자 + 하단 물결형 스캘럽) */}
+                    <svg viewBox="0 0 120 98.4" className="absolute inset-0 w-full h-full" style={{ overflow: 'visible' }}>
+                      <path d={BOOK_PATH} fill={pageColor} stroke={edgeColor} strokeWidth="5" strokeLinejoin="round" />
+                      <path d={BOOK_STITCH_PATH} fill="none" stroke={edgeColor} strokeWidth="1.4" strokeDasharray="2.5 2" opacity="0.75" />
+                      <line x1="60" y1="20" x2="60" y2="80" stroke={edgeColor} strokeWidth="1" opacity="0.12" />
+                      {(isToday || selectedDate === date) && (
+                        <path d={BOOK_PATH} fill="none" stroke={isToday ? '#C0392B' : numberColor} strokeWidth="4"
+                          transform="translate(60 49) scale(1.07) translate(-60 -49)" />
+                      )}
+                      {hasFeast && (
+                        <path d={BOOK_PATH} fill="none" stroke="rgba(192,57,43,0.65)" strokeWidth="3" strokeDasharray="4 3"
+                          transform="translate(60 49) scale(1.16) translate(-60 -49)" />
+                      )}
+                    </svg>
                     <span className="relative text-sm font-semibold" style={{ color: numberColor, fontFamily: "'Fraunces', serif" }}>{day}</span>
                     {hasReading && (
                       <span className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ transform: 'rotate(-11deg)' }}>
