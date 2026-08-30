@@ -1322,17 +1322,12 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const hasBirthday = birthdayFolks.length > 0;
                 let borderStyle = isToday ? `1.5px solid ${INK}` : selectedDate === date ? `1.5px solid ${textColor}` : '1px solid transparent';
                 if (hasFeast) borderStyle = '1.5px solid rgba(229, 72, 77, 0.65)';
-                if (hasBirthday && !isToday && selectedDate !== date) borderStyle = '1.5px solid #EFC94C';
                 return (
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
-                    className="relative aspect-square rounded-lg flex items-center justify-center text-xs"
+                    className="relative aspect-square rounded-lg flex flex-col items-center justify-center text-xs leading-none"
                     style={{ background: bgStyle, color: textColor, border: borderStyle }}>
-                    {day}
-                    {hasBirthday && (
-                      <span className="absolute -top-1.5 -right-1.5 rounded-full flex items-center justify-center" style={{ width: 16, height: 16, background: '#EFC94C', boxShadow: '0 1px 3px rgba(0,0,0,0.4)' }}>
-                        <Cake size={10} style={{ color: '#3A2E10' }} />
-                      </span>
-                    )}
+                    <span>{day}</span>
+                    {hasBirthday && <Cake size={8} style={{ color: '#EFC94C', marginTop: 2 }} />}
                     {(hasExempt || hasPersonal) && (
                       <span className="absolute bottom-0.5 flex items-center gap-0.5">
                         {hasExempt && <Plane size={8} style={{ color: INK }} />}
@@ -1344,7 +1339,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               })}
             </div>
             <div className="flex flex-wrap gap-2 mt-3">
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full flex items-center justify-center" style={{ width: 13, height: 13, background: '#EFC94C' }}><Cake size={8} style={{ color: '#3A2E10' }} /></span> 생일</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Cake size={11} style={{ color: '#EFC94C' }} /> 생일</span>
               {DAY_TYPES.map((t) => t.key === '회식일' ? (
                 <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'transparent', border: '1.5px solid rgba(229, 72, 77, 0.65)' }} /> {t.label}</span>
               ) : (
@@ -1457,6 +1452,15 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FA8D9' }} />출장·휴가</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
             </div>
+            {weekChunkRanges.length > 0 && (
+              <div className="flex items-center flex-wrap gap-x-3 mb-1.5" style={{ paddingLeft: 34 }}>
+                {weekChunkRanges.map(([start, end], wi) => (
+                  <div key={wi} className="text-center" style={{ width: (end - start) * 9 + (end - start - 1) * 4 }}>
+                    <span className="text-[9px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{wi + 1}주</span>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="space-y-3">
               {rows.map((r, idx) => (
                 <div key={r.id} className="space-y-1.5">
