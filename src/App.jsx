@@ -1183,6 +1183,11 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
 
   const sortedSessionsInMonth = [...sessionsInMonth].sort((a, b) => a.date.localeCompare(b.date));
   const sessionWeekKeys = sortedSessionsInMonth.map((s) => weekKeyOf(s.date)); // 도트를 주 단위로 묶어서 표시하기 위함
+  const weekChunkRanges = []; // [[startIdx, endIdx), ...] — 한 주(보통 월~목 4일)씩 묶은 구간
+  sessionWeekKeys.forEach((wk, i) => {
+    if (i === 0 || wk !== sessionWeekKeys[i - 1]) weekChunkRanges.push([i, i + 1]);
+    else weekChunkRanges[weekChunkRanges.length - 1][1] = i + 1;
+  });
   // 30분 이상: 정상 출석(1일), 15분 이상 30분 미만: 절반 인정(0.5일), 출장/휴가 사유: 별도 표시, 그 외: 결석
   const attendanceStatus = (dur) => (dur !== null && dur >= 30 ? 'full' : dur !== null && dur >= 15 ? 'half' : 'none');
   const rowsUnranked = members.map((m) => {
@@ -1472,14 +1477,17 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{totalDays} · {r.rate}%</span>
                     </div>
                   </div>
-                  <div className="flex items-center flex-wrap gap-y-1" style={{ paddingLeft: 34 }}>
-                    {r.flags.map((status, i) => (
-                      <span key={i} className="rounded-full" style={{
-                        width: 9, height: 9,
-                        marginRight: i < r.flags.length - 1 ? (sessionWeekKeys[i + 1] !== sessionWeekKeys[i] ? 8 : 4) : 0,
-                        background: status === 'full' ? '#7FDCCF' : status === 'half' ? 'linear-gradient(90deg, #7FDCCF 50%, transparent 50%)' : status === 'excused' ? '#7FA8D9' : 'transparent',
-                        border: status === 'full' || status === 'excused' ? 'none' : `1.5px solid ${LINE}`,
-                      }} title={status === 'excused' ? '출장·휴가' : undefined} />
+                  <div className="flex items-center flex-wrap gap-x-3 gap-y-1.5" style={{ paddingLeft: 34 }}>
+                    {weekChunkRanges.map(([start, end], wi) => (
+                      <div key={wi} className="flex items-center gap-1">
+                        {r.flags.slice(start, end).map((status, i) => (
+                          <span key={i} className="rounded-full" style={{
+                            width: 9, height: 9,
+                            background: status === 'full' ? '#7FDCCF' : status === 'half' ? 'linear-gradient(90deg, #7FDCCF 50%, transparent 50%)' : status === 'excused' ? '#7FA8D9' : 'transparent',
+                            border: status === 'full' || status === 'excused' ? 'none' : `1.5px solid ${LINE}`,
+                          }} title={status === 'excused' ? '출장·휴가' : undefined} />
+                        ))}
+                      </div>
                     ))}
                   </div>
                 </div>
