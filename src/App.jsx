@@ -2242,9 +2242,10 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
   const [editingRule, setEditingRule] = useState(false); const [ruleInput, setRuleInput] = useState(penaltyRule || '');
   const [expandedPenaltyId, setExpandedPenaltyId] = useState(null);
 
-  // 오늘 접속자수 — 간사만 볼 수 있음, site_visits 테이블에서 오늘 날짜분만 별도 조회(전체 reload 사이클과 무관)
+  // 오늘 접속자수 + 최근 7일 이력 — 간사만 볼 수 있음, site_visits 테이블에서 별도 조회(전체 reload 사이클과 무관)
   const isSecretary = currentMember?.role === '간사';
   const [todayVisitCount, setTodayVisitCount] = useState(null);
+  const [visitHistory, setVisitHistory] = useState(null); // [{date, count}, ...] 최근 7일, 오늘 포함
   useEffect(() => {
     if (!isSecretary) return;
     const start = `${todayStr()}T00:00:00`;
@@ -2252,6 +2253,20 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
     supabase.from('site_visits').select('id', { count: 'exact', head: true }).gte('visited_at', start).lte('visited_at', end)
       .then(({ count }) => setTodayVisitCount(count ?? 0))
       .catch(() => setTodayVisitCount(null));
+
+    const since = new Date(); since.setDate(since.getDate() - 6); since.setHours(0, 0, 0, 0);
+    supabase.from('site_visits').select('visited_at').gte('visited_at', since.toISOString())
+      .then(({ data }) => {
+        const counts = {};
+        (data || []).forEach((row) => { const d = row.visited_at.slice(0, 10); counts[d] = (counts[d] || 0) + 1; });
+        const days = Array.from({ length: 7 }).map((_, i) => {
+          const d = new Date(since); d.setDate(d.getDate() + i);
+          const key = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+          return { date: key, count: counts[key] || 0 };
+        });
+        setVisitHistory(days);
+      })
+      .catch(() => setVisitHistory(null));
   }, [isSecretary]);
 
   const ensureSession = async () => {
@@ -2316,15 +2331,6 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
 
   return (
     <div className="space-y-4">
-      {isSecretary && (
-        <Card>
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold" style={{ color: INK }}>오늘 접속자수</span>
-            <span className="text-lg font-semibold" style={{ color: '#7FDCCF', fontFamily: "'IBM Plex Mono', monospace" }}>{todayVisitCount === null ? '—' : `${todayVisitCount}회`}</span>
-          </div>
-          <p className="text-[11px] mt-1" style={{ color: MUTE }}>오늘 앱이 열린 횟수예요 (같은 사람이 여러 번 들어오면 중복 집계될 수 있어요). 간사에게만 보여요.</p>
-        </Card>
-      )}
       <Card>
         <div className="flex items-center gap-2">
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="rounded-xl border px-3 py-2 text-sm outline-none flex-1" style={inputStyle} />
@@ -2449,6 +2455,26 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
           })}
         </div>
       </Card>
+      {isSecretary && (
+        <Card>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-semibold" style={{ color: INK }}>오늘 접속자수</span>
+            <span className="text-lg font-semibold" style={{ color: '#7FDCCF', fontFamily: "'IBM Plex Mono', monospace" }}>{todayVisitCount === null ? '—' : `${todayVisitCount}회`}</span>
+          </div>
+          {visitHistory && (
+            <div className="space-y-1 pt-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+              <div className="text-xs mb-1" style={{ color: MUTE }}>최근 7일 이력</div>
+              {visitHistory.map((d) => (
+                <div key={d.date} className="flex items-center justify-between text-xs py-0.5">
+                  <span style={{ color: NEUTRAL_TEXT }}>{fmtDate(d.date)}</span>
+                  <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{d.count}회</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-[11px] mt-2" style={{ color: MUTE }}>앱이 열린 횟수예요 (같은 사람이 여러 번 들어오면 중복 집계될 수 있어요). 간사에게만 보여요.</p>
+        </Card>
+      )}
     </div>
   );
 }
