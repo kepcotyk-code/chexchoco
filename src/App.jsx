@@ -297,7 +297,8 @@ export default function App() {
   };
   useEffect(() => { reload(); }, []);
   // 오늘 접속자수 집계용 — 페이지 로드마다 방문 기록 1건 남김 (site_visits 테이블, 전체 reload 사이클과는 무관하게 별도 처리)
-  useEffect(() => { supabase.from('site_visits').insert({ id: uid('visit'), visited_at: new Date().toISOString() }).then(() => {}).catch(() => {}); }, []);
+  // 로그인 상태라면 어떤 멤버인지도 같이 기록 (localStorage에서 즉시 읽히므로 currentUserId는 마운트 시점에 이미 확정됨)
+  useEffect(() => { supabase.from('site_visits').insert({ id: uid('visit'), visited_at: new Date().toISOString(), member_id: currentUserId || null }).then(() => {}).catch(() => {}); }, []);
 
   const penaltyRule = settings.find((s) => s.key === 'penaltyRule')?.value || '';
   const setPenaltyRule = async (v) => { await upsertRow('settings', { key: 'penaltyRule', value: v }, 'key'); reload(); };
@@ -1180,23 +1181,36 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   const [selectedDate, setSelectedDate] = useState(null);
   const ms = monthStr(cursor);
   const sessionsInMonth = sessions.filter((s) => s.date.startsWith(ms) && s.date <= todayStr());
-  const totalDays = sessionsInMonth.length;
+  const totalDays = sessionsInMonth.length; // 출석률 분모는 실제 세션(독서일·토론회)일수만 — 휴무일은 제외
   const shift = (delta) => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1));
 
-  const sortedSessionsInMonth = [...sessionsInMonth].sort((a, b) => a.date.localeCompare(b.date));
-  const sessionWeekKeys = sortedSessionsInMonth.map((s) => weekKeyOf(s.date)); // 도트를 주 단위로 묶어서 표시하기 위함
+  // 이번 달 출석률 도트 시퀀스: 실제 세션(독서일·토론회) + 휴무일 날짜를 날짜순으로 합쳐서 표시 (휴무일도 빠짐없이 보이도록)
+  const holidayDatesInMonth = calendarDays
+    .filter((d) => d.date.startsWith(ms) && d.date <= todayStr() && d.type === '휴무일' && !sessions.some((s) => s.date === d.date))
+    .map((d) => d.date);
+  const monthDayList = [
+    ...sessionsInMonth.map((s) => ({ date: s.date, session: s })),
+    ...holidayDatesInMonth.map((date) => ({ date, session: null })),
+  ].sort((a, b) => a.date.localeCompare(b.date));
+  const sessionWeekKeys = monthDayList.map((d) => weekKeyOf(d.date)); // 도트를 주 단위로 묶어서 표시하기 위함
   const weekChunkRanges = []; // [[startIdx, endIdx), ...] — 한 주(보통 월~목 4일)씩 묶은 구간
   sessionWeekKeys.forEach((wk, i) => {
     if (i === 0 || wk !== sessionWeekKeys[i - 1]) weekChunkRanges.push([i, i + 1]);
     else weekChunkRanges[weekChunkRanges.length - 1][1] = i + 1;
   });
+  // 각 주 그룹이 이 달의 실제 몇 번째 주(달력 기준)인지 계산 — 모임이 달 중간부터 시작했으면 1주부터가 아니라 실제 주차부터 표기
+  const sundayOf = (dateStr) => { const d = new Date(`${dateStr}T00:00:00`); d.setDate(d.getDate() - d.getDay()); return d; };
+  const firstOfMonthDate = new Date(`${ms}-01T00:00:00`);
+  const firstFullWeekSunday = firstOfMonthDate.getDay() === 0 ? firstOfMonthDate : new Date(firstOfMonthDate.getFullYear(), firstOfMonthDate.getMonth(), firstOfMonthDate.getDate() + (7 - firstOfMonthDate.getDay()));
+  const weekOfMonth = (dateStr) => Math.max(1, Math.floor(Math.round((sundayOf(dateStr) - firstFullWeekSunday) / 86400000) / 7) + 1);
   // 30분 이상: 정상 출석(1일), 15분 이상 30분 미만: 절반 인정(0.5일), 출장/휴가 사유: 별도 표시, 그 외: 결석
   const attendanceStatus = (dur) => (dur !== null && dur >= 30 ? 'full' : dur !== null && dur >= 15 ? 'half' : 'none');
   const rowsUnranked = members.map((m) => {
-    const flags = sortedSessionsInMonth.map((s) => {
-      const excused = absenceExcuses.some((e) => e.date === s.date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason));
+    const flags = monthDayList.map(({ date, session }) => {
+      if (!session) return 'holiday'; // 휴무일
+      const excused = absenceExcuses.some((e) => e.date === date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason));
       if (excused) return 'excused';
-      const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
+      const c = checkins.find((ck) => ck.session_id === session.id && ck.member_id === m.id);
       const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
       return attendanceStatus(dur);
     });
@@ -1332,7 +1346,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                     {(hasDiscussion || hasBirthday) && (
                       <span className="absolute top-0.5 flex items-center gap-0.5">
                         {hasDiscussion && <BookOpen size={8} style={{ color: '#D9C24C' }} />}
-                        {hasBirthday && <Cake size={8} style={{ color: '#EFC94C' }} />}
+                        {hasBirthday && <Cake size={9} style={{ color: '#EFC94C' }} />}
                       </span>
                     )}
                     <span>{day}</span>
@@ -1351,7 +1365,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: dayTypeMeta('토론회').color }} /> 토론회</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'transparent', border: '1.5px solid rgba(229, 72, 77, 0.65)' }} /> 회식일</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: dayTypeMeta('휴무일').color }} /> 휴무일</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: WEEKEND_BG, border: `1px solid ${WEEKEND_TEXT}` }} /> 금·토·일(기본)</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: WEEKEND_TEXT }} /> 금·토·일(제외)</span>
             </div>
             <div className="flex flex-wrap gap-2 mt-1.5">
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Cake size={11} style={{ color: '#EFC94C' }} /> 생일</span>
@@ -1459,13 +1473,14 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FDCCF' }} />출석</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: 'linear-gradient(90deg, #7FDCCF 50%, transparent 50%)', border: `1px solid ${LINE}` }} />절반출석(15~29분)</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FA8D9' }} />출장·휴가</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#E5484D' }} />휴무일</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
             </div>
             {weekChunkRanges.length > 0 && (
               <div className="flex items-center flex-wrap gap-x-3 mb-1.5" style={{ paddingLeft: 34 }}>
                 {weekChunkRanges.map(([start, end], wi) => (
-                  <div key={wi} className="text-center" style={{ width: (end - start) * 9 + (end - start - 1) * 4 }}>
-                    <span className="text-[9px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{wi + 1}주</span>
+                  <div key={wi} className="text-center" style={{ width: (end - start) * 9 + (end - start - 1) * 4, overflow: 'visible' }}>
+                    <span className="text-[9px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekOfMonth(monthDayList[start].date)}주</span>
                   </div>
                 ))}
               </div>
@@ -1497,9 +1512,9 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                           {r.flags.slice(start, end).map((status, i) => (
                             <span key={i} className="rounded-full" style={{
                               width: 9, height: 9,
-                              background: status === 'full' ? '#7FDCCF' : status === 'half' ? 'linear-gradient(90deg, #7FDCCF 50%, transparent 50%)' : status === 'excused' ? '#7FA8D9' : 'transparent',
-                              border: status === 'full' || status === 'excused' ? 'none' : `1.5px solid ${LINE}`,
-                            }} title={status === 'excused' ? '출장·휴가' : undefined} />
+                              background: status === 'full' ? '#7FDCCF' : status === 'half' ? 'linear-gradient(90deg, #7FDCCF 50%, transparent 50%)' : status === 'excused' ? '#7FA8D9' : status === 'holiday' ? '#E5484D' : 'transparent',
+                              border: status === 'full' || status === 'excused' || status === 'holiday' ? 'none' : `1.5px solid ${LINE}`,
+                            }} title={status === 'excused' ? '출장·휴가' : status === 'holiday' ? '휴무일' : undefined} />
                           ))}
                         </div>
                         {wi < weekChunkRanges.length - 1 && (
@@ -2245,14 +2260,20 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
   // 오늘 접속자수 + 최근 7일 이력 — 간사만 볼 수 있음, site_visits 테이블에서 별도 조회(전체 reload 사이클과 무관)
   const isSecretary = currentMember?.role === '간사';
   const [todayVisitCount, setTodayVisitCount] = useState(null);
+  const [todayVisitorNames, setTodayVisitorNames] = useState(null); // 오늘 로그인 상태로 접속한 멤버 이름 목록(중복 제거)
   const [visitHistory, setVisitHistory] = useState(null); // [{date, count}, ...] 최근 7일, 오늘 포함
   useEffect(() => {
     if (!isSecretary) return;
     const start = `${todayStr()}T00:00:00`;
     const end = `${todayStr()}T23:59:59`;
-    supabase.from('site_visits').select('id', { count: 'exact', head: true }).gte('visited_at', start).lte('visited_at', end)
-      .then(({ count }) => setTodayVisitCount(count ?? 0))
-      .catch(() => setTodayVisitCount(null));
+    supabase.from('site_visits').select('member_id').gte('visited_at', start).lte('visited_at', end)
+      .then(({ data }) => {
+        setTodayVisitCount(data?.length ?? 0);
+        const ids = [...new Set((data || []).map((r) => r.member_id).filter(Boolean))];
+        const names = ids.map((id) => members.find((m) => m.id === id)?.name).filter(Boolean);
+        setTodayVisitorNames(names);
+      })
+      .catch(() => { setTodayVisitCount(null); setTodayVisitorNames(null); });
 
     const since = new Date(); since.setDate(since.getDate() - 6); since.setHours(0, 0, 0, 0);
     supabase.from('site_visits').select('visited_at').gte('visited_at', since.toISOString())
@@ -2461,6 +2482,11 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
             <span className="text-sm font-semibold" style={{ color: INK }}>오늘 접속자수</span>
             <span className="text-lg font-semibold" style={{ color: '#7FDCCF', fontFamily: "'IBM Plex Mono', monospace" }}>{todayVisitCount === null ? '—' : `${todayVisitCount}회`}</span>
           </div>
+          {todayVisitorNames && (
+            <div className="text-xs" style={{ color: MUTE }}>
+              {todayVisitorNames.length > 0 ? <>로그인 상태로 접속: <span style={{ color: NEUTRAL_TEXT }}>{todayVisitorNames.join(', ')}</span></> : '오늘 로그인 상태로 접속한 멤버는 아직 없어요.'}
+            </div>
+          )}
           {visitHistory && (
             <div className="space-y-1 pt-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
               <div className="text-xs mb-1" style={{ color: MUTE }}>최근 7일 이력</div>
