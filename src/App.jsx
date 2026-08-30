@@ -1289,26 +1289,10 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             <div className="text-xs text-center" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>이번 달 출결 {totalDays}회</div>
           </Card>
 
-          <Card style={{
-            background: [
-              'radial-gradient(circle at 14% 18%, rgba(90,54,26,0.4) 0 5px, transparent 6px)',
-              'radial-gradient(circle at 42% 10%, rgba(90,54,26,0.32) 0 4px, transparent 5px)',
-              'radial-gradient(circle at 74% 20%, rgba(90,54,26,0.4) 0 6px, transparent 7px)',
-              'radial-gradient(circle at 90% 42%, rgba(90,54,26,0.32) 0 4px, transparent 5px)',
-              'radial-gradient(circle at 8% 48%, rgba(90,54,26,0.34) 0 5px, transparent 6px)',
-              'radial-gradient(circle at 58% 46%, rgba(90,54,26,0.3) 0 4px, transparent 5px)',
-              'radial-gradient(circle at 30% 70%, rgba(90,54,26,0.34) 0 5px, transparent 6px)',
-              'radial-gradient(circle at 68% 78%, rgba(90,54,26,0.3) 0 4px, transparent 5px)',
-              'radial-gradient(circle at 92% 85%, rgba(90,54,26,0.34) 0 5px, transparent 6px)',
-              'radial-gradient(circle at 15% 92%, rgba(90,54,26,0.28) 0 4px, transparent 5px)',
-              'radial-gradient(ellipse at 50% 50%, #F8F1E2 0%, #EFE1C3 55%, #DEC593 100%)',
-            ].join(', '),
-            border: '5px solid #F2EADA',
-            borderRadius: 26,
-          }}>
+          <Card>
             <div className="grid grid-cols-7 gap-1 mb-2">
               {['일', '월', '화', '수', '목', '금', '토'].map((w) => (
-                <div key={w} className="text-center text-[11px] font-semibold" style={{ color: '#8A6B3F', fontFamily: "'IBM Plex Mono', monospace" }}>{w}</div>
+                <div key={w} className="text-center text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{w}</div>
               ))}
             </div>
             <div className="grid grid-cols-7 gap-1">
@@ -1317,91 +1301,46 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const day = parseInt(date.slice(8, 10), 10);
                 const types = getDayTypes(date);
                 const hasFeast = types.includes('회식일');
-                // 기본은 모두 "닫힌 책". 이미 지난 독서일·토론회(=출석 대상 유형)만 "펼친 책"으로 열림
-                const isAttendanceDay = types.some((t) => ATTENDANCE_DAY_TYPES.includes(t));
-                const hasReading = isAttendanceDay && date < todayStr(); // true = 열린 책(지난 날)
-                const fillTypes = types.filter((t) => t !== '회식일' && t !== '독서일');
+                const fillTypes = types.filter((t) => t !== '회식일'); // 회식일은 테두리로만 표시, 채우기 색에서는 제외
                 const metas = fillTypes.map(dayTypeMeta).filter(Boolean);
                 const isToday = date === todayStr();
+                const dow = new Date(`${date}T00:00:00`).getDay();
+                const isWeekendDefault = metas.length === 0 && (dow === 0 || dow === 5 || dow === 6);
+                const bgStyle = metas.length === 0
+                  ? (hasFeast ? dayTypeMeta('회식일').bg : (isWeekendDefault ? WEEKEND_BG : NEUTRAL_BG))
+                  : metas.length === 1 ? metas[0].bg
+                  : `linear-gradient(to bottom, ${metas.map((m, i) => `${m.bg} ${(i * 100) / metas.length}%, ${m.bg} ${((i + 1) * 100) / metas.length}%`).join(', ')})`;
+                const textColor = metas.length > 0 ? metas[0].color : (hasFeast ? dayTypeMeta('회식일').color : (isWeekendDefault ? WEEKEND_TEXT : MUTE));
                 const hasExempt = absenceExcuses.some((e) => e.date === date && EXEMPT_EXCUSE_REASONS.includes(e.reason));
                 const hasPersonal = absenceExcuses.some((e) => e.date === date && e.reason === '개인일정');
                 const birthdayFolks = members.filter((m) => m.birthday && mdOf(m.birthday) === date.slice(5, 10));
                 const hasBirthday = birthdayFolks.length > 0;
-                const dow = new Date(`${date}T00:00:00`).getDay();
-                const isWeekendDefault = !isAttendanceDay && !types.includes('휴무일') && (dow === 0 || dow === 5 || dow === 6); // 금·토·일 기본 제외일
-
-                // 열린 책(지난 날): 크림색 종이로 통일 — "완료됐다"는 사실만 표시, 유형별 색 구분은 닫힌 책 쪽에서 함
-                const edgeColor = '#5A3A1E';
-                const pageColor = '#FEFCF4';
-                const numberColor = hasReading ? '#5C3D22' : '#F2EEE3'; // 닫힌 책 표지는 늘 어두워서 크림색 글씨로 통일
-
-                // 닫힌 책(기본): 휴무일=붉은 가죽, 토론회=올리브 가죽, 금토일 제외일=무채색 가죽, 그 외(예정 독서일 포함 기본)=갈색 가죽
-                const CLOSED_COVER = {
-                  '휴무일': ['#C0645A', '#8B3A30', '#5C231C'],
-                  '토론회': ['#A68A4A', '#6B5626', '#453818'],
-                  'weekend': ['#9C9484', '#6E6656', '#4A4436'],
-                  'default': ['#6B4A30', '#4A2E1C', '#331D10'],
-                };
-                const coverKey = types.includes('휴무일') ? '휴무일' : types.includes('토론회') ? '토론회' : isWeekendDefault ? 'weekend' : 'default';
-                const coverStops = CLOSED_COVER[coverKey];
-
-                // 오늘=굵은 테두리, 선택=중간 굵기, 회식일=빨간 테두리로 단순화 (겹침 없이 테두리 하나로 표시)
-                const mainStrokeWidth = isToday ? 8 : selectedDate === date ? 6.5 : 5;
-                const closedStrokeWidth = isToday ? 5 : selectedDate === date ? 4 : 2.5;
+                let borderStyle = isToday ? `1.5px solid ${INK}` : selectedDate === date ? `1.5px solid ${textColor}` : '1px solid transparent';
+                if (hasFeast) borderStyle = '1.5px solid rgba(229, 72, 77, 0.65)';
                 return (
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
-                    className="relative aspect-square flex items-center justify-center">
-                    {hasReading ? (
-                      // 지난 독서일·토론회: 펼친 책 모양 — "이 날은 읽었다"는 완료 표시
-                      <svg viewBox="0 0 120 98.4" className="absolute inset-0 w-full h-full" style={{ overflow: 'visible' }}>
-                        <path d={BOOK_PATH} fill={pageColor} stroke={hasFeast ? '#C0392B' : edgeColor} strokeWidth={mainStrokeWidth} strokeLinejoin="round" />
-                        <path d={BOOK_STITCH_PATH} fill="none" stroke={edgeColor} strokeWidth="1.5" strokeDasharray="2.8 2.2" opacity="0.78" />
-                        <line x1="60" y1="20" x2="60" y2="80" stroke={edgeColor} strokeWidth="1" opacity="0.12" />
-                      </svg>
-                    ) : (
-                      // 그 외 모든 날(예정 독서일·휴무일·토론회 예정·금토일 제외일): 닫힌 책 — 종류별로 표지 색만 다르게
-                      <svg viewBox="0 0 120 98.4" className="absolute inset-0 w-full h-full" style={{ overflow: 'visible' }}>
-                        <defs>
-                          <linearGradient id={`cover-${date}`} x1="0" y1="0" x2="1" y2="1">
-                            <stop offset="0%" stopColor={coverStops[0]} />
-                            <stop offset="55%" stopColor={coverStops[1]} />
-                            <stop offset="100%" stopColor={coverStops[2]} />
-                          </linearGradient>
-                        </defs>
-                        <ellipse cx="62" cy="94" rx="46" ry="6" fill="rgba(0,0,0,0.18)" />
-                        <rect x="19" y="12" width="90" height="80" rx="5" fill={coverStops[2]} />
-                        <line x1="107" y1="16" x2="107" y2="88" stroke="#D8B27C" strokeWidth="1" opacity="0.5" />
-                        <line x1="104" y1="14" x2="104" y2="90" stroke="#D8B27C" strokeWidth="1" opacity="0.3" />
-                        <rect x="15" y="8" width="90" height="82" rx="5" fill={`url(#cover-${date})`}
-                          stroke={hasFeast ? '#C0392B' : coverStops[2]} strokeWidth={closedStrokeWidth} />
-                        <rect x="15" y="8" width="6" height="82" rx="3" fill="white" opacity="0.08" />
-                        <rect x="22" y="15" width="76" height="68" rx="2" fill="none" stroke="#D8B27C" strokeWidth="1.4" strokeDasharray="3 2.4" />
-                      </svg>
+                    className="relative aspect-square rounded-lg flex items-center justify-center text-xs"
+                    style={{ background: bgStyle, color: textColor, border: borderStyle }}>
+                    {day}
+                    {hasBirthday && <span className="absolute top-0.5 right-0.5" style={{ color: '#F0A87C' }}><Cake size={10} /></span>}
+                    {(hasExempt || hasPersonal) && (
+                      <span className="absolute bottom-1 flex items-center gap-0.5">
+                        {hasExempt && <span className="rounded-full" style={{ width: 4, height: 4, background: INK }} />}
+                        {hasPersonal && <span className="rounded-full" style={{ width: 4, height: 4, background: 'transparent', border: `1px solid ${INK}` }} />}
+                      </span>
                     )}
-                    <span className="relative text-sm font-semibold" style={{ color: numberColor, fontFamily: "'Fraunces', serif" }}>{day}</span>
-                    {metas.some((m) => m.key === '휴무일') && !hasReading && <span className="absolute top-2 left-2" style={{ color: '#F2EEE3', opacity: 0.85 }}><Lock size={9} /></span>}
-                    {hasBirthday && <span className="absolute top-2 right-2" style={{ color: hasReading ? '#C0392B' : '#F2EEE3' }}><Cake size={10} /></span>}
-                    {(hasExempt || hasPersonal) && (() => {
-                      const dotColor = numberColor;
-                      return (
-                        <span className="absolute bottom-1.5 flex items-center gap-0.5">
-                          {hasExempt && <span className="rounded-full" style={{ width: 4, height: 4, background: dotColor }} />}
-                          {hasPersonal && <span className="rounded-full" style={{ width: 4, height: 4, background: 'transparent', border: `1px solid ${dotColor}` }} />}
-                        </span>
-                      );
-                    })()}
                   </button>
                 );
               })}
             </div>
             <div className="flex flex-wrap gap-2 mt-3">
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Cake size={11} style={{ color: '#F0A87C' }} /> 생일</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-sm" style={{ width: 10, height: 8, background: '#FEFCF4', border: '1.3px solid #5A3A1E' }} /> 지난 독서일·토론회 (펼친 책)</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-sm" style={{ width: 10, height: 8, background: '#4A2E1C', border: '1.3px solid #2E1B0F' }} /> 예정 독서일 (닫힌 책)</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-sm" style={{ width: 10, height: 8, background: '#8B3A30', border: '1.3px solid #5C231C' }} /> 휴무일 <Lock size={9} /></span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-sm" style={{ width: 10, height: 8, background: '#6B5626', border: '1.3px solid #453818' }} /> 토론회(예정)</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-sm" style={{ width: 10, height: 8, background: '#6E6656', border: '1.3px solid #4A4436' }} /> 금·토·일(기본 제외)</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'transparent', border: '1.5px solid rgba(229, 72, 77, 0.65)' }} /> 회식일</span>
+              {DAY_TYPES.map((t) => t.key === '회식일' ? (
+                <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'transparent', border: '1.5px solid rgba(229, 72, 77, 0.65)' }} /> {t.label}</span>
+              ) : (
+                <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: t.color }} /> {t.label}</span>
+              ))}
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: WEEKEND_BG, border: `1px solid ${WEEKEND_TEXT}` }} /> 금·토·일(기본)</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: INK }} /> 출장·휴가</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: 'transparent', border: `1px solid ${INK}` }} /> 개인일정</span>
             </div>
