@@ -1182,6 +1182,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   const shift = (delta) => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1));
 
   const sortedSessionsInMonth = [...sessionsInMonth].sort((a, b) => a.date.localeCompare(b.date));
+  const sessionWeekKeys = sortedSessionsInMonth.map((s) => weekKeyOf(s.date)); // 도트를 주 단위로 묶어서 표시하기 위함
   // 30분 이상: 정상 출석(1일), 15분 이상 30분 미만: 절반 인정(0.5일), 출장/휴가 사유: 별도 표시, 그 외: 결석
   const attendanceStatus = (dur) => (dur !== null && dur >= 30 ? 'full' : dur !== null && dur >= 15 ? 'half' : 'none');
   const rowsUnranked = members.map((m) => {
@@ -1316,12 +1317,17 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const hasBirthday = birthdayFolks.length > 0;
                 let borderStyle = isToday ? `1.5px solid ${INK}` : selectedDate === date ? `1.5px solid ${textColor}` : '1px solid transparent';
                 if (hasFeast) borderStyle = '1.5px solid rgba(229, 72, 77, 0.65)';
+                if (hasBirthday && !isToday && selectedDate !== date) borderStyle = '1.5px solid #EFC94C';
                 return (
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
                     className="relative aspect-square rounded-lg flex items-center justify-center text-xs"
                     style={{ background: bgStyle, color: textColor, border: borderStyle }}>
                     {day}
-                    {hasBirthday && <span className="absolute top-0.5 right-0.5" style={{ color: '#F0A87C' }}><Cake size={10} /></span>}
+                    {hasBirthday && (
+                      <span className="absolute -top-1.5 -right-1.5 rounded-full flex items-center justify-center" style={{ width: 16, height: 16, background: '#EFC94C', boxShadow: '0 1px 3px rgba(0,0,0,0.4)' }}>
+                        <Cake size={10} style={{ color: '#3A2E10' }} />
+                      </span>
+                    )}
                     {(hasExempt || hasPersonal) && (
                       <span className="absolute bottom-0.5 flex items-center gap-0.5">
                         {hasExempt && <Plane size={8} style={{ color: INK }} />}
@@ -1333,7 +1339,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               })}
             </div>
             <div className="flex flex-wrap gap-2 mt-3">
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Cake size={11} style={{ color: '#F0A87C' }} /> 생일</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full flex items-center justify-center" style={{ width: 13, height: 13, background: '#EFC94C' }}><Cake size={8} style={{ color: '#3A2E10' }} /></span> 생일</span>
               {DAY_TYPES.map((t) => t.key === '회식일' ? (
                 <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'transparent', border: '1.5px solid rgba(229, 72, 77, 0.65)' }} /> {t.label}</span>
               ) : (
@@ -1448,30 +1454,33 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             </div>
             <div className="space-y-3">
               {rows.map((r, idx) => (
-                <div key={r.id} className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="w-4 flex items-center justify-center shrink-0">
-                      {r.rank <= 3 && r.present > 0 ? (
-                        <Trophy size={14} color={r.rank === 1 ? '#EFC94C' : r.rank === 2 ? '#C9C9C9' : '#C08552'} strokeWidth={2.2} />
-                      ) : (
-                        <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.rank}</span>
-                      )}
-                    </span>
-                    <Stamp role={r.role} size={24} tilt={0} /><span className="truncate" style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>
-                    {isCurrentMonth && warningMemberIds.has(r.id) && <span title="이번 주 열린 독서일을 지금까지 모두 결석 — 벌칙유의" className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0" style={{ background: '#3A2213', color: '#F0A87C' }}>⚠️ 벌칙유의</span>}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {penaltyByMember[r.id]?.pending > 0 && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}><Gavel size={10} /> 벌칙 대상 {penaltyByMember[r.id].pending}</span>}
-                    <div className="flex items-center gap-1">
-                      {r.flags.map((status, i) => (
-                        <span key={i} className="rounded-full" style={{
-                          width: 9, height: 9,
-                          background: status === 'full' ? '#7FDCCF' : status === 'half' ? 'linear-gradient(90deg, #7FDCCF 50%, transparent 50%)' : status === 'excused' ? '#7FA8D9' : 'transparent',
-                          border: status === 'full' || status === 'excused' ? 'none' : `1.5px solid ${LINE}`,
-                        }} title={status === 'excused' ? '출장·휴가' : undefined} />
-                      ))}
+                <div key={r.id} className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="w-4 flex items-center justify-center shrink-0">
+                        {r.rank <= 3 && r.present > 0 ? (
+                          <Trophy size={14} color={r.rank === 1 ? '#EFC94C' : r.rank === 2 ? '#C9C9C9' : '#C08552'} strokeWidth={2.2} />
+                        ) : (
+                          <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.rank}</span>
+                        )}
+                      </span>
+                      <Stamp role={r.role} size={24} tilt={0} /><span className="truncate" style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>
+                      {isCurrentMonth && warningMemberIds.has(r.id) && <span title="이번 주 열린 독서일을 지금까지 모두 결석 — 벌칙유의" className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0" style={{ background: '#3A2213', color: '#F0A87C' }}>⚠️ 벌칙유의</span>}
                     </div>
-                    <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{totalDays} · {r.rate}%</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {penaltyByMember[r.id]?.pending > 0 && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}><Gavel size={10} /> 벌칙 대상 {penaltyByMember[r.id].pending}</span>}
+                      <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{totalDays} · {r.rate}%</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center flex-wrap gap-y-1" style={{ paddingLeft: 34 }}>
+                    {r.flags.map((status, i) => (
+                      <span key={i} className="rounded-full" style={{
+                        width: 9, height: 9,
+                        marginRight: i < r.flags.length - 1 ? (sessionWeekKeys[i + 1] !== sessionWeekKeys[i] ? 8 : 4) : 0,
+                        background: status === 'full' ? '#7FDCCF' : status === 'half' ? 'linear-gradient(90deg, #7FDCCF 50%, transparent 50%)' : status === 'excused' ? '#7FA8D9' : 'transparent',
+                        border: status === 'full' || status === 'excused' ? 'none' : `1.5px solid ${LINE}`,
+                      }} title={status === 'excused' ? '출장·휴가' : undefined} />
+                    ))}
                   </div>
                 </div>
               ))}
