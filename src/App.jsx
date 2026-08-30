@@ -1215,7 +1215,9 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
       return attendanceStatus(dur);
     });
     const present = flags.reduce((sum, f) => sum + (f === 'full' ? 1 : f === 'half' ? 0.5 : 0), 0);
-    return { ...m, present, flags, rate: totalDays ? Math.round((present / totalDays) * 100) : 0 };
+    const excusedCount = flags.filter((f) => f === 'excused').length; // 출장·휴가일은 그 멤버의 출석률 분모에서 제외
+    const denom = totalDays - excusedCount;
+    return { ...m, present, flags, excusedCount, denom, rate: denom > 0 ? Math.round((present / denom) * 100) : 0 };
   }).sort((a, b) => b.rate - a.rate);
   let lastRate = null; let lastRank = 0;
   const rows = rowsUnranked.map((r, i) => {
@@ -1470,12 +1472,22 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
           <Card>
             <div className="text-sm font-semibold mb-2" style={{ color: INK }}>이번 달 출석률</div>
             <div className="flex flex-wrap items-center gap-2.5 mb-3">
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FDCCF' }} />출석</span>
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: 'linear-gradient(90deg, #7FDCCF 50%, transparent 50%)', border: `1px solid ${LINE}` }} />절반출석(15~29분)</span>
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FA8D9' }} />출장·휴가</span>
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#E5484D' }} />휴무일</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FA8D9' }} />출석</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: 'linear-gradient(90deg, #7FA8D9 50%, transparent 50%)', border: `1px solid ${LINE}` }} />절반출석(15~29분)</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: INK }} />출장·휴가</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#E0958C' }} />휴무일</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
             </div>
+            {weekChunkRanges.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-1.5">
+                {weekChunkRanges.map(([start, end], wi) => {
+                  const d1 = monthDayList[start].date, d2 = monthDayList[end - 1].date;
+                  const month = parseInt(d1.slice(5, 7), 10), day1 = parseInt(d1.slice(8, 10), 10), day2 = parseInt(d2.slice(8, 10), 10);
+                  const range = day1 === day2 ? `${month}.${day1}` : `${month}.${day1}-${day2}`;
+                  return <span key={wi} className="text-[10px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{weekOfMonth(d1)}주차({range})</span>;
+                })}
+              </div>
+            )}
             {weekChunkRanges.length > 0 && (
               <div className="flex items-center flex-wrap gap-x-3 mb-1.5" style={{ paddingLeft: 34 }}>
                 {weekChunkRanges.map(([start, end], wi) => (
@@ -1502,7 +1514,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       {penaltyByMember[r.id]?.pending > 0 && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}><Gavel size={10} /> 벌칙 대상 {penaltyByMember[r.id].pending}</span>}
-                      <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{totalDays} · {r.rate}%</span>
+                      <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{r.denom} · {r.rate}%</span>
                     </div>
                   </div>
                   <div className="flex items-center flex-wrap gap-y-1.5" style={{ paddingLeft: 34 }}>
@@ -1512,7 +1524,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                           {r.flags.slice(start, end).map((status, i) => (
                             <span key={i} className="rounded-full" style={{
                               width: 9, height: 9,
-                              background: status === 'full' ? '#7FDCCF' : status === 'half' ? 'linear-gradient(90deg, #7FDCCF 50%, transparent 50%)' : status === 'excused' ? '#7FA8D9' : status === 'holiday' ? '#E5484D' : 'transparent',
+                              background: status === 'full' ? '#7FA8D9' : status === 'half' ? 'linear-gradient(90deg, #7FA8D9 50%, transparent 50%)' : status === 'excused' ? INK : status === 'holiday' ? '#E0958C' : 'transparent',
                               border: status === 'full' || status === 'excused' || status === 'holiday' ? 'none' : `1.5px solid ${LINE}`,
                             }} title={status === 'excused' ? '출장·휴가' : status === 'holiday' ? '휴무일' : undefined} />
                           ))}
@@ -1522,6 +1534,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                         )}
                       </React.Fragment>
                     ))}
+                    {r.excusedCount > 0 && <span className="text-[10px] ml-1.5" style={{ color: INK, opacity: 0.75 }}>출장·휴가 {r.excusedCount}일은 출석률 산정에서 제외</span>}
                   </div>
                 </div>
               ))}
