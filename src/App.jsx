@@ -296,6 +296,8 @@ export default function App() {
     setLoaded(true);
   };
   useEffect(() => { reload(); }, []);
+  // 오늘 접속자수 집계용 — 페이지 로드마다 방문 기록 1건 남김 (site_visits 테이블, 전체 reload 사이클과는 무관하게 별도 처리)
+  useEffect(() => { supabase.from('site_visits').insert({ id: uid('visit'), visited_at: new Date().toISOString() }).then(() => {}).catch(() => {}); }, []);
 
   const penaltyRule = settings.find((s) => s.key === 'penaltyRule')?.value || '';
   const setPenaltyRule = async (v) => { await upsertRow('settings', { key: 'penaltyRule', value: v }, 'key'); reload(); };
@@ -480,7 +482,7 @@ export default function App() {
         {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} currentMember={currentMember} />}
         {tab === 'users' && <UsersScreen members={members} sortedMembers={sortedMembers} currentUserId={currentUserId} setIdentity={setIdentity} canManage={canManageUsers} notices={notices} sessions={sessions} checkins={checkins} reload={reload} requestDelete={requestDelete} />}
         {tab === 'treasury' && canManageUsers && <TreasuryScreen members={sortedMembers} duesPayments={duesPayments} expenses={expenses} dinnerCollections={dinnerCollections} currentMember={currentMember} reload={reload} requestDelete={requestDelete} showToast={showToast} />}
-        {tab === 'admin' && canManageAttendance && <AdminScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} setPenaltyRule={setPenaltyRule} penaltyCompletions={penaltyCompletions} reload={reload} calendarDays={calendarDays} absenceExcuses={absenceExcuses} requestDelete={requestDelete} />}
+        {tab === 'admin' && canManageAttendance && <AdminScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} setPenaltyRule={setPenaltyRule} penaltyCompletions={penaltyCompletions} reload={reload} calendarDays={calendarDays} absenceExcuses={absenceExcuses} requestDelete={requestDelete} currentMember={currentMember} />}
       </div>
     </div>
   );
@@ -1286,7 +1288,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
           <Card>
             <div className="flex items-center justify-between mb-1">
               <button onClick={() => shift(-1)} className="p-1.5" style={{ color: MUTE }}><ChevronLeft size={18} /></button>
-              <div className="flex items-center gap-1.5 font-semibold" style={{ color: INK, fontFamily: "'Fraunces', serif" }}>
+              <div className="flex items-center gap-1.5 font-semibold" style={{ color: INK }}>
                 <BookOpen size={15} style={{ color: '#F0A87C' }} />{cursor.getFullYear()}년 {cursor.getMonth() + 1}월
               </div>
               <button onClick={() => shift(1)} className="p-1.5" style={{ color: MUTE }}><ChevronRight size={18} /></button>
@@ -1318,6 +1320,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const textColor = metas.length > 0 ? metas[0].color : (hasFeast ? dayTypeMeta('회식일').color : (isWeekendDefault ? WEEKEND_TEXT : MUTE));
                 const hasExempt = absenceExcuses.some((e) => e.date === date && EXEMPT_EXCUSE_REASONS.includes(e.reason));
                 const hasPersonal = absenceExcuses.some((e) => e.date === date && e.reason === '개인일정');
+                const hasDiscussion = types.includes('토론회');
                 const birthdayFolks = members.filter((m) => m.birthday && mdOf(m.birthday) === date.slice(5, 10));
                 const hasBirthday = birthdayFolks.length > 0;
                 let borderStyle = isToday ? `1.5px solid ${INK}` : selectedDate === date ? `1.5px solid ${textColor}` : '1px solid transparent';
@@ -1328,10 +1331,11 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                     style={{ background: bgStyle, color: textColor, border: borderStyle }}>
                     <span>{day}</span>
                     {hasBirthday && <Cake size={8} style={{ color: '#EFC94C', marginTop: 2 }} />}
-                    {(hasExempt || hasPersonal) && (
+                    {(hasExempt || hasPersonal || hasDiscussion) && (
                       <span className="absolute bottom-0.5 flex items-center gap-0.5">
                         {hasExempt && <Plane size={8} style={{ color: INK }} />}
                         {hasPersonal && <User size={8} style={{ color: '#7FDCCF' }} />}
+                        {hasDiscussion && <span className="rounded-full" style={{ width: 4, height: 4, background: '#D9C24C' }} />}
                       </span>
                     )}
                   </button>
@@ -1343,7 +1347,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               {DAY_TYPES.map((t) => t.key === '회식일' ? (
                 <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'transparent', border: '1.5px solid rgba(229, 72, 77, 0.65)' }} /> {t.label}</span>
               ) : (
-                <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: t.color }} /> {t.label}</span>
+                <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: t.color }} /> {t.label}</span>
               ))}
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: WEEKEND_BG, border: `1px solid ${WEEKEND_TEXT}` }} /> 금·토·일(기본)</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Plane size={11} /> 출장·휴가</span>
@@ -2224,7 +2228,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
   );
 }
 
-function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule, penaltyCompletions, reload, calendarDays, absenceExcuses, requestDelete }) {
+function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule, penaltyCompletions, reload, calendarDays, absenceExcuses, requestDelete, currentMember }) {
   const [date, setDate] = useState(todayStr());
   const session = sessions.find((s) => s.date === date);
   const dayCheckins = session ? checkins.filter((c) => c.session_id === session.id) : [];
@@ -2232,6 +2236,18 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
   const [manualSelectedIds, setManualSelectedIds] = useState([]);
   const [editingRule, setEditingRule] = useState(false); const [ruleInput, setRuleInput] = useState(penaltyRule || '');
   const [expandedPenaltyId, setExpandedPenaltyId] = useState(null);
+
+  // 오늘 접속자수 — 간사만 볼 수 있음, site_visits 테이블에서 오늘 날짜분만 별도 조회(전체 reload 사이클과 무관)
+  const isSecretary = currentMember?.role === '간사';
+  const [todayVisitCount, setTodayVisitCount] = useState(null);
+  useEffect(() => {
+    if (!isSecretary) return;
+    const start = `${todayStr()}T00:00:00`;
+    const end = `${todayStr()}T23:59:59`;
+    supabase.from('site_visits').select('id', { count: 'exact', head: true }).gte('visited_at', start).lte('visited_at', end)
+      .then(({ count }) => setTodayVisitCount(count ?? 0))
+      .catch(() => setTodayVisitCount(null));
+  }, [isSecretary]);
 
   const ensureSession = async () => {
     if (session) return session;
@@ -2295,6 +2311,15 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
 
   return (
     <div className="space-y-4">
+      {isSecretary && (
+        <Card>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold" style={{ color: INK }}>오늘 접속자수</span>
+            <span className="text-lg font-semibold" style={{ color: '#7FDCCF', fontFamily: "'IBM Plex Mono', monospace" }}>{todayVisitCount === null ? '—' : `${todayVisitCount}회`}</span>
+          </div>
+          <p className="text-[11px] mt-1" style={{ color: MUTE }}>오늘 앱이 열린 횟수예요 (같은 사람이 여러 번 들어오면 중복 집계될 수 있어요). 간사에게만 보여요.</p>
+        </Card>
+      )}
       <Card>
         <div className="flex items-center gap-2">
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="rounded-xl border px-3 py-2 text-sm outline-none flex-1" style={inputStyle} />
