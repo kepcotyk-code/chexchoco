@@ -5,7 +5,7 @@ import {
   Crown, Shield, Wallet, User, Plus, Pencil, Trash2, Check, X, Lock, AlertCircle,
   Megaphone, QrCode, BarChart3, Users, Settings2, Download, Upload, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   LogIn, LogOut, Cake, PartyPopper, Archive, Paperclip, FileText, Eye, Pin, Gavel, BookOpen,
-  Image as ImageIcon, Trophy,
+  Image as ImageIcon, Trophy, Plane,
 } from 'lucide-react';
 
 /* ---------- design tokens (dark) ---------- */
@@ -367,7 +367,6 @@ export default function App() {
             </button>
           </div>
           <h1 className="text-center text-4xl font-semibold" style={{ fontFamily: "'Fraunces', serif", color: INK }}>책스초코</h1>
-          <div className="text-xs text-center mt-1 italic" style={{ color: '#C9A97E' }}>오늘도 책 한 페이지, 성장 한 스푼 🤎</div>
         </div>
 
         {recentPhotos.length > 0 && (
@@ -807,8 +806,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           {filtered.map((p) => (
             <button key={p.id} onClick={() => { setViewingId(p.id); setEditingDate(false); setEditingCaption(false); }} className="relative aspect-square rounded-lg overflow-hidden" style={{ background: NEUTRAL_BG }}>
               <img src={publicUrl('photos', p.file_path)} className="w-full h-full object-cover" alt="" loading="lazy" />
-              {p.caption && <div className="absolute bottom-1 right-1.5" style={{ color: 'rgba(255,255,255,0.85)', textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}><FileText size={12} /></div>}
-              <div className="absolute top-1 left-1.5 right-1.5 flex items-center justify-between text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 2px rgba(0,0,0,0.6)', fontFamily: "'IBM Plex Mono', monospace" }}>
+              {p.caption && <div className="absolute top-1 right-1.5" style={{ color: 'rgba(255,255,255,0.85)', textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}><FileText size={12} /></div>}
+              <div className="absolute bottom-1 left-1.5 right-1.5 flex items-center justify-between text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 2px rgba(0,0,0,0.6)', fontFamily: "'IBM Plex Mono', monospace" }}>
                 <span>{p.created_at.slice(0, 10)}</span>
                 <span className="truncate ml-1">{dispName(p.uploader_name, isLoggedIn)}</span>
               </div>
@@ -1324,9 +1323,9 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                     {day}
                     {hasBirthday && <span className="absolute top-0.5 right-0.5" style={{ color: '#F0A87C' }}><Cake size={10} /></span>}
                     {(hasExempt || hasPersonal) && (
-                      <span className="absolute bottom-1 flex items-center gap-0.5">
-                        {hasExempt && <span className="rounded-full" style={{ width: 4, height: 4, background: INK }} />}
-                        {hasPersonal && <span className="rounded-full" style={{ width: 4, height: 4, background: 'transparent', border: `1px solid ${INK}` }} />}
+                      <span className="absolute bottom-0.5 flex items-center gap-0.5">
+                        {hasExempt && <Plane size={8} style={{ color: INK }} />}
+                        {hasPersonal && <User size={8} style={{ color: '#7FDCCF' }} />}
                       </span>
                     )}
                   </button>
@@ -1341,8 +1340,8 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: t.color }} /> {t.label}</span>
               ))}
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: WEEKEND_BG, border: `1px solid ${WEEKEND_TEXT}` }} /> 금·토·일(기본)</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: INK }} /> 출장·휴가</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="rounded-full" style={{ width: 6, height: 6, background: 'transparent', border: `1px solid ${INK}` }} /> 개인일정</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Plane size={11} /> 출장·휴가</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><User size={11} style={{ color: '#7FDCCF' }} /> 개인일정</span>
             </div>
             {(() => {
               const todayExcused = members.filter((m) => absenceExcuses.some((e) => e.date === todayStr() && e.member_id === m.id));
@@ -1443,7 +1442,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             <div className="text-sm font-semibold mb-2" style={{ color: INK }}>이번 달 출석률</div>
             <div className="flex flex-wrap items-center gap-2.5 mb-3">
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FDCCF' }} />출석</span>
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: 'linear-gradient(90deg, #7FDCCF 50%, transparent 50%)', border: `1px solid ${LINE}` }} />15~29분</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: 'linear-gradient(90deg, #7FDCCF 50%, transparent 50%)', border: `1px solid ${LINE}` }} />절반출석(15~29분)</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FA8D9' }} />출장·휴가</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
             </div>
@@ -1630,7 +1629,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
                     <div className="font-semibold truncate" style={{ color: INK }}>{dispName(m.name, isLoggedIn)}{m.id === currentUserId && <span className="ml-1.5 text-[11px] font-normal" style={{ color: MUTE }}>(나)</span>}</div>
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <RoleChip role={m.role} />
-                      {m.birthday && <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtMD(mdOf(m.birthday))}</span>}
+                      {m.birthday && isLoggedIn && <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtMD(mdOf(m.birthday))}</span>}
                       {m.pin && <Lock size={11} style={{ color: MUTE }} />}
                     </div>
                     {isLoggedIn && (m.department || m.job_type || m.joined_at || m.book_genre || m.note) && (
