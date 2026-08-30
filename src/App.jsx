@@ -1329,13 +1329,17 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
                     className="relative aspect-square rounded-lg flex flex-col items-center justify-center text-xs leading-none"
                     style={{ background: bgStyle, color: textColor, border: borderStyle }}>
+                    {(hasDiscussion || hasBirthday) && (
+                      <span className="absolute top-0.5 flex items-center gap-0.5">
+                        {hasDiscussion && <BookOpen size={8} style={{ color: '#D9C24C' }} />}
+                        {hasBirthday && <Cake size={8} style={{ color: '#EFC94C' }} />}
+                      </span>
+                    )}
                     <span>{day}</span>
-                    {hasBirthday && <Cake size={8} style={{ color: '#EFC94C', marginTop: 2 }} />}
-                    {(hasExempt || hasPersonal || hasDiscussion) && (
+                    {(hasExempt || hasPersonal) && (
                       <span className="absolute bottom-0.5 flex items-center gap-0.5">
                         {hasExempt && <Plane size={8} style={{ color: INK }} />}
                         {hasPersonal && <User size={8} style={{ color: '#7FDCCF' }} />}
-                        {hasDiscussion && <span className="rounded-full" style={{ width: 4, height: 4, background: '#D9C24C' }} />}
                       </span>
                     )}
                   </button>
@@ -1349,7 +1353,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               ) : (
                 <span key={t.key} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: t.color }} /> {t.label}</span>
               ))}
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-full" style={{ background: WEEKEND_BG, border: `1px solid ${WEEKEND_TEXT}` }} /> 금·토·일(기본)</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: WEEKEND_BG, border: `1px solid ${WEEKEND_TEXT}` }} /> 금·토·일(기본)</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Plane size={11} /> 출장·휴가</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><User size={11} style={{ color: '#7FDCCF' }} /> 개인일정</span>
             </div>
