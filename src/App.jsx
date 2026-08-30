@@ -1481,17 +1481,22 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{totalDays} · {r.rate}%</span>
                     </div>
                   </div>
-                  <div className="flex items-center flex-wrap gap-x-3 gap-y-1.5" style={{ paddingLeft: 34 }}>
+                  <div className="flex items-center flex-wrap gap-y-1.5" style={{ paddingLeft: 34 }}>
                     {weekChunkRanges.map(([start, end], wi) => (
-                      <div key={wi} className="flex items-center gap-1">
-                        {r.flags.slice(start, end).map((status, i) => (
-                          <span key={i} className="rounded-full" style={{
-                            width: 9, height: 9,
-                            background: status === 'full' ? '#7FDCCF' : status === 'half' ? 'linear-gradient(90deg, #7FDCCF 50%, transparent 50%)' : status === 'excused' ? '#7FA8D9' : 'transparent',
-                            border: status === 'full' || status === 'excused' ? 'none' : `1.5px solid ${LINE}`,
-                          }} title={status === 'excused' ? '출장·휴가' : undefined} />
-                        ))}
-                      </div>
+                      <React.Fragment key={wi}>
+                        <div className="flex items-center gap-1">
+                          {r.flags.slice(start, end).map((status, i) => (
+                            <span key={i} className="rounded-full" style={{
+                              width: 9, height: 9,
+                              background: status === 'full' ? '#7FDCCF' : status === 'half' ? 'linear-gradient(90deg, #7FDCCF 50%, transparent 50%)' : status === 'excused' ? '#7FA8D9' : 'transparent',
+                              border: status === 'full' || status === 'excused' ? 'none' : `1.5px solid ${LINE}`,
+                            }} title={status === 'excused' ? '출장·휴가' : undefined} />
+                          ))}
+                        </div>
+                        {wi < weekChunkRanges.length - 1 && (
+                          <span className="shrink-0" style={{ width: 1, height: 11, background: MUTE, opacity: 0.4, transform: 'rotate(22deg)', margin: '0 7px' }} />
+                        )}
+                      </React.Fragment>
                     ))}
                   </div>
                 </div>
