@@ -298,7 +298,7 @@ export default function App() {
   useEffect(() => { reload(); }, []);
   // 오늘 접속자수 집계용 — 페이지 로드마다 방문 기록 1건 남김 (site_visits 테이블, 전체 reload 사이클과는 무관하게 별도 처리)
   // 로그인 상태라면 어떤 멤버인지도 같이 기록 (localStorage에서 즉시 읽히므로 currentUserId는 마운트 시점에 이미 확정됨)
-  useEffect(() => { supabase.from('site_visits').insert({ id: uid('visit'), visited_at: new Date().toISOString(), member_id: currentUserId || null }).then(() => {}).catch(() => {}); }, []);
+  useEffect(() => { supabase.from('site_visits').insert({ id: uid('visit'), visited_at: new Date().toISOString(), member_id: currentUserId || null }).then(({ error }) => { if (error) console.error('site_visits insert failed:', error); }).catch((e) => console.error('site_visits insert failed:', e)); }, []);
 
   const penaltyRule = settings.find((s) => s.key === 'penaltyRule')?.value || '';
   const setPenaltyRule = async (v) => { await upsertRow('settings', { key: 'penaltyRule', value: v }, 'key'); reload(); };
@@ -1210,7 +1210,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     const range = day1 === day2 ? `${month}.${day1}` : `${month}.${day1}-${day2}`;
     return { main: `${weekOfMonth(d1)}주차`, sub: `(${range})` };
   });
-  const weekColWidths = weekLabels.map(({ main, sub }) => Math.max(30, Math.max(main.length, sub.length) * 6 + 6));
+  const weekColWidths = weekLabels.map(({ main, sub }) => Math.max(32, Math.max(main.length, sub.length) * 6.6 + 6));
   // 30분 이상: 정상 출석(1일), 15분 이상 30분 미만: 절반 인정(0.5일), 출장/휴가 사유: 별도 표시, 그 외: 결석
   const attendanceStatus = (dur) => (dur !== null && dur >= 30 ? 'full' : dur !== null && dur >= 15 ? 'half' : 'none');
   const rowsUnranked = members.map((m) => {
@@ -1487,8 +1487,8 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             <div className="flex flex-wrap items-center gap-2.5 mb-3">
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FA8D9' }} />출석</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: 'linear-gradient(90deg, #7FA8D9 50%, transparent 50%)', border: `1px solid ${LINE}` }} />절반출석(15~29분)</span>
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: INK }} />출장·휴가</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#E0958C' }} />휴무일</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: INK }} />출장·휴가</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
             </div>
             {weekChunkRanges.length > 0 && (
@@ -1496,8 +1496,8 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 {weekChunkRanges.map(([start, end], wi) => (
                   <React.Fragment key={wi}>
                     <div className="flex flex-col items-center" style={{ width: weekColWidths[wi] }}>
-                      <span className="text-[9px] leading-tight" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi].main}</span>
-                      <span className="text-[9px] leading-tight" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi].sub}</span>
+                      <span className="text-[10px] leading-tight" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi].main}</span>
+                      <span className="text-[10px] leading-tight" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi].sub}</span>
                     </div>
                     {wi < weekChunkRanges.length - 1 && (
                       <span className="shrink-0" style={{ width: 1, height: 11, background: MUTE, opacity: 0.4, transform: 'rotate(22deg)', margin: '0 7px' }} />
@@ -2287,20 +2287,23 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
   // 오늘 접속자수 + 최근 7일 이력 — 간사만 볼 수 있음, site_visits 테이블에서 별도 조회(전체 reload 사이클과 무관)
   const isSecretary = currentMember?.role === '간사';
   const [todayVisitCount, setTodayVisitCount] = useState(null);
-  const [todayVisitorNames, setTodayVisitorNames] = useState(null); // 오늘 로그인 상태로 접속한 멤버 이름 목록(중복 제거)
+  const [todayVisitLog, setTodayVisitLog] = useState(null); // [{name, time}, ...] 로그인 상태로 접속한 각 방문 기록(시각 포함), 최신순
   const [visitHistory, setVisitHistory] = useState(null); // [{date, count}, ...] 최근 7일, 오늘 포함
   useEffect(() => {
     if (!isSecretary) return;
     const start = `${todayStr()}T00:00:00`;
     const end = `${todayStr()}T23:59:59`;
-    supabase.from('site_visits').select('member_id').gte('visited_at', start).lte('visited_at', end)
+    supabase.from('site_visits').select('member_id, visited_at').gte('visited_at', start).lte('visited_at', end)
       .then(({ data }) => {
         setTodayVisitCount(data?.length ?? 0);
-        const ids = [...new Set((data || []).map((r) => r.member_id).filter(Boolean))];
-        const names = ids.map((id) => members.find((m) => m.id === id)?.name).filter(Boolean);
-        setTodayVisitorNames(names);
+        const log = (data || [])
+          .filter((r) => r.member_id)
+          .map((r) => ({ name: members.find((m) => m.id === r.member_id)?.name, time: r.visited_at }))
+          .filter((r) => r.name)
+          .sort((a, b) => b.time.localeCompare(a.time));
+        setTodayVisitLog(log);
       })
-      .catch(() => { setTodayVisitCount(null); setTodayVisitorNames(null); });
+      .catch(() => { setTodayVisitCount(null); setTodayVisitLog(null); });
 
     const since = new Date(); since.setDate(since.getDate() - 6); since.setHours(0, 0, 0, 0);
     supabase.from('site_visits').select('visited_at').gte('visited_at', since.toISOString())
@@ -2509,9 +2512,19 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
             <span className="text-sm font-semibold" style={{ color: INK }}>오늘 접속자수</span>
             <span className="text-lg font-semibold" style={{ color: '#7FDCCF', fontFamily: "'IBM Plex Mono', monospace" }}>{todayVisitCount === null ? '—' : `${todayVisitCount}회`}</span>
           </div>
-          {todayVisitorNames && (
+          {todayVisitLog && (
             <div className="text-xs" style={{ color: MUTE }}>
-              {todayVisitorNames.length > 0 ? <>로그인 상태로 접속: <span style={{ color: NEUTRAL_TEXT }}>{todayVisitorNames.join(', ')}</span></> : '오늘 로그인 상태로 접속한 멤버는 아직 없어요.'}
+              {todayVisitLog.length > 0 ? (
+                <div className="space-y-0.5">
+                  <div className="mb-1">로그인 상태로 접속:</div>
+                  {todayVisitLog.map((v, i) => (
+                    <div key={i} className="flex items-center justify-between">
+                      <span style={{ color: NEUTRAL_TEXT }}>{v.name}</span>
+                      <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{new Date(v.time).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : '오늘 로그인 상태로 접속한 멤버는 아직 없어요.'}
             </div>
           )}
           {visitHistory && (
