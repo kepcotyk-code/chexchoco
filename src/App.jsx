@@ -1254,6 +1254,28 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     return { ...m, present, excusedCount, denom, rate: denom > 0 ? Math.round((present / denom) * 100) : 0 };
   }).sort((a, b) => b.rate - a.rate), 'rate');
 
+  // 월별 출석률 추이 (최근 6개월) — 전체 누적과는 별개로, 클럽 전체 출석률이 달마다 어떻게 변했는지 보여줌
+  const attTrendMonths = Array.from({ length: 6 }).map((_, i) => { const d = new Date(cursor.getFullYear(), cursor.getMonth() - 5 + i, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; });
+  const attTrendStats = attTrendMonths.map((mk) => {
+    const monthSessions = sessions.filter((s) => s.date.startsWith(mk) && s.date <= todayStr());
+    const totalDaysM = monthSessions.length;
+    let totalPresent = 0; let totalDenom = 0;
+    members.forEach((m) => {
+      let present = 0; let excusedCount = 0;
+      monthSessions.forEach((s) => {
+        const excused = absenceExcuses.some((e) => e.date === s.date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason));
+        if (excused) { excusedCount += 1; return; }
+        const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
+        const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
+        const st = attendanceStatus(dur);
+        present += st === 'full' ? 1 : st === 'half' ? 0.5 : 0;
+      });
+      const denom = totalDaysM - excusedCount;
+      if (denom > 0) { totalPresent += present; totalDenom += denom; }
+    });
+    return { mk, rate: totalDenom > 0 ? Math.round((totalPresent / totalDenom) * 100) : 0, hasData: totalDaysM > 0 };
+  });
+
   const weeklyPenalties = computeWeeklyPenalties(sessions, checkins, calendarDays, members, absenceExcuses);
   const isWeekCompleted = (wk, memberId) => penaltyCompletions.some((p) => p.session_id === wk && p.member_id === memberId);
   const penaltyByMember = {};
@@ -1391,16 +1413,23 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><User size={11} style={{ color: '#7FDCCF' }} /> 개인일정</span>
             </div>
             {(() => {
-              const todayExcused = members.filter((m) => absenceExcuses.some((e) => e.date === todayStr() && e.member_id === m.id));
-              if (todayExcused.length === 0) return null;
+              const todayExcuses = absenceExcuses.filter((e) => e.date === todayStr());
+              if (todayExcuses.length === 0) return null;
+              const reasonOrder = ['출장', '휴가', '개인일정'];
+              const groups = reasonOrder.map((reason) => ({
+                reason,
+                names: todayExcuses.filter((e) => e.reason === reason).map((e) => members.find((m) => m.id === e.member_id)).filter(Boolean).map((m) => dispName(m.name, isLoggedIn)),
+              })).filter((g) => g.names.length > 0);
+              if (groups.length === 0) return null;
               return (
                 <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
                   <div className="text-xs mb-1.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>오늘 참석불가</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {todayExcused.map((m) => {
-                      const e = absenceExcuses.find((ee) => ee.date === todayStr() && ee.member_id === m.id);
-                      return <span key={m.id} className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}><Stamp role={m.role} size={16} tilt={0} />{dispName(m.name, isLoggedIn)} · {e.reason}</span>;
-                    })}
+                  <div className="space-y-1">
+                    {groups.map((g) => (
+                      <div key={g.reason} className="text-xs" style={{ color: NEUTRAL_TEXT }}>
+                        <span style={{ color: MUTE }}>{g.reason} : </span>{g.names.join(', ')}
+                      </div>
+                    ))}
                   </div>
                 </div>
               );
@@ -1559,6 +1588,21 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
         </>
       ) : (
         <>
+          <Card>
+            <div className="text-sm font-semibold mb-3" style={{ color: INK }}>월별 출석률 추이 (최근 6개월)</div>
+            <div className="flex items-end justify-between gap-1.5" style={{ height: 88 }}>
+              {attTrendStats.map((t) => (
+                <div key={t.mk} className="flex-1 flex items-end justify-center" style={{ height: '100%' }}>
+                  <div className="rounded-t-sm" style={{ width: 16, height: `${Math.max(2, t.rate)}%`, background: t.hasData ? (t.rate >= 80 ? '#7FDCCF' : t.rate >= 50 ? '#EFC94C' : '#F0A87C') : 'transparent', border: t.hasData ? 'none' : `1px dashed ${LINE}` }} title={t.hasData ? `${t.rate}%` : '데이터 없음'} />
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between mt-1.5">
+              {attTrendStats.map((t) => (
+                <span key={t.mk} className="flex-1 text-center text-[10px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{t.mk.slice(5)}월</span>
+              ))}
+            </div>
+          </Card>
           <Card>
             <div className="text-sm font-semibold mb-1" style={{ color: INK }}>전체 누적 출석률</div>
             <div className="text-xs mb-3" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>지금까지 총 출결 {totalSessions}회</div>
