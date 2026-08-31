@@ -503,6 +503,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
   const [submitting, setSubmitting] = useState(false);
   const [expandedViewsId, setExpandedViewsId] = useState(null);
   const isLoggedIn = !!currentMember;
+  const isSecretary = currentMember?.role === '간사'; // 공지 조회수는 간사에게만 노출
 
   const todayMd = todayStr().slice(5, 10);
   const birthdayFolksToday = members.filter((m) => m.birthday && mdOf(m.birthday) === todayMd);
@@ -666,11 +667,13 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                 )}
                 <div className="flex flex-wrap items-center gap-2 mt-2">
                   {n.file_uploaded_at && <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>업로드 {fmtDate(n.file_uploaded_at)}</span>}
-                  <button onClick={() => canManage && setExpandedViewsId(expanded ? null : n.id)} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}>
-                    <Eye size={12} /> {views.length}명 조회{canManage && views.length > 0 ? (expanded ? ' 숨기기' : ' 보기') : ''}
-                  </button>
+                  {isSecretary && (
+                    <button onClick={() => setExpandedViewsId(expanded ? null : n.id)} className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}>
+                      <Eye size={12} /> {views.length}명 조회{views.length > 0 ? (expanded ? ' 숨기기' : ' 보기') : ''}
+                    </button>
+                  )}
                 </div>
-                {canManage && expanded && (
+                {isSecretary && expanded && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {views.map((v) => (
                       <span key={v.id} className="text-[11px] rounded-full px-2 py-1" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>
@@ -2285,27 +2288,30 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
   const [expandedPenaltyId, setExpandedPenaltyId] = useState(null);
   const [visitDetailsOpen, setVisitDetailsOpen] = useState(false);
 
-  // 오늘 접속자수 + 최근 7일 이력 — 간사만 볼 수 있음, site_visits 테이블에서 별도 조회(전체 reload 사이클과 무관)
+  // 접속자수 조회 — 간사만 볼 수 있음, site_visits 테이블에서 별도 조회(전체 reload 사이클과 무관). 날짜를 골라서 조회 가능
   const isSecretary = currentMember?.role === '간사';
-  const [todayVisitCount, setTodayVisitCount] = useState(null);
-  const [todayVisitLog, setTodayVisitLog] = useState(null); // [{name, time}, ...] 로그인 상태로 접속한 각 방문 기록(시각 포함), 최신순
-  const [visitHistory, setVisitHistory] = useState(null); // [{date, count}, ...] 최근 7일, 오늘 포함
+  const [visitQueryDate, setVisitQueryDate] = useState(todayStr());
+  const [visitQueryCount, setVisitQueryCount] = useState(null);
+  const [visitQueryLog, setVisitQueryLog] = useState(null); // [{name, time}, ...] 해당 날짜에 로그인 상태로 접속한 기록(시각 포함), 최신순
+  const [visitHistory, setVisitHistory] = useState(null); // [{date, count}, ...] 최근 7일
   useEffect(() => {
     if (!isSecretary) return;
-    const start = `${todayStr()}T00:00:00`;
-    const end = `${todayStr()}T23:59:59`;
+    const start = `${visitQueryDate}T00:00:00`;
+    const end = `${visitQueryDate}T23:59:59`;
     supabase.from('site_visits').select('member_id, visited_at').gte('visited_at', start).lte('visited_at', end)
       .then(({ data }) => {
-        setTodayVisitCount(data?.length ?? 0);
+        setVisitQueryCount(data?.length ?? 0);
         const log = (data || [])
           .filter((r) => r.member_id)
           .map((r) => ({ name: members.find((m) => m.id === r.member_id)?.name, time: r.visited_at }))
           .filter((r) => r.name)
           .sort((a, b) => b.time.localeCompare(a.time));
-        setTodayVisitLog(log);
+        setVisitQueryLog(log);
       })
-      .catch(() => { setTodayVisitCount(null); setTodayVisitLog(null); });
-
+      .catch(() => { setVisitQueryCount(null); setVisitQueryLog(null); });
+  }, [isSecretary, visitQueryDate]);
+  useEffect(() => {
+    if (!isSecretary) return;
     const since = new Date(); since.setDate(since.getDate() - 6); since.setHours(0, 0, 0, 0);
     supabase.from('site_visits').select('visited_at').gte('visited_at', since.toISOString())
       .then(({ data }) => {
@@ -2509,28 +2515,33 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
       </Card>
       {isSecretary && (
         <Card>
-          <button onClick={() => setVisitDetailsOpen((v) => !v)} className="flex items-center justify-between w-full">
-            <span className="text-sm font-semibold" style={{ color: INK }}>오늘 접속자수</span>
-            <div className="flex items-center gap-1.5">
-              <span className="text-lg font-semibold" style={{ color: '#7FDCCF', fontFamily: "'IBM Plex Mono', monospace" }}>{todayVisitCount === null ? '—' : `${todayVisitCount}회`}</span>
-              {visitDetailsOpen ? <ChevronUp size={16} style={{ color: MUTE }} /> : <ChevronDown size={16} style={{ color: MUTE }} />}
-            </div>
+          <button onClick={() => setVisitDetailsOpen((v) => !v)} className="flex items-center gap-1.5">
+            <Settings2 size={18} style={{ color: MUTE }} />
+            {visitDetailsOpen ? <ChevronUp size={14} style={{ color: MUTE }} /> : <ChevronDown size={14} style={{ color: MUTE }} />}
           </button>
           {visitDetailsOpen && (
             <>
-              {todayVisitLog && (
-                <div className="text-xs mt-2 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>
-                  {todayVisitLog.length > 0 ? (
+              <div className="flex items-center justify-between mt-3 mb-2">
+                <span className="text-sm font-semibold" style={{ color: INK }}>접속자수</span>
+                <input type="date" value={visitQueryDate} onChange={(e) => setVisitQueryDate(e.target.value)} className="rounded-lg border px-2 py-1 text-xs outline-none" style={inputStyle} />
+              </div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs" style={{ color: MUTE }}>{fmtDate(visitQueryDate)} 접속</span>
+                <span className="text-lg font-semibold" style={{ color: '#7FDCCF', fontFamily: "'IBM Plex Mono', monospace" }}>{visitQueryCount === null ? '—' : `${visitQueryCount}회`}</span>
+              </div>
+              {visitQueryLog && (
+                <div className="text-xs pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>
+                  {visitQueryLog.length > 0 ? (
                     <div className="space-y-0.5">
                       <div className="mb-1">로그인 상태로 접속:</div>
-                      {todayVisitLog.map((v, i) => (
+                      {visitQueryLog.map((v, i) => (
                         <div key={i} className="flex items-center justify-between">
                           <span style={{ color: NEUTRAL_TEXT }}>{v.name}</span>
                           <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{new Date(v.time).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
                         </div>
                       ))}
                     </div>
-                  ) : '오늘 로그인 상태로 접속한 멤버는 아직 없어요.'}
+                  ) : '이 날짜엔 로그인 상태로 접속한 멤버가 없어요.'}
                 </div>
               )}
               {visitHistory && (
