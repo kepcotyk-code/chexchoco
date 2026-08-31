@@ -2283,6 +2283,7 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
   const [manualSelectedIds, setManualSelectedIds] = useState([]);
   const [editingRule, setEditingRule] = useState(false); const [ruleInput, setRuleInput] = useState(penaltyRule || '');
   const [expandedPenaltyId, setExpandedPenaltyId] = useState(null);
+  const [visitDetailsOpen, setVisitDetailsOpen] = useState(false);
 
   // 오늘 접속자수 + 최근 7일 이력 — 간사만 볼 수 있음, site_visits 테이블에서 별도 조회(전체 reload 사이클과 무관)
   const isSecretary = currentMember?.role === '간사';
@@ -2508,37 +2509,44 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
       </Card>
       {isSecretary && (
         <Card>
-          <div className="flex items-center justify-between mb-2">
+          <button onClick={() => setVisitDetailsOpen((v) => !v)} className="flex items-center justify-between w-full">
             <span className="text-sm font-semibold" style={{ color: INK }}>오늘 접속자수</span>
-            <span className="text-lg font-semibold" style={{ color: '#7FDCCF', fontFamily: "'IBM Plex Mono', monospace" }}>{todayVisitCount === null ? '—' : `${todayVisitCount}회`}</span>
-          </div>
-          {todayVisitLog && (
-            <div className="text-xs" style={{ color: MUTE }}>
-              {todayVisitLog.length > 0 ? (
-                <div className="space-y-0.5">
-                  <div className="mb-1">로그인 상태로 접속:</div>
-                  {todayVisitLog.map((v, i) => (
-                    <div key={i} className="flex items-center justify-between">
-                      <span style={{ color: NEUTRAL_TEXT }}>{v.name}</span>
-                      <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{new Date(v.time).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-lg font-semibold" style={{ color: '#7FDCCF', fontFamily: "'IBM Plex Mono', monospace" }}>{todayVisitCount === null ? '—' : `${todayVisitCount}회`}</span>
+              {visitDetailsOpen ? <ChevronUp size={16} style={{ color: MUTE }} /> : <ChevronDown size={16} style={{ color: MUTE }} />}
+            </div>
+          </button>
+          {visitDetailsOpen && (
+            <>
+              {todayVisitLog && (
+                <div className="text-xs mt-2 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>
+                  {todayVisitLog.length > 0 ? (
+                    <div className="space-y-0.5">
+                      <div className="mb-1">로그인 상태로 접속:</div>
+                      {todayVisitLog.map((v, i) => (
+                        <div key={i} className="flex items-center justify-between">
+                          <span style={{ color: NEUTRAL_TEXT }}>{v.name}</span>
+                          <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{new Date(v.time).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : '오늘 로그인 상태로 접속한 멤버는 아직 없어요.'}
+                </div>
+              )}
+              {visitHistory && (
+                <div className="space-y-1 pt-2 mt-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                  <div className="text-xs mb-1" style={{ color: MUTE }}>최근 7일 이력</div>
+                  {visitHistory.map((d) => (
+                    <div key={d.date} className="flex items-center justify-between text-xs py-0.5">
+                      <span style={{ color: NEUTRAL_TEXT }}>{fmtDate(d.date)}</span>
+                      <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{d.count}회</span>
                     </div>
                   ))}
                 </div>
-              ) : '오늘 로그인 상태로 접속한 멤버는 아직 없어요.'}
-            </div>
+              )}
+              <p className="text-[11px] mt-2" style={{ color: MUTE }}>앱이 열린 횟수예요 (같은 사람이 여러 번 들어오면 중복 집계될 수 있어요). 간사에게만 보여요.</p>
+            </>
           )}
-          {visitHistory && (
-            <div className="space-y-1 pt-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-              <div className="text-xs mb-1" style={{ color: MUTE }}>최근 7일 이력</div>
-              {visitHistory.map((d) => (
-                <div key={d.date} className="flex items-center justify-between text-xs py-0.5">
-                  <span style={{ color: NEUTRAL_TEXT }}>{fmtDate(d.date)}</span>
-                  <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{d.count}회</span>
-                </div>
-              ))}
-            </div>
-          )}
-          <p className="text-[11px] mt-2" style={{ color: MUTE }}>앱이 열린 횟수예요 (같은 사람이 여러 번 들어오면 중복 집계될 수 있어요). 간사에게만 보여요.</p>
         </Card>
       )}
     </div>
