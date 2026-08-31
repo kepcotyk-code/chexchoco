@@ -1254,12 +1254,13 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     return { ...m, present, excusedCount, denom, rate: denom > 0 ? Math.round((present / denom) * 100) : 0 };
   }).sort((a, b) => b.rate - a.rate), 'rate');
 
-  // 월별 출석률 추이 (최근 6개월) — 전체 누적과는 별개로, 클럽 전체 출석률이 달마다 어떻게 변했는지 보여줌
+  // 월별 출석률 추이 (최근 6개월) — 클럽 전체뿐 아니라 멤버별로도 달마다 어떻게 변했는지 보여줌
   const attTrendMonths = Array.from({ length: 6 }).map((_, i) => { const d = new Date(cursor.getFullYear(), cursor.getMonth() - 5 + i, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; });
   const attTrendStats = attTrendMonths.map((mk) => {
     const monthSessions = sessions.filter((s) => s.date.startsWith(mk) && s.date <= todayStr());
     const totalDaysM = monthSessions.length;
     let totalPresent = 0; let totalDenom = 0;
+    const perMember = {};
     members.forEach((m) => {
       let present = 0; let excusedCount = 0;
       monthSessions.forEach((s) => {
@@ -1271,9 +1272,10 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
         present += st === 'full' ? 1 : st === 'half' ? 0.5 : 0;
       });
       const denom = totalDaysM - excusedCount;
+      perMember[m.id] = denom > 0 ? Math.round((present / denom) * 100) : null; // null = 해당 월에 데이터 없음(휴가로 다 빠졌거나 세션 자체가 없음)
       if (denom > 0) { totalPresent += present; totalDenom += denom; }
     });
-    return { mk, rate: totalDenom > 0 ? Math.round((totalPresent / totalDenom) * 100) : 0, hasData: totalDaysM > 0 };
+    return { mk, rate: totalDenom > 0 ? Math.round((totalPresent / totalDenom) * 100) : 0, hasData: totalDaysM > 0, perMember };
   });
 
   const weeklyPenalties = computeWeeklyPenalties(sessions, checkins, calendarDays, members, absenceExcuses);
@@ -1601,6 +1603,35 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               {attTrendStats.map((t) => (
                 <span key={t.mk} className="flex-1 text-center text-[10px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{t.mk.slice(5)}월</span>
               ))}
+            </div>
+            <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+              <div className="text-xs mb-2" style={{ color: MUTE }}>멤버별 월별 출석률</div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-center" style={{ borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th className="text-left text-[10px] pb-1.5" style={{ color: MUTE, fontWeight: 400 }}></th>
+                      {attTrendStats.map((t) => (
+                        <th key={t.mk} className="text-[10px] pb-1.5 px-1" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 400 }}>{t.mk.slice(5)}월</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {members.map((m) => (
+                      <tr key={m.id}>
+                        <td className="text-left text-xs py-1 pr-2 whitespace-nowrap" style={{ color: INK }}>{dispName(m.name, isLoggedIn)}</td>
+                        {attTrendStats.map((t) => {
+                          const rate = t.perMember[m.id];
+                          const color = rate === null ? MUTE : rate >= 80 ? '#7FDCCF' : rate >= 50 ? '#EFC94C' : '#F0A87C';
+                          return (
+                            <td key={t.mk} className="text-[11px] py-1 px-1" style={{ color, fontFamily: "'IBM Plex Mono', monospace" }}>{rate === null ? '–' : `${rate}%`}</td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </Card>
           <Card>
