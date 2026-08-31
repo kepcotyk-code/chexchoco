@@ -1203,6 +1203,14 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   const firstOfMonthDate = new Date(`${ms}-01T00:00:00`);
   const firstFullWeekSunday = firstOfMonthDate.getDay() === 0 ? firstOfMonthDate : new Date(firstOfMonthDate.getFullYear(), firstOfMonthDate.getMonth(), firstOfMonthDate.getDate() + (7 - firstOfMonthDate.getDay()));
   const weekOfMonth = (dateStr) => Math.max(1, Math.floor(Math.round((sundayOf(dateStr) - firstFullWeekSunday) / 86400000) / 7) + 1);
+  // 주차 헤더 라벨("3주(8.17-20)")과, 그 아래 도트 행이 세로로 정확히 정렬되도록 두 행이 공유할 컬럼 폭을 미리 계산
+  const weekLabels = weekChunkRanges.map(([start, end]) => {
+    const d1 = monthDayList[start].date, d2 = monthDayList[end - 1].date;
+    const month = parseInt(d1.slice(5, 7), 10), day1 = parseInt(d1.slice(8, 10), 10), day2 = parseInt(d2.slice(8, 10), 10);
+    const range = day1 === day2 ? `${month}.${day1}` : `${month}.${day1}-${day2}`;
+    return `${weekOfMonth(d1)}주(${range})`;
+  });
+  const weekColWidths = weekLabels.map((label) => Math.max(30, label.length * 6 + 6));
   // 30분 이상: 정상 출석(1일), 15분 이상 30분 미만: 절반 인정(0.5일), 출장/휴가 사유: 별도 표시, 그 외: 결석
   const attendanceStatus = (dur) => (dur !== null && dur >= 30 ? 'full' : dur !== null && dur >= 15 ? 'half' : 'none');
   const rowsUnranked = members.map((m) => {
@@ -1233,9 +1241,14 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   };
   const totalSessions = sessions.filter((s) => s.date <= todayStr()).length;
   const allTimeRows = withRank(members.map((m) => {
-    let present = 0;
-    sessions.forEach((s) => { const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id); const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null; const st = attendanceStatus(dur); present += st === 'full' ? 1 : st === 'half' ? 0.5 : 0; });
-    return { ...m, present, rate: totalSessions ? Math.round((present / totalSessions) * 100) : 0 };
+    let present = 0; let excusedCount = 0;
+    sessions.forEach((s) => {
+      const excused = absenceExcuses.some((e) => e.date === s.date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason));
+      if (excused) { excusedCount += 1; return; }
+      const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id); const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null; const st = attendanceStatus(dur); present += st === 'full' ? 1 : st === 'half' ? 0.5 : 0;
+    });
+    const denom = totalSessions - excusedCount;
+    return { ...m, present, excusedCount, denom, rate: denom > 0 ? Math.round((present / denom) * 100) : 0 };
   }).sort((a, b) => b.rate - a.rate), 'rate');
 
   const weeklyPenalties = computeWeeklyPenalties(sessions, checkins, calendarDays, members, absenceExcuses);
@@ -1474,26 +1487,21 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             <div className="flex flex-wrap items-center gap-2.5 mb-3">
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FA8D9' }} />출석</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: 'linear-gradient(90deg, #7FA8D9 50%, transparent 50%)', border: `1px solid ${LINE}` }} />절반출석(15~29분)</span>
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: INK }} />출장·휴가</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: INK }} />출장·휴가</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#E0958C' }} />휴무일</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
             </div>
             {weekChunkRanges.length > 0 && (
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-1.5">
-                {weekChunkRanges.map(([start, end], wi) => {
-                  const d1 = monthDayList[start].date, d2 = monthDayList[end - 1].date;
-                  const month = parseInt(d1.slice(5, 7), 10), day1 = parseInt(d1.slice(8, 10), 10), day2 = parseInt(d2.slice(8, 10), 10);
-                  const range = day1 === day2 ? `${month}.${day1}` : `${month}.${day1}-${day2}`;
-                  return <span key={wi} className="text-[10px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{weekOfMonth(d1)}주차({range})</span>;
-                })}
-              </div>
-            )}
-            {weekChunkRanges.length > 0 && (
-              <div className="flex items-center flex-wrap gap-x-3 mb-1.5" style={{ paddingLeft: 34 }}>
+              <div className="flex items-center flex-wrap gap-y-1" style={{ paddingLeft: 34 }}>
                 {weekChunkRanges.map(([start, end], wi) => (
-                  <div key={wi} className="text-center" style={{ width: (end - start) * 9 + (end - start - 1) * 4, overflow: 'visible' }}>
-                    <span className="text-[9px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekOfMonth(monthDayList[start].date)}주</span>
-                  </div>
+                  <React.Fragment key={wi}>
+                    <div style={{ width: weekColWidths[wi] }}>
+                      <span className="text-[9px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi]}</span>
+                    </div>
+                    {wi < weekChunkRanges.length - 1 && (
+                      <span className="shrink-0" style={{ width: 1, height: 11, background: MUTE, opacity: 0.4, transform: 'rotate(22deg)', margin: '0 7px' }} />
+                    )}
+                  </React.Fragment>
                 ))}
               </div>
             )}
@@ -1520,13 +1528,17 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                   <div className="flex items-center flex-wrap gap-y-1.5" style={{ paddingLeft: 34 }}>
                     {weekChunkRanges.map(([start, end], wi) => (
                       <React.Fragment key={wi}>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1" style={{ width: weekColWidths[wi] }}>
                           {r.flags.slice(start, end).map((status, i) => (
-                            <span key={i} className="rounded-full" style={{
-                              width: 9, height: 9,
-                              background: status === 'full' ? '#7FA8D9' : status === 'half' ? 'linear-gradient(90deg, #7FA8D9 50%, transparent 50%)' : status === 'excused' ? INK : status === 'holiday' ? '#E0958C' : 'transparent',
-                              border: status === 'full' || status === 'excused' || status === 'holiday' ? 'none' : `1.5px solid ${LINE}`,
-                            }} title={status === 'excused' ? '출장·휴가' : status === 'holiday' ? '휴무일' : undefined} />
+                            status === 'excused' ? (
+                              <Plane key={i} size={9} style={{ color: INK }} />
+                            ) : (
+                              <span key={i} className="rounded-full" style={{
+                                width: 9, height: 9,
+                                background: status === 'full' ? '#7FA8D9' : status === 'half' ? 'linear-gradient(90deg, #7FA8D9 50%, transparent 50%)' : status === 'holiday' ? '#E0958C' : 'transparent',
+                                border: status === 'full' || status === 'holiday' ? 'none' : `1.5px solid ${LINE}`,
+                              }} title={status === 'holiday' ? '휴무일' : undefined} />
+                            )
                           ))}
                         </div>
                         {wi < weekChunkRanges.length - 1 && (
@@ -1534,11 +1546,11 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                         )}
                       </React.Fragment>
                     ))}
-                    {r.excusedCount > 0 && <span className="text-[10px] ml-1.5" style={{ color: INK, opacity: 0.75 }}>출장·휴가 {r.excusedCount}일은 출석률 산정에서 제외</span>}
                   </div>
                 </div>
               ))}
             </div>
+            <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가</p>
           </Card>
         </>
       ) : (
@@ -1558,13 +1570,14 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                     <div className="relative rounded-full shrink-0" style={{ width: 72, height: 72, background: `conic-gradient(${gaugeColor} ${r.rate * 3.6}deg, ${NEUTRAL_BG} ${r.rate * 3.6}deg 360deg)` }}>
                       <div className="absolute inset-[5px] rounded-full flex flex-col items-center justify-center" style={{ background: CARD_BG }}>
                         <span style={{ fontSize: 15, color: gaugeColor, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700 }}>{r.rate}%</span>
-                        <span style={{ fontSize: 10, color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{totalSessions}</span>
+                        <span style={{ fontSize: 10, color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{r.denom}</span>
                       </div>
                     </div>
                   </div>
                 );
               })}
             </div>
+            <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가</p>
           </Card>
         </>
       )}
