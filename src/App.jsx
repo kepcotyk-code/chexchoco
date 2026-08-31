@@ -1208,9 +1208,9 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     const d1 = monthDayList[start].date, d2 = monthDayList[end - 1].date;
     const month = parseInt(d1.slice(5, 7), 10), day1 = parseInt(d1.slice(8, 10), 10), day2 = parseInt(d2.slice(8, 10), 10);
     const range = day1 === day2 ? `${month}.${day1}` : `${month}.${day1}-${day2}`;
-    return `${weekOfMonth(d1)}주(${range})`;
+    return { main: `${weekOfMonth(d1)}주차`, sub: `(${range})` };
   });
-  const weekColWidths = weekLabels.map((label) => Math.max(30, label.length * 6 + 6));
+  const weekColWidths = weekLabels.map(({ main, sub }) => Math.max(30, Math.max(main.length, sub.length) * 6 + 6));
   // 30분 이상: 정상 출석(1일), 15분 이상 30분 미만: 절반 인정(0.5일), 출장/휴가 사유: 별도 표시, 그 외: 결석
   const attendanceStatus = (dur) => (dur !== null && dur >= 30 ? 'full' : dur !== null && dur >= 15 ? 'half' : 'none');
   const rowsUnranked = members.map((m) => {
@@ -1492,11 +1492,12 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
             </div>
             {weekChunkRanges.length > 0 && (
-              <div className="flex items-center flex-wrap gap-y-1" style={{ paddingLeft: 34 }}>
+              <div className="flex items-center flex-wrap gap-y-1 mb-1.5" style={{ paddingLeft: 34 }}>
                 {weekChunkRanges.map(([start, end], wi) => (
                   <React.Fragment key={wi}>
-                    <div style={{ width: weekColWidths[wi] }}>
-                      <span className="text-[9px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi]}</span>
+                    <div className="flex flex-col items-center" style={{ width: weekColWidths[wi] }}>
+                      <span className="text-[9px] leading-tight" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi].main}</span>
+                      <span className="text-[9px] leading-tight" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi].sub}</span>
                     </div>
                     {wi < weekChunkRanges.length - 1 && (
                       <span className="shrink-0" style={{ width: 1, height: 11, background: MUTE, opacity: 0.4, transform: 'rotate(22deg)', margin: '0 7px' }} />
@@ -1528,7 +1529,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                   <div className="flex items-center flex-wrap gap-y-1.5" style={{ paddingLeft: 34 }}>
                     {weekChunkRanges.map(([start, end], wi) => (
                       <React.Fragment key={wi}>
-                        <div className="flex items-center gap-1" style={{ width: weekColWidths[wi] }}>
+                        <div className="flex items-center justify-center gap-1" style={{ width: weekColWidths[wi] }}>
                           {r.flags.slice(start, end).map((status, i) => (
                             status === 'excused' ? (
                               <Plane key={i} size={9} style={{ color: INK }} />
