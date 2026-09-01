@@ -214,11 +214,19 @@ const computeWeeklyPenalties = (sessions, checkins, calendarDays, members, absen
 /* ---------- Supabase data layer ---------- */
 const TABLES = ['members', 'notices', 'notice_views', 'sessions', 'checkins', 'penalty_completions', 'calendar_days', 'settings', 'photos', 'absence_excuses', 'meeting_locations', 'dues_payments', 'expenses', 'dinner_collections'];
 
-async function fetchAll() {
-  const results = await Promise.all(TABLES.map((t) => supabase.from(t).select('*')));
+async function fetchAll(tables = TABLES) {
+  // members는 pin 컬럼이 빠진 members_public 뷰에서 조회 (일반 조회 시 PIN이 클라이언트로 전송되지 않도록)
+  const results = await Promise.all(tables.map((t) => supabase.from(t === 'members' ? 'members_public' : t).select('*')));
   const out = {};
-  TABLES.forEach((t, i) => { out[t] = results[i].data || []; });
+  tables.forEach((t, i) => { out[t] = results[i].data || []; });
   return out;
+}
+// PIN 검증 전용 — 필요한 순간에만, 그 멤버 한 명의 pin만 좁게 조회해서 비교 (평소 목록 조회엔 PIN이 포함되지 않음)
+async function verifyPin(memberId, input) {
+  const { data } = await supabase.from('members').select('pin').eq('id', memberId).maybeSingle();
+  const actual = data?.pin || null;
+  if (!actual) return true; // PIN 미설정 멤버는 항상 통과
+  return input === actual;
 }
 async function insertRow(table, row) {
   const { error } = await supabase.from(table).insert(row);
@@ -285,12 +293,23 @@ export default function App() {
     return () => window.removeEventListener('unhandledrejection', handler);
   }, []);
 
-  const reload = async () => {
+  const reload = async (tables) => {
     try {
-      const data = await fetchAll();
-      setMembers(data.members); setNotices(data.notices); setNoticeViews(data.notice_views);
-      setSessions(data.sessions); setCheckins(data.checkins); setPenaltyCompletions(data.penalty_completions);
-      setCalendarDays(data.calendar_days); setSettings(data.settings); setPhotos(data.photos); setAbsenceExcuses(data.absence_excuses); setMeetingLocations(data.meeting_locations); setDuesPayments(data.dues_payments); setExpenses(data.expenses); setDinnerCollections(data.dinner_collections);
+      const data = await fetchAll(tables);
+      if (data.members) setMembers(data.members);
+      if (data.notices) setNotices(data.notices);
+      if (data.notice_views) setNoticeViews(data.notice_views);
+      if (data.sessions) setSessions(data.sessions);
+      if (data.checkins) setCheckins(data.checkins);
+      if (data.penalty_completions) setPenaltyCompletions(data.penalty_completions);
+      if (data.calendar_days) setCalendarDays(data.calendar_days);
+      if (data.settings) setSettings(data.settings);
+      if (data.photos) setPhotos(data.photos);
+      if (data.absence_excuses) setAbsenceExcuses(data.absence_excuses);
+      if (data.meeting_locations) setMeetingLocations(data.meeting_locations);
+      if (data.dues_payments) setDuesPayments(data.dues_payments);
+      if (data.expenses) setExpenses(data.expenses);
+      if (data.dinner_collections) setDinnerCollections(data.dinner_collections);
       setError('');
     } catch (e) { setError('데이터를 불러오지 못했어요. 새로고침해 주세요.'); }
     setLoaded(true);
@@ -298,7 +317,12 @@ export default function App() {
   useEffect(() => { reload(); }, []);
   // 오늘 접속자수 집계용 — 페이지 로드마다 방문 기록 1건 남김 (site_visits 테이블, 전체 reload 사이클과는 무관하게 별도 처리)
   // 로그인 상태라면 어떤 멤버인지도 같이 기록 (localStorage에서 즉시 읽히므로 currentUserId는 마운트 시점에 이미 확정됨)
-  useEffect(() => { supabase.from('site_visits').insert({ id: uid('visit'), visited_at: new Date().toISOString(), member_id: currentUserId || null }).then(({ error }) => { if (error) console.error('site_visits insert failed:', error); }).catch((e) => console.error('site_visits insert failed:', e)); }, []);
+  useEffect(() => {
+    supabase.from('site_visits').insert({ id: uid('visit'), visited_at: new Date().toISOString(), member_id: currentUserId || null }).then(({ error }) => { if (error) console.error('site_visits insert failed:', error); }).catch((e) => console.error('site_visits insert failed:', e));
+    // 30일 지난 방문 기록은 자동 정리 (테이블이 무기한 쌓이지 않도록, 페이지 로드마다 가볍게 체크)
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    supabase.from('site_visits').delete().lt('visited_at', cutoff).then(() => {}).catch(() => {});
+  }, []);
 
   const penaltyRule = settings.find((s) => s.key === 'penaltyRule')?.value || '';
   const setPenaltyRule = async (v) => { await upsertRow('settings', { key: 'penaltyRule', value: v }, 'key'); reload(); };
@@ -310,10 +334,11 @@ export default function App() {
   const openLogin = () => { setShowLoginModal(true); setModalSelectedId(''); setModalPinInput(''); setModalPinError(''); };
   const closeLogin = () => { setShowLoginModal(false); setModalSelectedId(''); setModalPinInput(''); setModalPinError(''); };
   const logout = () => { setIdentity(null); };
-  const submitLogin = () => {
+  const submitLogin = async () => {
     const m = members.find((mm) => mm.id === modalSelectedId);
     if (!m) { setModalPinError('사용자를 선택해 주세요.'); return; }
-    if (m.pin && modalPinInput !== m.pin) { setModalPinError('PIN이 일치하지 않아요.'); return; }
+    const ok = await verifyPin(m.id, modalPinInput);
+    if (!ok) { setModalPinError('PIN이 일치하지 않아요.'); return; }
     setIdentity(m.id);
     closeLogin();
   };
@@ -324,7 +349,10 @@ export default function App() {
   const requestDelete = (onConfirm, message = '정말 삭제할까요?') => { setPendingDelete({ onConfirm, message }); setDeletePinInput(''); setDeletePinError(''); };
   const cancelDelete = () => { setPendingDelete(null); setDeletePinInput(''); setDeletePinError(''); };
   const confirmDelete = async () => {
-    if (currentMember?.pin && deletePinInput !== currentMember.pin) { setDeletePinError('PIN이 일치하지 않아요.'); return; }
+    if (currentMember?.has_pin) {
+      const ok = await verifyPin(currentMember.id, deletePinInput);
+      if (!ok) { setDeletePinError('PIN이 일치하지 않아요.'); return; }
+    }
     const action = pendingDelete?.onConfirm;
     cancelDelete();
     if (!action) return;
@@ -359,6 +387,13 @@ export default function App() {
 
   return (
     <div className="min-h-screen" style={{ background: PAPER_BG, fontFamily: "'Inter', sans-serif" }}>
+      <style>{`
+        input:focus-visible, select:focus-visible, textarea:focus-visible,
+        button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
+          outline: 2px solid #7FA8D9;
+          outline-offset: 2px;
+        }
+      `}</style>
       <div className="max-w-3xl mx-auto px-4 pt-6 pb-24">
         <div className="mb-6">
           <div className="flex items-center justify-between mb-1.5">
@@ -395,15 +430,15 @@ export default function App() {
             <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl border p-5" style={{ background: CARD_BG, borderColor: LINE }}>
               <div className="flex items-center justify-between mb-4">
                 <div className="text-sm font-semibold" style={{ color: INK }}>로그인</div>
-                <button onClick={closeLogin}><X size={18} style={{ color: MUTE }} /></button>
+                <button onClick={closeLogin} aria-label="닫기"><X size={18} style={{ color: MUTE }} /></button>
               </div>
               {sortedMembers.length === 0 ? (
                 <p className="text-sm" style={{ color: MUTE }}>등록된 멤버가 없어요. 사용자관리에서 첫 멤버를 등록해 주세요.</p>
               ) : (
                 <div className="space-y-3">
                   <div>
-                    <div className="text-xs mb-1" style={{ color: MUTE }}>이름 선택</div>
-                    <select value={modalSelectedId} onChange={(e) => { setModalSelectedId(e.target.value); setModalPinInput(''); setModalPinError(''); }}
+                    <label htmlFor="login-member-select" className="text-xs mb-1 block" style={{ color: MUTE }}>이름 선택</label>
+                    <select id="login-member-select" value={modalSelectedId} onChange={(e) => { setModalSelectedId(e.target.value); setModalPinInput(''); setModalPinError(''); }}
                       className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none" style={inputStyle}>
                       <option value="">— 선택하세요 —</option>
                       {sortedMembers.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.role})</option>)}
@@ -411,10 +446,10 @@ export default function App() {
                   </div>
                   {modalSelectedId && (() => {
                     const m = sortedMembers.find((mm) => mm.id === modalSelectedId);
-                    return m?.pin ? (
+                    return m?.has_pin ? (
                       <div>
-                        <div className="text-xs mb-1" style={{ color: MUTE }}>PIN</div>
-                        <input type="password" inputMode="numeric" maxLength={4} value={modalPinInput}
+                        <label htmlFor="login-pin-input" className="text-xs mb-1 block" style={{ color: MUTE }}>PIN</label>
+                        <input id="login-pin-input" type="password" inputMode="numeric" maxLength={4} value={modalPinInput}
                           onChange={(e) => setModalPinInput(e.target.value.replace(/\D/g, ''))}
                           onKeyDown={(e) => e.key === 'Enter' && submitLogin()}
                           className="w-full rounded-xl border px-3 py-2.5 text-sm tracking-[0.3em] outline-none" style={inputStyle} placeholder="••••" autoFocus />
@@ -434,13 +469,13 @@ export default function App() {
             <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl border p-5" style={{ background: CARD_BG, borderColor: LINE }}>
               <div className="flex items-center justify-between mb-4">
                 <div className="text-sm font-semibold flex items-center gap-1.5" style={{ color: INK }}><Trash2 size={16} style={{ color: '#F0A87C' }} /> 삭제 확인</div>
-                <button onClick={cancelDelete}><X size={18} style={{ color: MUTE }} /></button>
+                <button onClick={cancelDelete} aria-label="닫기"><X size={18} style={{ color: MUTE }} /></button>
               </div>
               <p className="text-sm mb-3" style={{ color: NEUTRAL_TEXT }}>{pendingDelete.message}</p>
-              {currentMember?.pin ? (
+              {currentMember?.has_pin ? (
                 <div className="mb-3">
-                  <div className="text-xs mb-1" style={{ color: MUTE }}>로그인 PIN 확인</div>
-                  <input type="password" inputMode="numeric" maxLength={4} value={deletePinInput}
+                  <label htmlFor="delete-pin-input" className="text-xs mb-1 block" style={{ color: MUTE }}>로그인 PIN 확인</label>
+                  <input id="delete-pin-input" type="password" inputMode="numeric" maxLength={4} value={deletePinInput}
                     onChange={(e) => { setDeletePinInput(e.target.value.replace(/\D/g, '')); setDeletePinError(''); }}
                     onKeyDown={(e) => e.key === 'Enter' && confirmDelete()}
                     className="w-full rounded-xl border px-3 py-2.5 text-sm tracking-[0.3em] outline-none" style={inputStyle} placeholder="••••" autoFocus />
@@ -603,7 +638,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
       {canManage && (
         showForm ? (
           <Card className="space-y-3">
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} aria-label="공지 제목" />
             <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="내용" rows={4} className="w-full rounded-xl border px-3 py-2 text-sm outline-none resize-none" style={inputStyle} />
             <div>
               <label className="inline-flex items-center gap-1.5 rounded-xl py-2 px-3 text-xs font-semibold cursor-pointer" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>
@@ -646,10 +681,10 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
               </div>
               {canManage && (
                 <div className="flex gap-1 shrink-0">
-                  <button onClick={() => moveNotice(n.id, 'up')} className="p-1.5" style={{ color: MUTE }}><ChevronUp size={15} /></button>
-                  <button onClick={() => moveNotice(n.id, 'down')} className="p-1.5" style={{ color: MUTE }}><ChevronDown size={15} /></button>
-                  <button onClick={() => startEdit(n)} className="p-1.5" style={{ color: MUTE }}><Pencil size={15} /></button>
-                  <button onClick={() => requestDelete(() => remove(n.id), '이 공지사항을 삭제할까요?')} className="p-1.5" style={{ color: '#F0A87C' }}><Trash2 size={15} /></button>
+                  <button onClick={() => moveNotice(n.id, 'up')} className="p-1.5" style={{ color: MUTE }} aria-label="공지 위로 이동"><ChevronUp size={15} /></button>
+                  <button onClick={() => moveNotice(n.id, 'down')} className="p-1.5" style={{ color: MUTE }} aria-label="공지 아래로 이동"><ChevronDown size={15} /></button>
+                  <button onClick={() => startEdit(n)} className="p-1.5" style={{ color: MUTE }} aria-label="공지 수정"><Pencil size={15} /></button>
+                  <button onClick={() => requestDelete(() => remove(n.id), '이 공지사항을 삭제할까요?')} className="p-1.5" style={{ color: '#F0A87C' }} aria-label="공지 삭제"><Trash2 size={15} /></button>
                 </div>
               )}
             </div>
@@ -813,7 +848,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
             <button key={p.id} onClick={() => { setViewingId(p.id); setEditingDate(false); setEditingCaption(false); }} className="relative aspect-square rounded-lg overflow-hidden" style={{ background: NEUTRAL_BG }}>
               <img src={publicUrl('photos', p.file_path)} className="w-full h-full object-cover" alt="" loading="lazy" />
               {p.caption && <div className="absolute top-1 right-1.5" style={{ color: 'rgba(255,255,255,0.85)', textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}><FileText size={12} /></div>}
-              <div className="absolute bottom-1 left-1.5 right-1.5 flex items-center justify-between text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 2px rgba(0,0,0,0.6)', fontFamily: "'IBM Plex Mono', monospace" }}>
+              <div className="absolute bottom-1 left-1.5 right-1.5 flex items-center justify-between text-[11px] font-medium" style={{ color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 2px rgba(0,0,0,0.6)', fontFamily: "'IBM Plex Mono', monospace" }}>
                 <span>{p.created_at.slice(0, 10)}</span>
                 <span className="truncate ml-1">{dispName(p.uploader_name, isLoggedIn)}</span>
               </div>
@@ -825,10 +860,10 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)' }} onClick={() => setViewingId(null)}>
           <div className="relative max-w-full max-h-full flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
             {viewingIdx > 0 && (
-              <button onClick={showPrev} className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 p-2 rounded-full" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }}><ChevronLeft size={20} /></button>
+              <button onClick={showPrev} className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 p-2 rounded-full" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }} aria-label="이전 사진"><ChevronLeft size={20} /></button>
             )}
             {viewingIdx < sorted.length - 1 && (
-              <button onClick={showNext} className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1 p-2 rounded-full" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }}><ChevronRight size={20} /></button>
+              <button onClick={showNext} className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1 p-2 rounded-full" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }} aria-label="다음 사진"><ChevronRight size={20} /></button>
             )}
             <img src={publicUrl('photos', viewing.file_path)} className="max-w-full max-h-[65vh] rounded-xl" alt="" />
             <div className="flex items-center gap-3 mt-3">
@@ -837,19 +872,19 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 <button onClick={() => { setEditingCaption(!editingCaption); setCaptionInput(viewing.caption || ''); }} className="p-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }}><FileText size={15} /></button>
               )}
               {(canManage || viewing.uploader_id === currentMember?.id) && (
-                <button onClick={() => { setEditingDate(!editingDate); setDateInput(viewing.created_at.slice(0, 10)); }} className="p-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }}><Pencil size={15} /></button>
+                <button onClick={() => { setEditingDate(!editingDate); setDateInput(viewing.created_at.slice(0, 10)); }} className="p-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }} aria-label="사진 날짜 수정"><Pencil size={15} /></button>
               )}
               {(canManage || viewing.uploader_id === currentMember?.id) && (
-                <button onClick={() => requestDelete(() => removePhoto(viewing), '이 사진을 삭제할까요?')} className="p-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.15)', color: '#F0A87C' }}><Trash2 size={15} /></button>
+                <button onClick={() => requestDelete(() => removePhoto(viewing), '이 사진을 삭제할까요?')} className="p-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.15)', color: '#F0A87C' }} aria-label="사진 삭제"><Trash2 size={15} /></button>
               )}
-              <button onClick={() => setViewingId(null)} className="p-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }}><X size={15} /></button>
+              <button onClick={() => setViewingId(null)} className="p-1.5 rounded-lg" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }} aria-label="닫기"><X size={15} /></button>
             </div>
             {viewing.caption && !editingCaption && (
               <p className="text-sm mt-2 max-w-sm text-center px-4" style={{ color: 'rgba(255,255,255,0.85)' }}>{viewing.caption}</p>
             )}
             {editingCaption && (
               <div className="flex items-center gap-2 mt-2 w-full max-w-sm px-4" onClick={(e) => e.stopPropagation()}>
-                <input value={captionInput} onChange={(e) => setCaptionInput(e.target.value)} placeholder="캡션 추가" className="flex-1 rounded-lg border px-2 py-1.5 text-sm outline-none" style={{ background: '#17150F', borderColor: '#332F24', color: '#F2EEE3' }} />
+                <input value={captionInput} onChange={(e) => setCaptionInput(e.target.value)} placeholder="캡션 추가" className="flex-1 rounded-lg border px-2 py-1.5 text-sm outline-none" style={{ background: '#17150F', borderColor: '#332F24', color: '#F2EEE3' }} aria-label="사진 캡션" />
                 <button onClick={saveCaption} className="rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ background: '#F2EEE3', color: '#161410' }}>저장</button>
                 <button onClick={() => setEditingCaption(false)} className="rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }}>취소</button>
               </div>
@@ -891,7 +926,7 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
   const setLocation = async (loc) => {
     if (!currentMember || !loc.trim()) return;
     await upsertRow('meeting_locations', { date: todayStr(), location: loc.trim(), updated_by: currentMember.name, updated_at: new Date().toISOString() }, 'date');
-    await reload();
+    await reload(['meeting_locations']);
     setShowLocEdit(false); setLocCustomMode(false); setLocCustomInput('');
   };
   const today = todayStr();
@@ -903,12 +938,12 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
   const setMyExcuse = async (reason) => {
     if (!currentMember) return;
     await insertRow('absence_excuses', { id: uid('ae'), date: today, member_id: currentMember.id, reason });
-    await reload();
+    await reload(['absence_excuses']);
   };
   const clearMyExcuse = async () => {
     if (!myExcuseToday) return;
     await deleteRow('absence_excuses', 'id', myExcuseToday.id);
-    await reload();
+    await reload(['absence_excuses']);
   };
 
   const startSession = async () => {
@@ -916,7 +951,7 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
     if (!calendarDays.some((d) => d.date === today && d.type === '독서일')) {
       await insertRow('calendar_days', { id: uid('cd'), date: today, type: '독서일' });
     }
-    await reload();
+    await reload(['sessions', 'calendar_days']);
   };
   const myCheckin = session ? checkins.find((c) => c.session_id === session.id && c.member_id === currentMember?.id) : null;
   const [locChecking, setLocChecking] = useState(false);
@@ -934,7 +969,7 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
     const locResult = await getLocationStatus();
     setLocChecking(false);
     await insertRow('checkins', { id: uid('c'), session_id: session.id, member_id: currentMember.id, check_in_at: new Date().toISOString(), check_out_at: null, checkin_loc_ok: locResult.ok });
-    await reload();
+    await reload(['checkins']);
   };
   const checkOut = async () => {
     if (!myCheckin) return;
@@ -942,25 +977,25 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
     const locResult = await getLocationStatus();
     setLocChecking(false);
     await updateRow('checkins', 'id', myCheckin.id, { check_out_at: new Date().toISOString(), checkout_loc_ok: locResult.ok });
-    await reload();
+    await reload(['checkins']);
   };
   const resetMyCheckin = async () => {
     if (!myCheckin) return;
     if (!window.confirm('오늘 체크인/체크아웃 기록을 초기화할까요?')) return;
     await deleteRow('checkins', 'id', myCheckin.id);
-    await reload();
+    await reload(['checkins']);
   };
   const todaysCheckins = session ? checkins.filter((c) => c.session_id === session.id) : [];
   const getCheckin = (memberId) => todaysCheckins.find((c) => c.member_id === memberId);
   const checkInMember = async (memberId) => {
     if (!session || getCheckin(memberId)) return;
     await insertRow('checkins', { id: uid('c'), session_id: session.id, member_id: memberId, check_in_at: new Date().toISOString(), check_out_at: null });
-    await reload();
+    await reload(['checkins']);
   };
   const checkOutMember = async (memberId) => {
     const c = getCheckin(memberId); if (!c || c.check_out_at) return;
     await updateRow('checkins', 'id', c.id, { check_out_at: new Date().toISOString() });
-    await reload();
+    await reload(['checkins']);
   };
 
   const toggleSelect = (id) => setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
@@ -972,14 +1007,14 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
     const now = new Date().toISOString();
     const additions = selectedIds.filter((id) => !getCheckin(id)).map((id) => ({ id: uid('c'), session_id: session.id, member_id: id, check_in_at: now, check_out_at: null }));
     if (additions.length) await supabase.from('checkins').insert(additions);
-    await reload();
+    await reload(['checkins']);
   };
   const bulkCheckOutSelected = async () => {
     if (!session || selectedIds.length === 0) return;
     const now = new Date().toISOString();
     const ids = selectedIds.map((id) => getCheckin(id)).filter((c) => c && !c.check_out_at).map((c) => c.id);
     if (ids.length) await supabase.from('checkins').update({ check_out_at: now }).in('id', ids);
-    await reload();
+    await reload(['checkins']);
   };
   const bulkSetCheckInTime = async () => {
     if (!session || selectedIds.length === 0 || !timeInInput) return;
@@ -989,7 +1024,7 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
       if (c) await updateRow('checkins', 'id', c.id, { check_in_at: iso });
       else await insertRow('checkins', { id: uid('c'), session_id: session.id, member_id: id, check_in_at: iso, check_out_at: null });
     }
-    await reload();
+    await reload(['checkins']);
   };
   const bulkSetCheckOutTime = async () => {
     if (!session || selectedIds.length === 0 || !timeOutInput) return;
@@ -998,7 +1033,7 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
       const c = getCheckin(id);
       if (c) await updateRow('checkins', 'id', c.id, { check_out_at: iso });
     }
-    await reload();
+    await reload(['checkins']);
   };
 
   return (
@@ -1049,7 +1084,7 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
                 ) : !myCheckin ? <PrimaryBtn onClick={checkIn} icon={LogIn} disabled={locChecking}>{locChecking ? '위치 확인 중…' : '체크인'}</PrimaryBtn>
                   : !myCheckin.check_out_at ? (
                     <>
-                      <div className="text-sm flex items-center gap-1.5" style={{ color: '#7FDCCF' }}>체크인 {fmtTime(myCheckin.check_in_at)}{myCheckin.checkin_loc_ok === false && <span className="text-[10px] rounded-full px-1.5 py-0.5" style={{ background: '#3A2213', color: '#F0A87C' }}>📍위치 미확인</span>}</div>
+                      <div className="text-sm flex items-center gap-1.5" style={{ color: '#7FDCCF' }}>체크인 {fmtTime(myCheckin.check_in_at)}{myCheckin.checkin_loc_ok === false && <span className="text-[11px] rounded-full px-1.5 py-0.5" style={{ background: '#3A2213', color: '#F0A87C' }}>📍위치 미확인</span>}</div>
                       <div className="flex items-center gap-2">
                         <PrimaryBtn onClick={checkOut} icon={LogOut} disabled={locChecking}>{locChecking ? '위치 확인 중…' : '체크아웃'}</PrimaryBtn>
                         <button onClick={resetMyCheckin} className="text-xs underline underline-offset-2" style={{ color: MUTE }}>초기화</button>
@@ -1114,7 +1149,7 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
                   <div className="flex items-center gap-2 shrink-0">
                     {c ? <span className="text-xs" style={{ color: dur === null ? MUTE : dur >= 30 ? '#7FDCCF' : '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtTime(c.check_in_at)}–{fmtTime(c.check_out_at)} {dur !== null && `(${dur}분)`}{(c.checkin_loc_ok === false || c.checkout_loc_ok === false) && ' 📍'}</span> : <span className="text-xs" style={{ color: MUTE }}>미체크{excuse ? ` · ${excuse.reason}` : ''}</span>}
                     {!c && <button onClick={() => checkInMember(m.id)} className="p-1.5 rounded-lg" style={{ background: NEUTRAL_BG, color: '#7FDCCF' }}><LogIn size={14} /></button>}
-                    {c && !c.check_out_at && <button onClick={() => checkOutMember(m.id)} className="p-1.5 rounded-lg" style={{ background: NEUTRAL_BG, color: '#F0A87C' }}><LogOut size={14} /></button>}
+                    {c && !c.check_out_at && <button onClick={() => checkOutMember(m.id)} className="p-1.5 rounded-lg" style={{ background: NEUTRAL_BG, color: '#F0A87C' }} aria-label={`${m.name} 체크아웃`}><LogOut size={14} /></button>}
                   </div>
                 </div>
               );
@@ -1126,11 +1161,11 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
               <GhostBtn onClick={bulkCheckOutSelected} icon={LogOut} bg="#3A2213" color="#F0A87C">선택 체크아웃</GhostBtn>
             </div>
             <div className="flex items-center gap-2">
-              <input type="time" value={timeInInput} onChange={(e) => setTimeInInput(e.target.value)} className="flex-1 rounded-lg border px-2 py-1.5 text-xs outline-none" style={inputStyle} />
+              <input type="time" value={timeInInput} onChange={(e) => setTimeInInput(e.target.value)} className="flex-1 rounded-lg border px-2 py-1.5 text-xs outline-none" style={inputStyle} aria-label="일괄 체크인 시각" />
               <GhostBtn onClick={bulkSetCheckInTime} icon={LogIn}>체크인 시간 지정</GhostBtn>
             </div>
             <div className="flex items-center gap-2">
-              <input type="time" value={timeOutInput} onChange={(e) => setTimeOutInput(e.target.value)} className="flex-1 rounded-lg border px-2 py-1.5 text-xs outline-none" style={inputStyle} />
+              <input type="time" value={timeOutInput} onChange={(e) => setTimeOutInput(e.target.value)} className="flex-1 rounded-lg border px-2 py-1.5 text-xs outline-none" style={inputStyle} aria-label="일괄 체크아웃 시각" />
               <GhostBtn onClick={bulkSetCheckOutTime} icon={LogOut}>체크아웃 시간 지정</GhostBtn>
             </div>
             <p className="text-[11px]" style={{ color: MUTE }}>선택한 인원에게만 적용돼요. 시간 지정은 체크인 기록이 없어도(체크인은 자동 생성) 적용되고, 체크아웃 시간 지정은 기존 체크인이 있는 인원에만 적용돼요.</p>
@@ -1213,7 +1248,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     const range = day1 === day2 ? `${month}.${day1}` : `${month}.${day1}-${day2}`;
     return { main: `${weekOfMonth(d1)}주차`, sub: `(${range})` };
   });
-  const weekColWidths = weekLabels.map(({ main, sub }) => Math.max(32, Math.max(main.length, sub.length) * 6.6 + 6));
+  const weekColWidths = weekLabels.map(({ main, sub }) => Math.max(34, Math.max(main.length, sub.length) * 7.3 + 6));
   // 30분 이상: 정상 출석(1일), 15분 이상 30분 미만: 절반 인정(0.5일), 출장/휴가 사유: 별도 표시, 그 외: 결석
   const attendanceStatus = (dur) => (dur !== null && dur >= 30 ? 'full' : dur !== null && dur >= 15 ? 'half' : 'none');
   const rowsUnranked = members.map((m) => {
@@ -1343,11 +1378,11 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
         <>
           <Card>
             <div className="flex items-center justify-between mb-1">
-              <button onClick={() => shift(-1)} className="p-1.5" style={{ color: MUTE }}><ChevronLeft size={18} /></button>
+              <button onClick={() => shift(-1)} className="p-1.5" style={{ color: MUTE }} aria-label="이전 달"><ChevronLeft size={18} /></button>
               <div className="flex items-center gap-1.5 font-semibold" style={{ color: INK }}>
                 <BookOpen size={15} style={{ color: '#F0A87C' }} />{cursor.getFullYear()}년 {cursor.getMonth() + 1}월
               </div>
-              <button onClick={() => shift(1)} className="p-1.5" style={{ color: MUTE }}><ChevronRight size={18} /></button>
+              <button onClick={() => shift(1)} className="p-1.5" style={{ color: MUTE }} aria-label="다음 달"><ChevronRight size={18} /></button>
             </div>
             <div className="text-xs text-center" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>이번 달 출결 {totalDays}회</div>
           </Card>
@@ -1519,19 +1554,19 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
           <Card>
             <div className="text-sm font-semibold mb-2" style={{ color: INK }}>이번 달 출석률</div>
             <div className="flex flex-wrap items-center gap-2.5 mb-3">
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FA8D9' }} />출석</span>
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: 'linear-gradient(90deg, #7FA8D9 50%, transparent 50%)', border: `1px solid ${LINE}` }} />절반출석(15~29분)</span>
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#E0958C' }} />휴무일</span>
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: INK }} />출장·휴가</span>
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FA8D9' }} />출석</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: 'linear-gradient(90deg, #7FA8D9 50%, transparent 50%)', border: `1px solid ${LINE}` }} />절반출석(15~29분)</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#E0958C' }} />휴무일</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Plane size={9} style={{ color: INK }} />출장·휴가</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
             </div>
             {weekChunkRanges.length > 0 && (
               <div className="flex items-center flex-wrap gap-y-1 mb-1.5" style={{ paddingLeft: 34 }}>
                 {weekChunkRanges.map(([start, end], wi) => (
                   <React.Fragment key={wi}>
                     <div className="flex flex-col items-center" style={{ width: weekColWidths[wi] }}>
-                      <span className="text-[10px] leading-tight" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi].main}</span>
-                      <span className="text-[10px] leading-tight" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi].sub}</span>
+                      <span className="text-[11px] leading-tight" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi].main}</span>
+                      <span className="text-[11px] leading-tight" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi].sub}</span>
                     </div>
                     {wi < weekChunkRanges.length - 1 && (
                       <span className="shrink-0" style={{ width: 1, height: 11, background: MUTE, opacity: 0.4, transform: 'rotate(22deg)', margin: '0 7px' }} />
@@ -1553,7 +1588,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                         )}
                       </span>
                       <Stamp role={r.role} size={24} tilt={0} /><span className="truncate" style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>
-                      {isCurrentMonth && warningMemberIds.has(r.id) && <span title="이번 주 열린 독서일을 지금까지 모두 결석 — 벌칙유의" className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0" style={{ background: '#3A2213', color: '#F0A87C' }}>⚠️ 벌칙유의</span>}
+                      {isCurrentMonth && warningMemberIds.has(r.id) && <span title="이번 주 열린 독서일을 지금까지 모두 결석 — 벌칙유의" className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[11px] font-semibold shrink-0" style={{ background: '#3A2213', color: '#F0A87C' }}>⚠️ 벌칙유의</span>}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       {penaltyByMember[r.id]?.pending > 0 && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}><Gavel size={10} /> 벌칙 대상 {penaltyByMember[r.id].pending}</span>}
@@ -1585,7 +1620,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 </div>
               ))}
             </div>
-            <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가</p>
+            <p className="text-[11px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가</p>
           </Card>
         </>
       ) : (
@@ -1601,7 +1636,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             </div>
             <div className="flex items-center justify-between mt-1.5">
               {attTrendStats.map((t) => (
-                <span key={t.mk} className="flex-1 text-center text-[10px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{t.mk.slice(5)}월</span>
+                <span key={t.mk} className="flex-1 text-center text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{t.mk.slice(5)}월</span>
               ))}
             </div>
             <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
@@ -1610,9 +1645,9 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 <table className="w-full text-center" style={{ borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
-                      <th className="text-left text-[10px] pb-1.5" style={{ color: MUTE, fontWeight: 400 }}></th>
+                      <th className="text-left text-[11px] pb-1.5" style={{ color: MUTE, fontWeight: 400 }}></th>
                       {attTrendStats.map((t) => (
-                        <th key={t.mk} className="text-[10px] pb-1.5 px-1" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 400 }}>{t.mk.slice(5)}월</th>
+                        <th key={t.mk} className="text-[11px] pb-1.5 px-1" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 400 }}>{t.mk.slice(5)}월</th>
                       ))}
                     </tr>
                   </thead>
@@ -1656,7 +1691,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 );
               })}
             </div>
-            <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가</p>
+            <p className="text-[11px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가</p>
           </Card>
         </>
       )}
@@ -1672,7 +1707,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
   const [newDept, setNewDept] = useState(''); const [newJobType, setNewJobType] = useState(''); const [newJoinedAt, setNewJoinedAt] = useState(''); const [newGenre, setNewGenre] = useState(''); const [newNote, setNewNote] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editMode, setEditMode] = useState('full'); // 'full' | 'self'
-  const [editName, setEditName] = useState(''); const [editRole, setEditRole] = useState('회원'); const [editBirthday, setEditBirthday] = useState(''); const [editPin, setEditPin] = useState('');
+  const [editName, setEditName] = useState(''); const [editRole, setEditRole] = useState('회원'); const [editBirthday, setEditBirthday] = useState(''); const [editPin, setEditPin] = useState(''); const [clearPin, setClearPin] = useState(false);
   const [editDept, setEditDept] = useState(''); const [editJobType, setEditJobType] = useState(''); const [editJoinedAt, setEditJoinedAt] = useState(''); const [editGenre, setEditGenre] = useState(''); const [editNote, setEditNote] = useState('');
 
   const handleAdd = async () => {
@@ -1685,23 +1720,28 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
     await reload();
     setNewName(''); setNewRole('회원'); setNewBirthday(''); setNewPin(''); setNewDept(''); setNewJobType(''); setNewJoinedAt(''); setNewGenre(''); setNewNote(''); setShowAddForm(false);
   };
-  const startEdit = (m) => { setEditingId(m.id); setEditMode('full'); setEditName(m.name); setEditRole(m.role); setEditBirthday(m.birthday || ''); setEditPin(m.pin || ''); setEditDept(m.department || ''); setEditJobType(m.job_type || ''); setEditJoinedAt(m.joined_at || ''); setEditGenre(m.book_genre || ''); setEditNote(m.note || ''); };
-  const startSelfEdit = (m) => { setEditingId(m.id); setEditMode('self'); setEditBirthday(m.birthday || ''); setEditPin(m.pin || ''); setEditDept(m.department || ''); setEditJobType(m.job_type || ''); setEditJoinedAt(m.joined_at || ''); setEditGenre(m.book_genre || ''); setEditNote(m.note || ''); };
+  // PIN은 목록 조회에 안 실려 있어서(m.has_pin만 boolean으로 존재), 수정 시작 시 실제 값은 프리필하지 않음 — 빈 칸=기존 값 유지, 입력하면 새 값으로 교체
+  const startEdit = (m) => { setEditingId(m.id); setEditMode('full'); setEditName(m.name); setEditRole(m.role); setEditBirthday(m.birthday || ''); setEditPin(''); setClearPin(false); setEditDept(m.department || ''); setEditJobType(m.job_type || ''); setEditJoinedAt(m.joined_at || ''); setEditGenre(m.book_genre || ''); setEditNote(m.note || ''); };
+  const startSelfEdit = (m) => { setEditingId(m.id); setEditMode('self'); setEditBirthday(m.birthday || ''); setEditPin(''); setClearPin(false); setEditDept(m.department || ''); setEditJobType(m.job_type || ''); setEditJoinedAt(m.joined_at || ''); setEditGenre(m.book_genre || ''); setEditNote(m.note || ''); };
   const saveEdit = async () => {
     if (editPin && !/^\d{4}$/.test(editPin)) return;
+    const pinPatch = clearPin ? { pin: null } : editPin ? { pin: editPin } : {}; // 빈 칸이면 pin 필드 자체를 patch에서 빼서 기존 값 그대로 유지
     if (editMode === 'full') {
       if (!editName.trim()) return;
-      await updateRow('members', 'id', editingId, { name: editName.trim(), role: editRole, birthday: editBirthday || null, pin: editPin || null, department: editDept || null, job_type: editJobType || null, joined_at: editJoinedAt || null, book_genre: editGenre || null, note: editNote || null });
+      await updateRow('members', 'id', editingId, { name: editName.trim(), role: editRole, birthday: editBirthday || null, department: editDept || null, job_type: editJobType || null, joined_at: editJoinedAt || null, book_genre: editGenre || null, note: editNote || null, ...pinPatch });
     } else {
-      await updateRow('members', 'id', editingId, { birthday: editBirthday || null, pin: editPin || null, department: editDept || null, job_type: editJobType || null, book_genre: editGenre || null });
+      await updateRow('members', 'id', editingId, { birthday: editBirthday || null, department: editDept || null, job_type: editJobType || null, book_genre: editGenre || null, ...pinPatch });
     }
     await reload();
     setEditingId(null);
   };
   const removeMember = async (id) => { await deleteRow('members', 'id', id); await reload(); if (currentUserId === id) setIdentity(null); };
 
-  const downloadExcel = () => {
-    const data = sortedMembers.map((m) => ({ 이름: m.name, 직급: m.role, 소속: m.department || '', 직군: m.job_type || '', 생일: m.birthday || '', 가입일자: m.joined_at || '', 선호도서: m.book_genre || '', 비고: m.note || '', PIN: m.pin || '' }));
+  const downloadExcel = async () => {
+    // PIN은 목록 상태에 없으므로, 다운로드하는 이 순간에만 실제 members 테이블에서 좁게 조회 (관리자가 명시적으로 요청했을 때만 전송됨)
+    const { data: withPins } = await supabase.from('members').select('id,pin');
+    const pinById = Object.fromEntries((withPins || []).map((r) => [r.id, r.pin]));
+    const data = sortedMembers.map((m) => ({ 이름: m.name, 직급: m.role, 소속: m.department || '', 직군: m.job_type || '', 생일: m.birthday || '', 가입일자: m.joined_at || '', 선호도서: m.book_genre || '', 비고: m.note || '', PIN: pinById[m.id] || '' }));
     const ws = XLSX.utils.json_to_sheet(data); const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '멤버명단'); XLSX.writeFile(wb, `책스초코_멤버명단_${todayStr()}.xlsx`);
   };
@@ -1754,26 +1794,38 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
                 </div>
                 {editMode === 'full' && (
                   <>
-                    <input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                    <input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} aria-label="이름" />
                     <RolePicker value={editRole} onChange={setEditRole} />
                   </>
                 )}
                 {editMode === 'self' && <p className="text-xs" style={{ color: MUTE }}>이름·직급·가입일자·비고는 회장·간사·총무만 변경할 수 있어요. 나머지 정보는 본인이 직접 수정할 수 있어요.</p>}
                 <div className="grid grid-cols-2 gap-2">
-                  <input value={editDept} onChange={(e) => setEditDept(e.target.value)} placeholder="소속" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
-                  <input value={editJobType} onChange={(e) => setEditJobType(e.target.value)} placeholder="직군" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                  <input value={editDept} onChange={(e) => setEditDept(e.target.value)} placeholder="소속" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} aria-label="소속" />
+                  <input value={editJobType} onChange={(e) => setEditJobType(e.target.value)} placeholder="직군" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} aria-label="직군" />
                 </div>
                 {editMode === 'full' && (
                   <>
-                    <div><div className="text-xs mb-1" style={{ color: MUTE }}>가입일자</div><input type="date" value={editJoinedAt} onChange={(e) => setEditJoinedAt(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+                    <div><label htmlFor={`edit-joined-${m.id}`} className="text-xs mb-1 block" style={{ color: MUTE }}>가입일자</label><input id={`edit-joined-${m.id}`} type="date" value={editJoinedAt} onChange={(e) => setEditJoinedAt(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
                   </>
                 )}
-                <input value={editGenre} onChange={(e) => setEditGenre(e.target.value)} placeholder="선호 도서 종류 (예: 소설, 자기계발)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                <input value={editGenre} onChange={(e) => setEditGenre(e.target.value)} placeholder="선호 도서 종류 (예: 소설, 자기계발)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} aria-label="선호 도서 종류" />
                 {editMode === 'full' && (
-                  <input value={editNote} onChange={(e) => setEditNote(e.target.value)} placeholder="비고" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                  <input value={editNote} onChange={(e) => setEditNote(e.target.value)} placeholder="비고" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} aria-label="비고" />
                 )}
-                <div><div className="text-xs mb-1 flex items-center gap-1" style={{ color: MUTE }}><Cake size={13} /> 생일</div><input type="date" value={editBirthday} onChange={(e) => setEditBirthday(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
-                <div><div className="text-xs mb-1 flex items-center gap-1" style={{ color: MUTE }}><Lock size={13} /> 본인 확인 PIN (4자리, 선택)</div><input type="password" inputMode="numeric" maxLength={4} value={editPin} onChange={(e) => setEditPin(e.target.value.replace(/\D/g, ''))} className="w-full rounded-xl border px-3 py-2 text-sm tracking-[0.3em] outline-none" style={inputStyle} placeholder="설정 안 함" /></div>
+                <div><label htmlFor={`edit-birthday-${m.id}`} className="text-xs mb-1 flex items-center gap-1" style={{ color: MUTE }}><Cake size={13} /> 생일</label><input id={`edit-birthday-${m.id}`} type="date" value={editBirthday} onChange={(e) => setEditBirthday(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+                <div>
+                  <label htmlFor={`edit-pin-${m.id}`} className="text-xs mb-1 flex items-center gap-1" style={{ color: MUTE }}><Lock size={13} /> 본인 확인 PIN (4자리, 선택)</label>
+                  <input id={`edit-pin-${m.id}`} type="password" inputMode="numeric" maxLength={4} value={editPin} disabled={clearPin}
+                    onChange={(e) => setEditPin(e.target.value.replace(/\D/g, ''))}
+                    className="w-full rounded-xl border px-3 py-2 text-sm tracking-[0.3em] outline-none" style={{ ...inputStyle, opacity: clearPin ? 0.5 : 1 }}
+                    placeholder={m.has_pin ? '변경하려면 입력 (비워두면 기존 PIN 유지)' : '설정 안 함'} />
+                  {m.has_pin && (
+                    <label className="inline-flex items-center gap-1.5 mt-1.5 text-xs" style={{ color: MUTE }}>
+                      <input type="checkbox" checked={clearPin} onChange={(e) => { setClearPin(e.target.checked); if (e.target.checked) setEditPin(''); }} />
+                      기존 PIN 삭제(다음부턴 PIN 없이 로그인)
+                    </label>
+                  )}
+                </div>
                 <div className="flex gap-2 pt-1"><PrimaryBtn onClick={saveEdit} icon={Check}>저장</PrimaryBtn><GhostBtn onClick={() => setEditingId(null)} icon={X}>취소</GhostBtn></div>
               </div>
             ) : (
@@ -1785,7 +1837,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <RoleChip role={m.role} />
                       {m.birthday && isLoggedIn && <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtMD(mdOf(m.birthday))}</span>}
-                      {m.pin && <Lock size={11} style={{ color: MUTE }} />}
+                      {m.has_pin && <Lock size={11} style={{ color: MUTE }} />}
                     </div>
                     {isLoggedIn && (m.department || m.job_type || m.joined_at || m.book_genre || m.note) && (
                       <div className="flex items-center gap-2 flex-wrap mt-1 text-[11px]" style={{ color: MUTE }}>
@@ -1800,9 +1852,9 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  {canManage && <button onClick={() => startEdit(m)} className="p-2 rounded-lg" style={{ color: MUTE }}><Pencil size={16} /></button>}
-                  {!canManage && m.id === currentUserId && <button onClick={() => startSelfEdit(m)} className="p-2 rounded-lg" style={{ color: MUTE }}><Pencil size={16} /></button>}
-                  {canManage && <button onClick={() => requestDelete(() => removeMember(m.id), `${m.name}님을 삭제할까요? 관련 기록도 함께 사라져요.`)} className="p-2 rounded-lg" style={{ color: '#F0A87C' }}><Trash2 size={16} /></button>}
+                  {canManage && <button onClick={() => startEdit(m)} className="p-2 rounded-lg" style={{ color: MUTE }} aria-label="회원 정보 수정"><Pencil size={16} /></button>}
+                  {!canManage && m.id === currentUserId && <button onClick={() => startSelfEdit(m)} className="p-2 rounded-lg" style={{ color: MUTE }} aria-label="내 정보 수정"><Pencil size={16} /></button>}
+                  {canManage && <button onClick={() => requestDelete(() => removeMember(m.id), `${m.name}님을 삭제할까요? 관련 기록도 함께 사라져요.`)} className="p-2 rounded-lg" style={{ color: '#F0A87C' }} aria-label="회원 삭제"><Trash2 size={16} /></button>}
                 </div>
               </div>
             )}
@@ -1813,17 +1865,17 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
       {(canManage || sortedMembers.length === 0) && (
         showAddForm ? (
           <Card className="space-y-3">
-            <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="이름을 입력하세요" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+            <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="이름을 입력하세요" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} aria-label="이름" />
             <RolePicker value={newRole} onChange={setNewRole} />
             <div className="grid grid-cols-2 gap-2">
-              <input value={newDept} onChange={(e) => setNewDept(e.target.value)} placeholder="소속 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
-              <input value={newJobType} onChange={(e) => setNewJobType(e.target.value)} placeholder="직군 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+              <input value={newDept} onChange={(e) => setNewDept(e.target.value)} placeholder="소속 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} aria-label="소속" />
+              <input value={newJobType} onChange={(e) => setNewJobType(e.target.value)} placeholder="직군 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} aria-label="직군" />
             </div>
-            <div><div className="text-xs mb-1" style={{ color: MUTE }}>가입일자 (선택)</div><input type="date" value={newJoinedAt} onChange={(e) => setNewJoinedAt(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
-            <input value={newGenre} onChange={(e) => setNewGenre(e.target.value)} placeholder="선호 도서 종류 (선택)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
-            <input value={newNote} onChange={(e) => setNewNote(e.target.value)} placeholder="비고 (선택)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
-            <div><div className="text-xs mb-1 flex items-center gap-1" style={{ color: MUTE }}><Cake size={13} /> 생일 (선택)</div><input type="date" value={newBirthday} onChange={(e) => setNewBirthday(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
-            <div><div className="text-xs mb-1 flex items-center gap-1" style={{ color: MUTE }}><Lock size={13} /> 본인 확인 PIN (4자리, 선택)</div><input type="password" inputMode="numeric" maxLength={4} value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))} className="w-full rounded-xl border px-3 py-2 text-sm tracking-[0.3em] outline-none" style={inputStyle} placeholder="설정 안 함" /></div>
+            <div><label htmlFor="new-joined" className="text-xs mb-1 block" style={{ color: MUTE }}>가입일자 (선택)</label><input id="new-joined" type="date" value={newJoinedAt} onChange={(e) => setNewJoinedAt(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+            <input value={newGenre} onChange={(e) => setNewGenre(e.target.value)} placeholder="선호 도서 종류 (선택)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} aria-label="선호 도서 종류" />
+            <input value={newNote} onChange={(e) => setNewNote(e.target.value)} placeholder="비고 (선택)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} aria-label="비고" />
+            <div><label htmlFor="new-birthday" className="text-xs mb-1 flex items-center gap-1" style={{ color: MUTE }}><Cake size={13} /> 생일 (선택)</label><input id="new-birthday" type="date" value={newBirthday} onChange={(e) => setNewBirthday(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+            <div><label htmlFor="new-pin" className="text-xs mb-1 flex items-center gap-1" style={{ color: MUTE }}><Lock size={13} /> 본인 확인 PIN (4자리, 선택)</label><input id="new-pin" type="password" inputMode="numeric" maxLength={4} value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))} className="w-full rounded-xl border px-3 py-2 text-sm tracking-[0.3em] outline-none" style={inputStyle} placeholder="설정 안 함" /></div>
             <div className="flex gap-2"><PrimaryBtn onClick={handleAdd} icon={Check}>등록</PrimaryBtn><GhostBtn onClick={() => setShowAddForm(false)} icon={X}>취소</GhostBtn></div>
           </Card>
         ) : (
@@ -2098,9 +2150,9 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
     <div className="space-y-4">
       <Card>
         <div className="flex items-center justify-between mb-1">
-          <button onClick={() => shift(-1)} className="p-1.5" style={{ color: MUTE }}><ChevronLeft size={18} /></button>
+          <button onClick={() => shift(-1)} className="p-1.5" style={{ color: MUTE }} aria-label="이전 달"><ChevronLeft size={18} /></button>
           <div className="font-semibold" style={{ color: INK }}>{cursor.getFullYear()}년 {cursor.getMonth() + 1}월</div>
-          <button onClick={() => shift(1)} className="p-1.5" style={{ color: MUTE }}><ChevronRight size={18} /></button>
+          <button onClick={() => shift(1)} className="p-1.5" style={{ color: MUTE }} aria-label="다음 달"><ChevronRight size={18} /></button>
         </div>
       </Card>
 
@@ -2134,7 +2186,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
         </div>
         <div className="flex items-center justify-between mt-1.5">
           {trendStats.map((t) => (
-            <span key={t.mk} className="flex-1 text-center text-[10px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{t.mk.slice(5)}월</span>
+            <span key={t.mk} className="flex-1 text-center text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{t.mk.slice(5)}월</span>
           ))}
         </div>
         <div className="flex items-center gap-3 mt-2 pt-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
@@ -2162,7 +2214,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
                   <Stamp role={m.role} size={24} tilt={0} />
                   <div className="min-w-0">
                     <span className="text-sm truncate" style={{ color: INK }}>{m.name}</span>
-                    {unpaidDinnerByMember[m.id] > 0 && <div className="text-[10px]" style={{ color: '#F0A87C' }}>회식비 미납 {fmtWon(unpaidDinnerByMember[m.id])}</div>}
+                    {unpaidDinnerByMember[m.id] > 0 && <div className="text-[11px]" style={{ color: '#F0A87C' }}>회식비 미납 {fmtWon(unpaidDinnerByMember[m.id])}</div>}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -2197,7 +2249,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
                     <span className="font-semibold" style={{ color: INK }}>회식 {e.description.match(dinnerRoundRe)?.[1]}차</span>
                     <div className="flex items-center gap-2">
                       <span style={{ color: '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(s.roundCost)}</span>
-                      <button onClick={() => requestDelete(() => removeExpense(e.id), '이 지출 내역을 삭제할까요?')} className="p-1" style={{ color: MUTE }}><Trash2 size={14} /></button>
+                      <button onClick={() => requestDelete(() => removeExpense(e.id), '이 지출 내역을 삭제할까요?')} className="p-1" style={{ color: MUTE }} aria-label="지출 삭제"><Trash2 size={14} /></button>
                     </div>
                   </div>
                   <input value={getRestaurantValue(e)} onChange={(ev) => setRestaurantEdits((prev) => ({ ...prev, [e.id]: ev.target.value }))} onBlur={() => saveRestaurant(e)} placeholder="식당명" className="w-full rounded-lg border px-2 py-1.5 text-xs outline-none" style={inputStyle} />
@@ -2275,7 +2327,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
               <div className="pt-2 mt-1" style={{ borderTop: `1px dashed ${ROW_LINE}` }}>
                 <div className="flex items-center gap-1.5 mb-2">
                   <span className="text-xs font-semibold" style={{ color: INK }}>회식 최종 정산표 (차수별 부담액 · 합계)</span>
-                  {finalMemberTotals.every((f) => f.paid) && <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: '#12302C', color: '#7FDCCF' }}>정산 완료 ✓</span>}
+                  {finalMemberTotals.every((f) => f.paid) && <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#12302C', color: '#7FDCCF' }}>정산 완료 ✓</span>}
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
@@ -2325,10 +2377,10 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
           <>
         <div className="flex gap-2">
           <input type="date" value={expDate} onChange={(e) => setExpDate(e.target.value)} className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
-          <input value={expDesc} onChange={(e) => setExpDesc(e.target.value)} placeholder="내역 (예: 간식비)" className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+          <input value={expDesc} onChange={(e) => setExpDesc(e.target.value)} placeholder="내역 (예: 간식비)" className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} aria-label="지출 내역" />
         </div>
         <div className="flex gap-2">
-          <input type="number" value={expAmount} onChange={(e) => setExpAmount(e.target.value)} placeholder="금액" className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+          <input type="number" value={expAmount} onChange={(e) => setExpAmount(e.target.value)} placeholder="금액" className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} aria-label="지출 금액" />
           <PrimaryBtn onClick={addExpense} icon={Plus}>등록</PrimaryBtn>
         </div>
         <div className="pt-2 space-y-1.5" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
@@ -2341,7 +2393,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <span style={{ color: '#F0A87C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtWon(Number(e.amount))}</span>
-                <button onClick={() => requestDelete(() => removeExpense(e.id), '이 지출 내역을 삭제할까요?')} className="p-1" style={{ color: MUTE }}><Trash2 size={14} /></button>
+                <button onClick={() => requestDelete(() => removeExpense(e.id), '이 지출 내역을 삭제할까요?')} className="p-1" style={{ color: MUTE }} aria-label="지출 삭제"><Trash2 size={14} /></button>
               </div>
             </div>
           ))}
@@ -2431,8 +2483,8 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
     await reload();
     setManualSelectedIds([]); setManualIn(''); setManualOut('');
   };
-  const updateCheckin = async (id, field, timeVal) => { if (!timeVal) return; await updateRow('checkins', 'id', id, { [field]: new Date(`${date}T${timeVal}`).toISOString() }); await reload(); };
-  const removeCheckin = async (id) => { await deleteRow('checkins', 'id', id); await reload(); };
+  const updateCheckin = async (id, field, timeVal) => { if (!timeVal) return; await updateRow('checkins', 'id', id, { [field]: new Date(`${date}T${timeVal}`).toISOString() }); await reload(['checkins']); };
+  const removeCheckin = async (id) => { await deleteRow('checkins', 'id', id); await reload(['checkins']); };
   const saveRule = () => { setPenaltyRule(ruleInput.trim()); setEditingRule(false); };
   const weeklyPenalties = computeWeeklyPenalties(sessions, checkins, calendarDays, members, absenceExcuses);
   const addExcuse = async (memberId, reason) => {
@@ -2483,7 +2535,7 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
                 <span className="text-xs" style={{ color: MUTE }}>→</span>
                 <input type="time" defaultValue={c.check_out_at ? fmtTime(c.check_out_at) : ''} onBlur={(e) => updateCheckin(c.id, 'check_out_at', e.target.value)} className="rounded-lg border px-2 py-1 text-xs" style={inputStyle} />
                 <span className="text-xs font-semibold ml-auto" style={{ color: dur !== null && dur >= 30 ? '#7FDCCF' : '#F0A87C' }}>{dur !== null ? `${dur}분` : '—'}</span>
-                <button onClick={() => requestDelete(() => removeCheckin(c.id), '이 출결 기록을 삭제할까요?')} className="p-1" style={{ color: '#F0A87C' }}><Trash2 size={14} /></button>
+                <button onClick={() => requestDelete(() => removeCheckin(c.id), '이 출결 기록을 삭제할까요?')} className="p-1" style={{ color: '#F0A87C' }} aria-label="출결 기록 삭제"><Trash2 size={14} /></button>
               </div>
             );
           })}
@@ -2501,7 +2553,7 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
                 {excuse ? (
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span className="text-xs rounded-full px-2 py-1" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{excuse.reason}</span>
-                    <button onClick={() => removeExcuse(excuse.id)} className="p-1" style={{ color: MUTE }}><X size={14} /></button>
+                    <button onClick={() => removeExcuse(excuse.id)} className="p-1" style={{ color: MUTE }} aria-label="사유 삭제"><X size={14} /></button>
                   </div>
                 ) : (
                   <div className="flex gap-1.5 shrink-0 flex-wrap justify-end">
@@ -2520,7 +2572,7 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
         <select value={manualMemberId} onChange={(e) => setManualMemberId(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle}>
           <option value="">멤버 선택</option>{members.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.role})</option>)}
         </select>
-        <div className="flex gap-2"><input type="time" value={manualIn} onChange={(e) => setManualIn(e.target.value)} className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /><input type="time" value={manualOut} onChange={(e) => setManualOut(e.target.value)} className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+        <div className="flex gap-2"><input type="time" value={manualIn} onChange={(e) => setManualIn(e.target.value)} className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} aria-label="체크인 시각" /><input type="time" value={manualOut} onChange={(e) => setManualOut(e.target.value)} className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} aria-label="체크아웃 시각" /></div>
         <PrimaryBtn onClick={addManual} icon={Plus}>등록</PrimaryBtn>
 
         <div className="pt-3 mt-1" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
@@ -2544,7 +2596,7 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
       <Card>
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: INK }}><Gavel size={16} style={{ color: '#F0A87C' }} /> 벌칙 관리</div>
-          {!editingRule && <button onClick={() => { setRuleInput(penaltyRule || ''); setEditingRule(true); }} className="p-1.5" style={{ color: MUTE }}><Pencil size={14} /></button>}
+          {!editingRule && <button onClick={() => { setRuleInput(penaltyRule || ''); setEditingRule(true); }} className="p-1.5" style={{ color: MUTE }} aria-label="벌칙 규정 수정"><Pencil size={14} /></button>}
         </div>
         {editingRule ? (
           <div className="space-y-2 mb-3">
@@ -2590,7 +2642,7 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
       </Card>
       {isSecretary && (
         <Card>
-          <button onClick={() => setVisitDetailsOpen((v) => !v)} className="flex items-center gap-1.5">
+          <button onClick={() => setVisitDetailsOpen((v) => !v)} className="flex items-center gap-1.5" aria-label={visitDetailsOpen ? '접속자수 상세 접기' : '접속자수 상세 펼치기'}>
             <Settings2 size={18} style={{ color: MUTE }} />
             {visitDetailsOpen ? <ChevronUp size={14} style={{ color: MUTE }} /> : <ChevronDown size={14} style={{ color: MUTE }} />}
           </button>
