@@ -848,7 +848,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
             <button key={p.id} onClick={() => { setViewingId(p.id); setEditingDate(false); setEditingCaption(false); }} className="relative aspect-square rounded-lg overflow-hidden" style={{ background: NEUTRAL_BG }}>
               <img src={publicUrl('photos', p.file_path)} className="w-full h-full object-cover" alt="" loading="lazy" />
               {p.caption && <div className="absolute top-1 right-1.5" style={{ color: 'rgba(255,255,255,0.85)', textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}><FileText size={12} /></div>}
-              <div className="absolute bottom-1 left-1.5 right-1.5 flex items-center justify-between text-[11px] font-medium" style={{ color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 2px rgba(0,0,0,0.6)', fontFamily: "'IBM Plex Mono', monospace" }}>
+              <div className="absolute bottom-1 left-1.5 right-1.5 flex items-center justify-between text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 2px rgba(0,0,0,0.6)', fontFamily: "'IBM Plex Mono', monospace" }}>
                 <span>{p.created_at.slice(0, 10)}</span>
                 <span className="truncate ml-1">{dispName(p.uploader_name, isLoggedIn)}</span>
               </div>
@@ -1084,7 +1084,7 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
                 ) : !myCheckin ? <PrimaryBtn onClick={checkIn} icon={LogIn} disabled={locChecking}>{locChecking ? '위치 확인 중…' : '체크인'}</PrimaryBtn>
                   : !myCheckin.check_out_at ? (
                     <>
-                      <div className="text-sm flex items-center gap-1.5" style={{ color: '#7FDCCF' }}>체크인 {fmtTime(myCheckin.check_in_at)}{myCheckin.checkin_loc_ok === false && <span className="text-[11px] rounded-full px-1.5 py-0.5" style={{ background: '#3A2213', color: '#F0A87C' }}>📍위치 미확인</span>}</div>
+                      <div className="text-sm flex items-center gap-1.5" style={{ color: '#7FDCCF' }}>체크인 {fmtTime(myCheckin.check_in_at)}{myCheckin.checkin_loc_ok === false && <span className="text-[10px] rounded-full px-1.5 py-0.5" style={{ background: '#3A2213', color: '#F0A87C' }}>📍위치 미확인</span>}</div>
                       <div className="flex items-center gap-2">
                         <PrimaryBtn onClick={checkOut} icon={LogOut} disabled={locChecking}>{locChecking ? '위치 확인 중…' : '체크아웃'}</PrimaryBtn>
                         <button onClick={resetMyCheckin} className="text-xs underline underline-offset-2" style={{ color: MUTE }}>초기화</button>
@@ -1248,7 +1248,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     const range = day1 === day2 ? `${month}.${day1}` : `${month}.${day1}-${day2}`;
     return { main: `${weekOfMonth(d1)}주차`, sub: `(${range})` };
   });
-  const weekColWidths = weekLabels.map(({ main, sub }) => Math.max(34, Math.max(main.length, sub.length) * 7.3 + 6));
+  const weekColWidths = weekLabels.map(({ main, sub }) => Math.max(32, Math.max(main.length, sub.length) * 6.6 + 6));
   // 30분 이상: 정상 출석(1일), 15분 이상 30분 미만: 절반 인정(0.5일), 출장/휴가 사유: 별도 표시, 그 외: 결석
   const attendanceStatus = (dur) => (dur !== null && dur >= 30 ? 'full' : dur !== null && dur >= 15 ? 'half' : 'none');
   const rowsUnranked = members.map((m) => {
@@ -1459,7 +1459,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               })).filter((g) => g.names.length > 0);
               if (groups.length === 0) return null;
               return (
-                <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                <div className="mt-3 p-3 rounded-xl" style={{ background: 'rgba(240,168,124,0.05)', border: '1px solid rgba(240,168,124,0.22)' }}>
                   <div className="text-xs mb-1.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>오늘 참석불가</div>
                   <div className="space-y-1">
                     {groups.map((g) => (
@@ -1554,19 +1554,19 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
           <Card>
             <div className="text-sm font-semibold mb-2" style={{ color: INK }}>이번 달 출석률</div>
             <div className="flex flex-wrap items-center gap-2.5 mb-3">
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FA8D9' }} />출석</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: 'linear-gradient(90deg, #7FA8D9 50%, transparent 50%)', border: `1px solid ${LINE}` }} />절반출석(15~29분)</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#E0958C' }} />휴무일</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Plane size={9} style={{ color: INK }} />출장·휴가</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FA8D9' }} />출석</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: 'linear-gradient(90deg, #7FA8D9 50%, transparent 50%)', border: `1px solid ${LINE}` }} />절반출석(15~29분)</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#E0958C' }} />휴무일</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: INK }} />출장·휴가</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
             </div>
             {weekChunkRanges.length > 0 && (
               <div className="flex items-center flex-wrap gap-y-1 mb-1.5" style={{ paddingLeft: 34 }}>
                 {weekChunkRanges.map(([start, end], wi) => (
                   <React.Fragment key={wi}>
                     <div className="flex flex-col items-center" style={{ width: weekColWidths[wi] }}>
-                      <span className="text-[11px] leading-tight" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi].main}</span>
-                      <span className="text-[11px] leading-tight" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi].sub}</span>
+                      <span className="text-[10px] leading-tight" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi].main}</span>
+                      <span className="text-[10px] leading-tight" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi].sub}</span>
                     </div>
                     {wi < weekChunkRanges.length - 1 && (
                       <span className="shrink-0" style={{ width: 1, height: 11, background: MUTE, opacity: 0.4, transform: 'rotate(22deg)', margin: '0 7px' }} />
@@ -1588,7 +1588,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                         )}
                       </span>
                       <Stamp role={r.role} size={24} tilt={0} /><span className="truncate" style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>
-                      {isCurrentMonth && warningMemberIds.has(r.id) && <span title="이번 주 열린 독서일을 지금까지 모두 결석 — 벌칙유의" className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[11px] font-semibold shrink-0" style={{ background: '#3A2213', color: '#F0A87C' }}>⚠️ 벌칙유의</span>}
+                      {isCurrentMonth && warningMemberIds.has(r.id) && <span title="이번 주 열린 독서일을 지금까지 모두 결석 — 벌칙유의" className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0" style={{ background: '#3A2213', color: '#F0A87C' }}>⚠️ 벌칙유의</span>}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       {penaltyByMember[r.id]?.pending > 0 && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}><Gavel size={10} /> 벌칙 대상 {penaltyByMember[r.id].pending}</span>}
@@ -1620,7 +1620,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 </div>
               ))}
             </div>
-            <p className="text-[11px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가</p>
+            <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가</p>
           </Card>
         </>
       ) : (
@@ -1636,7 +1636,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             </div>
             <div className="flex items-center justify-between mt-1.5">
               {attTrendStats.map((t) => (
-                <span key={t.mk} className="flex-1 text-center text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{t.mk.slice(5)}월</span>
+                <span key={t.mk} className="flex-1 text-center text-[10px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{t.mk.slice(5)}월</span>
               ))}
             </div>
             <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
@@ -1645,9 +1645,9 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 <table className="w-full text-center" style={{ borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
-                      <th className="text-left text-[11px] pb-1.5" style={{ color: MUTE, fontWeight: 400 }}></th>
+                      <th className="text-left text-[10px] pb-1.5" style={{ color: MUTE, fontWeight: 400 }}></th>
                       {attTrendStats.map((t) => (
-                        <th key={t.mk} className="text-[11px] pb-1.5 px-1" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 400 }}>{t.mk.slice(5)}월</th>
+                        <th key={t.mk} className="text-[10px] pb-1.5 px-1" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 400 }}>{t.mk.slice(5)}월</th>
                       ))}
                     </tr>
                   </thead>
@@ -1691,7 +1691,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 );
               })}
             </div>
-            <p className="text-[11px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가</p>
+            <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가</p>
           </Card>
         </>
       )}
@@ -2186,7 +2186,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
         </div>
         <div className="flex items-center justify-between mt-1.5">
           {trendStats.map((t) => (
-            <span key={t.mk} className="flex-1 text-center text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{t.mk.slice(5)}월</span>
+            <span key={t.mk} className="flex-1 text-center text-[10px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{t.mk.slice(5)}월</span>
           ))}
         </div>
         <div className="flex items-center gap-3 mt-2 pt-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
@@ -2214,7 +2214,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
                   <Stamp role={m.role} size={24} tilt={0} />
                   <div className="min-w-0">
                     <span className="text-sm truncate" style={{ color: INK }}>{m.name}</span>
-                    {unpaidDinnerByMember[m.id] > 0 && <div className="text-[11px]" style={{ color: '#F0A87C' }}>회식비 미납 {fmtWon(unpaidDinnerByMember[m.id])}</div>}
+                    {unpaidDinnerByMember[m.id] > 0 && <div className="text-[10px]" style={{ color: '#F0A87C' }}>회식비 미납 {fmtWon(unpaidDinnerByMember[m.id])}</div>}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -2327,7 +2327,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
               <div className="pt-2 mt-1" style={{ borderTop: `1px dashed ${ROW_LINE}` }}>
                 <div className="flex items-center gap-1.5 mb-2">
                   <span className="text-xs font-semibold" style={{ color: INK }}>회식 최종 정산표 (차수별 부담액 · 합계)</span>
-                  {finalMemberTotals.every((f) => f.paid) && <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#12302C', color: '#7FDCCF' }}>정산 완료 ✓</span>}
+                  {finalMemberTotals.every((f) => f.paid) && <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: '#12302C', color: '#7FDCCF' }}>정산 완료 ✓</span>}
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
