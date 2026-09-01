@@ -1414,12 +1414,22 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const hasDiscussion = types.includes('토론회');
                 const birthdayFolks = members.filter((m) => m.birthday && mdOf(m.birthday) === date.slice(5, 10));
                 const hasBirthday = birthdayFolks.length > 0;
-                let borderStyle = isToday ? `1.5px solid ${INK}` : selectedDate === date ? `1.5px solid ${textColor}` : '1px solid transparent';
+                // 벌칙은 주(월~목) 단위로 계산되는데, 그 주가 이번 달과 다음/이전 달에 걸쳐 있으면(예: 8/31이 월요일인 경우)
+                // 이번 달 달력만 봐서는 "이 주가 아직 안 끝났다"는 게 잘 안 보여서 빗금으로 표시
+                const monOfWeek = getMonday(date);
+                const thuOfWeek = new Date(monOfWeek); thuOfWeek.setDate(thuOfWeek.getDate() + 3);
+                const isSplitWeek = monOfWeek.getMonth() !== thuOfWeek.getMonth();
+                let borderStyle = isToday ? '1.5px solid rgba(242,238,227,0.55)' : selectedDate === date ? `1.5px solid ${textColor}` : '1px solid transparent';
                 if (hasFeast) borderStyle = '1.5px solid rgba(229, 72, 77, 0.65)';
                 return (
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
                     className="relative aspect-square rounded-lg flex flex-col items-center justify-center text-xs leading-none"
                     style={{ background: bgStyle, color: textColor, border: borderStyle }}>
+                    {isSplitWeek && (
+                      <div className="absolute inset-0 rounded-lg pointer-events-none" style={{
+                        background: 'repeating-linear-gradient(45deg, rgba(242,238,227,0.1) 0px, rgba(242,238,227,0.1) 3px, transparent 3px, transparent 7px)',
+                      }} title="이 주는 다음/이전 달로 이어져요" />
+                    )}
                     {(hasDiscussion || hasBirthday) && (
                       <span className="absolute top-0.5 flex items-center gap-0.5">
                         {hasDiscussion && <BookOpen size={8} style={{ color: '#D9C24C' }} />}
@@ -1443,6 +1453,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'transparent', border: '1.5px solid rgba(229, 72, 77, 0.65)' }} /> 회식일</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: dayTypeMeta('휴무일').color }} /> 휴무일</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: WEEKEND_TEXT }} /> 금·토·일(제외)</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'repeating-linear-gradient(45deg, rgba(163,155,135,0.9) 0px, rgba(163,155,135,0.9) 1.5px, transparent 1.5px, transparent 3.5px)', border: `1px solid ${LINE}` }} /> 주가 다음/이전 달로 이어짐</span>
             </div>
             <div className="flex flex-wrap gap-2 mt-1.5">
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Cake size={11} style={{ color: '#EFC94C' }} /> 생일</span>
