@@ -372,7 +372,7 @@ export default function App() {
   const TABS = [
     { key: 'notice', label: '공지', icon: Megaphone },
     { key: 'qr', label: '출석', icon: QrCode },
-    { key: 'dashboard', label: '대시보드', icon: BarChart3 },
+    { key: 'dashboard', label: '현황', icon: BarChart3 },
     { key: 'gallery', label: '포토', icon: ImageIcon },
     { key: 'users', label: '멤버', icon: Users },
     ...(canManageUsers ? [{ key: 'treasury', label: '회계', icon: Wallet }] : []),
@@ -1649,6 +1649,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               ))}
             </div>
             <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가</p>
+            <p className="text-[10px] mt-1" style={{ color: MUTE }}>산정기준 : 출석률 - 월 단위, 벌칙 - 주 원스탑단위</p>
           </Card>
         </>
       ) : (
