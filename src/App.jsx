@@ -1231,7 +1231,6 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   const [selectedDate, setSelectedDate] = useState(null);
   const ms = monthStr(cursor);
   const sessionsInMonth = sessions.filter((s) => s.date.startsWith(ms) && s.date <= todayStr());
-  const totalDays = sessionsInMonth.length; // 출석률 분모는 실제 세션(독서일·토론회)일수만 — 휴무일은 제외
   const shift = (delta) => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1));
 
   // 이번 달 출석률 도트 시퀀스: 실제 세션(독서일·토론회) + 휴무일 날짜를 날짜순으로 합쳐서 표시 (휴무일도 빠짐없이 보이도록)
@@ -1280,9 +1279,8 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     return { main: `${weekOfMonth(repDate)}주차`, sub: `(${range})` };
   });
   const weekColWidths = weekLabels.map(({ main, sub }) => Math.max(32, Math.max(main.length, sub.length) * 6.6 + 6));
-  // 순위/출석률 계산용 분모 — 벌칙이 주 단위라, 주 완성을 위해 끌어온 이전 달 날짜(예: 8/31)도 포함해서 계산
-  // (상단 "이번 달 출결 N회" 배지는 totalDays 그대로 써서 순수 이번 달 세션 수만 표시함)
-  const rankingTotalDays = monthDayList.filter((d) => d.session).length;
+  // "이번 달" 뷰는 벌칙과 동일하게 주 단위 기준으로 통일 — 월 경계에 걸쳐 끌어온 날짜(예: 8/31)도 포함해서 계산
+  const totalDays = monthDayList.filter((d) => d.session).length;
   // 30분 이상: 정상 출석(1일), 15분 이상 30분 미만: 절반 인정(0.5일), 출장/휴가 사유: 별도 표시, 그 외: 결석
   const attendanceStatus = (dur) => (dur !== null && dur >= 30 ? 'full' : dur !== null && dur >= 15 ? 'half' : 'none');
   const rowsUnranked = members.map((m) => {
@@ -1300,7 +1298,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
       else if (f === 'half') present += 0.5;
       else if (f === 'excused') excusedCount += 1;
     });
-    const denom = rankingTotalDays - excusedCount;
+    const denom = totalDays - excusedCount;
     return { ...m, present, flags, excusedCount, denom, rate: denom > 0 ? Math.round((present / denom) * 100) : 0 };
   }).sort((a, b) => b.rate - a.rate);
   let lastRate = null; let lastRank = 0;
@@ -1349,6 +1347,32 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
       if (denom > 0) { totalPresent += present; totalDenom += denom; }
     });
     return { mk, rate: totalDenom > 0 ? Math.round((totalPresent / totalDenom) * 100) : 0, hasData: totalDaysM > 0, perMember };
+  });
+
+  // 전체 기간 - 주 단위 출석률 추이 (최근 8주) — 벌칙과 같은 방식(월~목 주 단위)으로 산정
+  const recentWeekKeys = [...new Set(
+    sessions.filter((s) => isMonToThu(s.date) && s.date <= todayStr()).map((s) => weekKeyOf(s.date))
+  )].sort().slice(-8);
+  const weekTrendStats = recentWeekKeys.map((wk) => {
+    const weekSessions = sessions.filter((s) => weekKeyOf(s.date) === wk && s.date <= todayStr());
+    const totalDaysW = weekSessions.length;
+    let totalPresent = 0; let totalDenom = 0;
+    weekSessions.length && members.forEach((m) => {
+      let present = 0; let excusedCount = 0;
+      weekSessions.forEach((s) => {
+        const excused = absenceExcuses.some((e) => e.date === s.date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason));
+        if (excused) { excusedCount += 1; return; }
+        const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
+        const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
+        const st = attendanceStatus(dur);
+        present += st === 'full' ? 1 : st === 'half' ? 0.5 : 0;
+      });
+      const denom = totalDaysW - excusedCount;
+      if (denom > 0) { totalPresent += present; totalDenom += denom; }
+    });
+    const mon = getMonday(wk);
+    const label = `${mon.getMonth() + 1}.${mon.getDate()}`;
+    return { wk, label, rate: totalDenom > 0 ? Math.round((totalPresent / totalDenom) * 100) : 0, hasData: totalDaysW > 0 };
   });
 
   const weeklyPenalties = computeWeeklyPenalties(sessions, checkins, calendarDays, members, absenceExcuses);
@@ -1463,8 +1487,12 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                         {hasDiscussion && <BookOpen size={8} style={{ color: '#D9C24C' }} />}
                         {hasBirthday && (
                           <svg width="9" height="9" viewBox="0 0 24 24" fill="none">
-                            <circle cx="12" cy="4.5" r="1.6" fill="#F0A87C" />
-                            <line x1="12" y1="6.5" x2="12" y2="11" stroke="#C9A97E" strokeWidth="1.6" strokeLinecap="round" />
+                            <circle cx="7.5" cy="5.2" r="1.3" fill="#F0A87C" />
+                            <circle cx="12" cy="4.3" r="1.3" fill="#F0A87C" />
+                            <circle cx="16.5" cy="5.2" r="1.3" fill="#F0A87C" />
+                            <line x1="7.5" y1="6.5" x2="7.5" y2="11" stroke="#C9A97E" strokeWidth="1.4" strokeLinecap="round" />
+                            <line x1="12" y1="5.6" x2="12" y2="11" stroke="#C9A97E" strokeWidth="1.4" strokeLinecap="round" />
+                            <line x1="16.5" y1="6.5" x2="16.5" y2="11" stroke="#C9A97E" strokeWidth="1.4" strokeLinecap="round" />
                             <path d="M4 21v-7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7z" fill="#E8927C" stroke="#B5453A" strokeWidth="1.3" strokeLinejoin="round" />
                             <path d="M4 21h16" stroke="#F2EEE3" strokeWidth="1.4" strokeLinecap="round" />
                           </svg>
@@ -1492,8 +1520,12 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             <div className="flex flex-wrap gap-2 mt-1.5">
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}>
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="4.5" r="1.6" fill="#F0A87C" />
-                  <line x1="12" y1="6.5" x2="12" y2="11" stroke="#C9A97E" strokeWidth="1.6" strokeLinecap="round" />
+                  <circle cx="7.5" cy="5.2" r="1.3" fill="#F0A87C" />
+                  <circle cx="12" cy="4.3" r="1.3" fill="#F0A87C" />
+                  <circle cx="16.5" cy="5.2" r="1.3" fill="#F0A87C" />
+                  <line x1="7.5" y1="6.5" x2="7.5" y2="11" stroke="#C9A97E" strokeWidth="1.4" strokeLinecap="round" />
+                  <line x1="12" y1="5.6" x2="12" y2="11" stroke="#C9A97E" strokeWidth="1.4" strokeLinecap="round" />
+                  <line x1="16.5" y1="6.5" x2="16.5" y2="11" stroke="#C9A97E" strokeWidth="1.4" strokeLinecap="round" />
                   <path d="M4 21v-7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7z" fill="#E8927C" stroke="#B5453A" strokeWidth="1.3" strokeLinejoin="round" />
                   <path d="M4 21h16" stroke="#F2EEE3" strokeWidth="1.4" strokeLinecap="round" />
                 </svg>
@@ -1600,10 +1632,6 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             })()}
           </Card>
 
-          {penaltyRule && (Object.values(penaltyByMember).some((p) => p.pending > 0) || warningMemberIds.size > 0) && (
-            <Card><div className="flex items-center gap-1.5 text-sm font-semibold mb-1" style={{ color: INK }}><Gavel size={16} style={{ color: '#F0A87C' }} /> 벌칙 규정</div><p className="text-sm whitespace-pre-wrap" style={{ color: NEUTRAL_TEXT }}>{penaltyRule}</p></Card>
-          )}
-
           <Card>
             <div className="text-sm font-semibold mb-2" style={{ color: INK }}>이번 달 출석률</div>
             <div className="flex flex-wrap items-center gap-2.5 mb-3">
@@ -1612,6 +1640,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#E0958C' }} />휴무일</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: INK }} />출장·휴가</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
+              <span className="text-[10px] ml-auto" style={{ color: MUTE }}>출석률·벌칙 모두 주단위</span>
             </div>
             {weekChunkRanges.length > 0 && (
               <div className="flex items-center flex-wrap gap-y-1 mb-1.5" style={{ paddingLeft: 34 }}>
@@ -1677,8 +1706,11 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               ))}
             </div>
             <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가</p>
-            <p className="text-[10px] mt-1" style={{ color: MUTE }}>산정기준 : 출석률 - 월 단위, 벌칙 - 주 단위</p>
+            <p className="text-[10px] mt-1" style={{ color: MUTE }}>산정기준 : 출석률·벌칙 모두 주 단위 (월 경계에 걸친 주는 이전/다음 달 날짜도 포함)</p>
           </Card>
+          {penaltyRule && (Object.values(penaltyByMember).some((p) => p.pending > 0) || warningMemberIds.size > 0) && (
+            <Card><div className="flex items-center gap-1.5 text-sm font-semibold mb-1" style={{ color: INK }}><Gavel size={16} style={{ color: '#F0A87C' }} /> 벌칙 규정</div><p className="text-sm whitespace-pre-wrap" style={{ color: NEUTRAL_TEXT }}>{penaltyRule}</p></Card>
+          )}
         </>
       ) : (
         <>
@@ -1725,6 +1757,23 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 </table>
               </div>
             </div>
+            <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>산정기준 : 달력 월 단위</p>
+          </Card>
+          <Card>
+            <div className="text-sm font-semibold mb-3" style={{ color: INK }}>주 단위 출석률 추이 (최근 8주)</div>
+            <div className="flex items-end justify-between gap-1.5" style={{ height: 88 }}>
+              {weekTrendStats.map((t) => (
+                <div key={t.wk} className="flex-1 flex items-end justify-center" style={{ height: '100%' }}>
+                  <div className="rounded-t-sm" style={{ width: 14, height: `${Math.max(2, t.rate)}%`, background: t.hasData ? (t.rate >= 80 ? '#7FDCCF' : t.rate >= 50 ? '#EFC94C' : '#F0A87C') : 'transparent', border: t.hasData ? 'none' : `1px dashed ${LINE}` }} title={t.hasData ? `${t.rate}%` : '데이터 없음'} />
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between mt-1.5">
+              {weekTrendStats.map((t) => (
+                <span key={t.wk} className="flex-1 text-center text-[9px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{t.label}</span>
+              ))}
+            </div>
+            <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>산정기준 : 벌칙과 동일한 주(월~목) 단위, 라벨은 그 주의 월요일 날짜</p>
           </Card>
           <Card>
             <div className="text-sm font-semibold mb-1" style={{ color: INK }}>전체 누적 출석률</div>
