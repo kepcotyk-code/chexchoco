@@ -375,8 +375,6 @@ export default function App() {
     { key: 'dashboard', label: '현황', icon: BarChart3 },
     { key: 'gallery', label: '포토', icon: ImageIcon },
     { key: 'users', label: '멤버', icon: Users },
-    ...(canManageUsers ? [{ key: 'treasury', label: '회계', icon: Wallet }] : []),
-    ...(canManageAttendance ? [{ key: 'admin', label: '설정', icon: Settings2 }] : []),
   ];
 
   if (!loaded) {
@@ -398,11 +396,25 @@ export default function App() {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[11px] tracking-[0.2em] uppercase" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>KEPCO Reading Club</span>
-            <button onClick={() => (currentMember ? logout() : openLogin())}
-              className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold"
-              style={{ background: currentMember ? BTN_BG : NEUTRAL_BG, color: currentMember ? BTN_TEXT : NEUTRAL_TEXT }}>
-              {currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} />{currentMember.name}님 · 로그아웃</> : <>로그인</>}
-            </button>
+            <div className="flex items-center gap-1.5">
+              {canManageUsers && (
+                <button onClick={() => setTab('treasury')} aria-label="회계"
+                  className="p-1.5 rounded-full" style={{ background: tab === 'treasury' ? BTN_BG : NEUTRAL_BG, color: tab === 'treasury' ? BTN_TEXT : MUTE }}>
+                  <Wallet size={15} />
+                </button>
+              )}
+              {canManageAttendance && (
+                <button onClick={() => setTab('admin')} aria-label="설정"
+                  className="p-1.5 rounded-full" style={{ background: tab === 'admin' ? BTN_BG : NEUTRAL_BG, color: tab === 'admin' ? BTN_TEXT : MUTE }}>
+                  <Settings2 size={15} />
+                </button>
+              )}
+              <button onClick={() => (currentMember ? logout() : openLogin())}
+                className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold"
+                style={{ background: currentMember ? BTN_BG : NEUTRAL_BG, color: currentMember ? BTN_TEXT : NEUTRAL_TEXT }}>
+                {currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} />{currentMember.name}님 · 로그아웃</> : <>로그인</>}
+              </button>
+            </div>
           </div>
           <h1 className="text-center text-4xl font-semibold" style={{ fontFamily: "'Fraunces', serif", color: INK }}>책스초코</h1>
         </div>
@@ -1649,7 +1661,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               ))}
             </div>
             <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가</p>
-            <p className="text-[10px] mt-1" style={{ color: MUTE }}>산정기준 : 출석률 - 월 단위, 벌칙 - 주 원스탑단위</p>
+            <p className="text-[10px] mt-1" style={{ color: MUTE }}>※ 산정기준 : 출석률 - 월 단위, 벌칙 - 주 단위</p>
           </Card>
         </>
       ) : (
