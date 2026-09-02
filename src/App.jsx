@@ -1226,10 +1226,26 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   const holidayDatesInMonth = calendarDays
     .filter((d) => d.date.startsWith(ms) && d.date <= todayStr() && d.type === '휴무일' && !sessions.some((s) => s.date === d.date))
     .map((d) => d.date);
-  const monthDayList = [
-    ...sessionsInMonth.map((s) => ({ date: s.date, session: s })),
-    ...holidayDatesInMonth.map((date) => ({ date, session: null })),
+  const coreDayList = [
+    ...sessionsInMonth.map((s) => ({ date: s.date, session: s, inCurrentMonth: true })),
+    ...holidayDatesInMonth.map((date) => ({ date, session: null, inCurrentMonth: true })),
   ].sort((a, b) => a.date.localeCompare(b.date));
+  // 이번 달 첫 주가 이전 달에서 시작하면(예: 8/31 월요일 + 9/1~9/2 화·수), 월요일이 안 보여서 주가 끊겨 보이므로
+  // 이전 달의 그 며칠을 시각적으로만 끌어와 채움 — 출석률 집계(denom/present)에는 포함하지 않음
+  let prevMonthExtra = [];
+  if (coreDayList.length > 0) {
+    const mon = getMonday(coreDayList[0].date);
+    const monStr = `${mon.getFullYear()}-${pad(mon.getMonth() + 1)}-${pad(mon.getDate())}`;
+    if (monStr < `${ms}-01`) {
+      const extraSessions = sessions.filter((s) => s.date >= monStr && s.date < `${ms}-01` && s.date <= todayStr());
+      const extraHolidays = calendarDays.filter((d) => d.date >= monStr && d.date < `${ms}-01` && d.date <= todayStr() && d.type === '휴무일' && !sessions.some((s) => s.date === d.date));
+      prevMonthExtra = [
+        ...extraSessions.map((s) => ({ date: s.date, session: s, inCurrentMonth: false })),
+        ...extraHolidays.map((date) => ({ date, session: null, inCurrentMonth: false })),
+      ];
+    }
+  }
+  const monthDayList = [...prevMonthExtra, ...coreDayList].sort((a, b) => a.date.localeCompare(b.date));
   const sessionWeekKeys = monthDayList.map((d) => weekKeyOf(d.date)); // 도트를 주 단위로 묶어서 표시하기 위함
   const weekChunkRanges = []; // [[startIdx, endIdx), ...] — 한 주(보통 월~목 4일)씩 묶은 구간
   sessionWeekKeys.forEach((wk, i) => {
@@ -1243,10 +1259,13 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   const weekOfMonth = (dateStr) => Math.max(1, Math.floor(Math.round((sundayOf(dateStr) - firstFullWeekSunday) / 86400000) / 7) + 1);
   // 주차 헤더 라벨("3주(8.17-20)")과, 그 아래 도트 행이 세로로 정확히 정렬되도록 두 행이 공유할 컬럼 폭을 미리 계산
   const weekLabels = weekChunkRanges.map(([start, end]) => {
-    const d1 = monthDayList[start].date, d2 = monthDayList[end - 1].date;
-    const month = parseInt(d1.slice(5, 7), 10), day1 = parseInt(d1.slice(8, 10), 10), day2 = parseInt(d2.slice(8, 10), 10);
-    const range = day1 === day2 ? `${month}.${day1}` : `${month}.${day1}-${day2}`;
-    return { main: `${weekOfMonth(d1)}주차`, sub: `(${range})` };
+    const chunk = monthDayList.slice(start, end);
+    const d1 = chunk[0].date, d2 = chunk[chunk.length - 1].date;
+    const month1 = parseInt(d1.slice(5, 7), 10), day1 = parseInt(d1.slice(8, 10), 10);
+    const month2 = parseInt(d2.slice(5, 7), 10), day2 = parseInt(d2.slice(8, 10), 10);
+    const range = month1 !== month2 ? `${month1}.${day1}-${month2}.${day2}` : (day1 === day2 ? `${month1}.${day1}` : `${month1}.${day1}-${day2}`);
+    const repDate = chunk.find((d) => d.inCurrentMonth)?.date || d1; // 주차 번호는 실제 이번 달에 속한 날짜 기준으로 계산
+    return { main: `${weekOfMonth(repDate)}주차`, sub: `(${range})` };
   });
   const weekColWidths = weekLabels.map(({ main, sub }) => Math.max(32, Math.max(main.length, sub.length) * 6.6 + 6));
   // 30분 이상: 정상 출석(1일), 15분 이상 30분 미만: 절반 인정(0.5일), 출장/휴가 사유: 별도 표시, 그 외: 결석
@@ -1260,8 +1279,14 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
       const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
       return attendanceStatus(dur);
     });
-    const present = flags.reduce((sum, f) => sum + (f === 'full' ? 1 : f === 'half' ? 0.5 : 0), 0);
-    const excusedCount = flags.filter((f) => f === 'excused').length; // 출장·휴가일은 그 멤버의 출석률 분모에서 제외
+    let present = 0; let excusedCount = 0;
+    monthDayList.forEach((d, i) => {
+      if (!d.inCurrentMonth) return; // 시각적 완성을 위해 끌어온 이전 달 날짜는 이번 달 집계에서 제외
+      const f = flags[i];
+      if (f === 'full') present += 1;
+      else if (f === 'half') present += 0.5;
+      else if (f === 'excused') excusedCount += 1;
+    });
     const denom = totalDays - excusedCount;
     return { ...m, present, flags, excusedCount, denom, rate: denom > 0 ? Math.round((present / denom) * 100) : 0 };
   }).sort((a, b) => b.rate - a.rate);
@@ -1414,22 +1439,12 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const hasDiscussion = types.includes('토론회');
                 const birthdayFolks = members.filter((m) => m.birthday && mdOf(m.birthday) === date.slice(5, 10));
                 const hasBirthday = birthdayFolks.length > 0;
-                // 벌칙은 주(월~목) 단위로 계산되는데, 그 주가 이번 달과 다음/이전 달에 걸쳐 있으면(예: 8/31이 월요일인 경우)
-                // 이번 달 달력만 봐서는 "이 주가 아직 안 끝났다"는 게 잘 안 보여서 빗금으로 표시
-                const monOfWeek = getMonday(date);
-                const thuOfWeek = new Date(monOfWeek); thuOfWeek.setDate(thuOfWeek.getDate() + 3);
-                const isSplitWeek = monOfWeek.getMonth() !== thuOfWeek.getMonth();
                 let borderStyle = isToday ? '1.5px solid rgba(242,238,227,0.55)' : selectedDate === date ? `1.5px solid ${textColor}` : '1px solid transparent';
                 if (hasFeast) borderStyle = '1.5px solid rgba(229, 72, 77, 0.65)';
                 return (
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
                     className="relative aspect-square rounded-lg flex flex-col items-center justify-center text-xs leading-none"
                     style={{ background: bgStyle, color: textColor, border: borderStyle }}>
-                    {isSplitWeek && (
-                      <div className="absolute inset-0 rounded-lg pointer-events-none" style={{
-                        background: 'repeating-linear-gradient(45deg, rgba(242,238,227,0.1) 0px, rgba(242,238,227,0.1) 3px, transparent 3px, transparent 7px)',
-                      }} title="이 주는 다음/이전 달로 이어져요" />
-                    )}
                     {(hasDiscussion || hasBirthday) && (
                       <span className="absolute top-0.5 flex items-center gap-0.5">
                         {hasDiscussion && <BookOpen size={8} style={{ color: '#D9C24C' }} />}
@@ -1453,7 +1468,6 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'transparent', border: '1.5px solid rgba(229, 72, 77, 0.65)' }} /> 회식일</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: dayTypeMeta('휴무일').color }} /> 휴무일</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: WEEKEND_TEXT }} /> 금·토·일(제외)</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'repeating-linear-gradient(45deg, rgba(163,155,135,0.9) 0px, rgba(163,155,135,0.9) 1.5px, transparent 1.5px, transparent 3.5px)', border: `1px solid ${LINE}` }} /> 주가 다음/이전 달로 이어짐</span>
             </div>
             <div className="flex flex-wrap gap-2 mt-1.5">
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Cake size={11} style={{ color: '#EFC94C' }} /> 생일</span>
@@ -1610,17 +1624,20 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                     {weekChunkRanges.map(([start, end], wi) => (
                       <React.Fragment key={wi}>
                         <div className="flex items-center justify-center gap-1" style={{ width: weekColWidths[wi] }}>
-                          {r.flags.slice(start, end).map((status, i) => (
-                            status === 'excused' ? (
-                              <Plane key={i} size={9} style={{ color: INK }} />
+                          {r.flags.slice(start, end).map((status, i) => {
+                            const fromPrevMonth = !monthDayList[start + i].inCurrentMonth;
+                            return status === 'excused' ? (
+                              <Plane key={i} size={9} style={{ color: INK, opacity: fromPrevMonth ? 0.6 : 1 }} />
                             ) : (
-                              <span key={i} className="rounded-full" style={{
+                              <span key={i} className="relative rounded-full" style={{
                                 width: 9, height: 9,
                                 background: status === 'full' ? '#7FA8D9' : status === 'half' ? 'linear-gradient(90deg, #7FA8D9 50%, transparent 50%)' : status === 'holiday' ? '#E0958C' : 'transparent',
                                 border: status === 'full' || status === 'holiday' ? 'none' : `1.5px solid ${LINE}`,
-                              }} title={status === 'holiday' ? '휴무일' : undefined} />
-                            )
-                          ))}
+                              }} title={(status === 'holiday' ? '휴무일' : '') + (fromPrevMonth ? ' (이전 달, 참고용)' : '')}>
+                                {fromPrevMonth && <span className="absolute inset-0 rounded-full pointer-events-none" style={{ background: 'repeating-linear-gradient(45deg, rgba(30,28,22,0.55) 0px, rgba(30,28,22,0.55) 1px, transparent 1px, transparent 2.5px)' }} />}
+                              </span>
+                            );
+                          })}
                         </div>
                         {wi < weekChunkRanges.length - 1 && (
                           <span className="shrink-0" style={{ width: 1, height: 11, background: MUTE, opacity: 0.4, transform: 'rotate(22deg)', margin: '0 7px' }} />
