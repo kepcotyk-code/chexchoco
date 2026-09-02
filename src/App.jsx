@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import { supabase } from './supabaseClient';
 import {
   Crown, Shield, Wallet, User, Plus, Pencil, Trash2, Check, X, Lock, AlertCircle,
-  Megaphone, QrCode, BarChart3, Users, Settings2, Download, Upload, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
+  Megaphone, QrCode, BarChart3, Users, Settings2, Settings, Download, Upload, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   LogIn, LogOut, Cake, PartyPopper, Archive, Paperclip, FileText, Eye, Pin, Gavel, BookOpen,
   Image as ImageIcon, Trophy, Plane,
 } from 'lucide-react';
@@ -406,7 +406,7 @@ export default function App() {
               {canManageAttendance && (
                 <button onClick={() => setTab('admin')} aria-label="설정"
                   className="p-1.5 rounded-full" style={{ background: tab === 'admin' ? BTN_BG : NEUTRAL_BG, color: tab === 'admin' ? BTN_TEXT : MUTE }}>
-                  <Settings2 size={15} />
+                  <Settings size={15} />
                 </button>
               )}
               <button onClick={() => (currentMember ? logout() : openLogin())}
@@ -416,7 +416,7 @@ export default function App() {
               </button>
             </div>
           </div>
-          <h1 className="text-center text-4xl font-semibold" style={{ fontFamily: "'Fraunces', serif", color: INK }}>책스초코</h1>
+          <h1 className="text-center text-4xl font-semibold mt-3" style={{ fontFamily: "'Fraunces', serif", color: INK }}>책스초코</h1>
         </div>
 
         {recentPhotos.length > 0 && (
@@ -1280,6 +1280,9 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     return { main: `${weekOfMonth(repDate)}주차`, sub: `(${range})` };
   });
   const weekColWidths = weekLabels.map(({ main, sub }) => Math.max(32, Math.max(main.length, sub.length) * 6.6 + 6));
+  // 순위/출석률 계산용 분모 — 벌칙이 주 단위라, 주 완성을 위해 끌어온 이전 달 날짜(예: 8/31)도 포함해서 계산
+  // (상단 "이번 달 출결 N회" 배지는 totalDays 그대로 써서 순수 이번 달 세션 수만 표시함)
+  const rankingTotalDays = monthDayList.filter((d) => d.session).length;
   // 30분 이상: 정상 출석(1일), 15분 이상 30분 미만: 절반 인정(0.5일), 출장/휴가 사유: 별도 표시, 그 외: 결석
   const attendanceStatus = (dur) => (dur !== null && dur >= 30 ? 'full' : dur !== null && dur >= 15 ? 'half' : 'none');
   const rowsUnranked = members.map((m) => {
@@ -1292,14 +1295,12 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
       return attendanceStatus(dur);
     });
     let present = 0; let excusedCount = 0;
-    monthDayList.forEach((d, i) => {
-      if (!d.inCurrentMonth) return; // 시각적 완성을 위해 끌어온 이전 달 날짜는 이번 달 집계에서 제외
-      const f = flags[i];
+    flags.forEach((f) => {
       if (f === 'full') present += 1;
       else if (f === 'half') present += 0.5;
       else if (f === 'excused') excusedCount += 1;
     });
-    const denom = totalDays - excusedCount;
+    const denom = rankingTotalDays - excusedCount;
     return { ...m, present, flags, excusedCount, denom, rate: denom > 0 ? Math.round((present / denom) * 100) : 0 };
   }).sort((a, b) => b.rate - a.rate);
   let lastRate = null; let lastRank = 0;
@@ -1460,7 +1461,14 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                     {(hasDiscussion || hasBirthday) && (
                       <span className="absolute top-0.5 flex items-center gap-0.5">
                         {hasDiscussion && <BookOpen size={8} style={{ color: '#D9C24C' }} />}
-                        {hasBirthday && <Cake size={9} style={{ color: '#EFC94C' }} />}
+                        {hasBirthday && (
+                          <svg width="9" height="9" viewBox="0 0 24 24" fill="none">
+                            <circle cx="12" cy="4.5" r="1.6" fill="#F0A87C" />
+                            <line x1="12" y1="6.5" x2="12" y2="11" stroke="#C9A97E" strokeWidth="1.6" strokeLinecap="round" />
+                            <path d="M4 21v-7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7z" fill="#E8927C" stroke="#B5453A" strokeWidth="1.3" strokeLinejoin="round" />
+                            <path d="M4 21h16" stroke="#F2EEE3" strokeWidth="1.4" strokeLinecap="round" />
+                          </svg>
+                        )}
                       </span>
                     )}
                     <span>{day}</span>
@@ -1482,7 +1490,15 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: WEEKEND_TEXT }} /> 금·토·일(제외)</span>
             </div>
             <div className="flex flex-wrap gap-2 mt-1.5">
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Cake size={11} style={{ color: '#EFC94C' }} /> 생일</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="4.5" r="1.6" fill="#F0A87C" />
+                  <line x1="12" y1="6.5" x2="12" y2="11" stroke="#C9A97E" strokeWidth="1.6" strokeLinecap="round" />
+                  <path d="M4 21v-7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7z" fill="#E8927C" stroke="#B5453A" strokeWidth="1.3" strokeLinejoin="round" />
+                  <path d="M4 21h16" stroke="#F2EEE3" strokeWidth="1.4" strokeLinecap="round" />
+                </svg>
+                생일
+              </span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Plane size={11} /> 출장·휴가</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><User size={11} style={{ color: '#7FDCCF' }} /> 개인일정</span>
             </div>
@@ -1661,7 +1677,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               ))}
             </div>
             <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가</p>
-            <p className="text-[10px] mt-1" style={{ color: MUTE }}>※ 산정기준 : 출석률 - 월 단위, 벌칙 - 주 단위</p>
+            <p className="text-[10px] mt-1" style={{ color: MUTE }}>산정기준 : 출석률 - 월 단위, 벌칙 - 주 단위</p>
           </Card>
         </>
       ) : (
