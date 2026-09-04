@@ -1643,7 +1643,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                         )}
                       </span>
                       <Stamp role={r.role} size={24} tilt={0} /><span className="truncate" style={{ color: INK }}>{dispName(r.name, isLoggedIn)}</span>
-                      {isCurrentMonth && warningMemberIds.has(r.id) && <span title="이번 주 열린 독서일을 지금까지 모두 결석 — 벌칙유의" className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0" style={{ background: '#3A2213', color: '#F0A87C' }}>⚠️ 벌칙유의</span>}
+                      {isCurrentMonth && warningMemberIds.has(r.id) && !(penaltyByMember[r.id]?.pending > 0) && <span title="이번 주 열린 독서일을 지금까지 모두 결석 — 벌칙유의" className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0" style={{ background: '#3A2213', color: '#F0A87C' }}>⚠️ 벌칙유의</span>}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       {penaltyByMember[r.id]?.pending > 0 && <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}><Gavel size={10} /> 벌칙 대상 {penaltyByMember[r.id].pending}</span>}
@@ -1682,7 +1682,21 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             <p className="text-[10px] mt-1" style={{ color: MUTE }}>※ 출석률 산정기준 : 주 단위(월 경계에 걸친 경우, 전월분 포함 산정)</p>
           </Card>
           {penaltyRule && (Object.values(penaltyByMember).some((p) => p.pending > 0) || warningMemberIds.size > 0) && (
-            <Card><div className="flex items-center gap-1.5 text-sm font-semibold mb-1" style={{ color: INK }}><Gavel size={16} style={{ color: '#F0A87C' }} /> 벌칙 규정</div><p className="text-sm whitespace-pre-wrap" style={{ color: NEUTRAL_TEXT }}>{penaltyRule}</p></Card>
+            <Card>
+              <div className="flex items-center gap-1.5 text-sm font-semibold mb-1" style={{ color: INK }}><Gavel size={16} style={{ color: '#F0A87C' }} /> 벌칙 규정</div>
+              <p className="text-sm whitespace-pre-wrap" style={{ color: NEUTRAL_TEXT }}>{penaltyRule}</p>
+              {Object.values(penaltyByMember).some((p) => p.pending > 0) && (
+                <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                  <div className="text-xs mb-1.5" style={{ color: MUTE }}>벌칙 대상자</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {members.filter((m) => penaltyByMember[m.id]?.pending > 0).map((m) => (
+                      <span key={m.id} className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}>{dispName(m.name, isLoggedIn)} · {penaltyByMember[m.id].pending}주</span>
+                    ))}
+                  </div>
+                  <p className="text-[10px] mt-2" style={{ color: MUTE }}>해소는 설정 탭에서 간사가 처리하면 자동으로 명단에서 빠져요.</p>
+                </div>
+              )}
+            </Card>
           )}
         </>
       ) : (
