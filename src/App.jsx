@@ -120,6 +120,12 @@ const fmtMD = (md) => { const [m, d] = md.split('-'); return `${parseInt(m, 10)}
 const maskName = (name) => { if (!name) return name; const chars = [...name]; return chars[0] + 'O'.repeat(Math.max(chars.length - 1, 0)); };
 const dispName = (name, loggedIn) => (loggedIn ? name : maskName(name));
 const uid = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+// 이 브라우저(기기)를 구분하는 임의의 식별값 — 하드웨어 값이 아니라 우리가 만들어 localStorage에 저장해두는 값
+const getDeviceId = () => {
+  let id = localStorage.getItem('chexchoco-device-id');
+  if (!id) { id = (crypto.randomUUID ? crypto.randomUUID() : uid('dev')); localStorage.setItem('chexchoco-device-id', id); }
+  return id;
+};
 // 오늘 모임장소 위치 확인 (전남 나주시 전력로 55 — 한전 본사 기준)
 const MEETING_LAT = 35.0266818;
 const MEETING_LNG = 126.7853155;
@@ -268,6 +274,9 @@ export default function App() {
   const [expenses, setExpenses] = useState([]);
   const [dinnerCollections, setDinnerCollections] = useState([]);
   const [currentUserId, setCurrentUserId] = useState(() => localStorage.getItem('chexchoco-current-user') || null);
+  // 기기 등록: null=조회중, false=미등록, 문자열=등록된 멤버 id (한번 정해지면 앱에서는 절대 못 바꿈 — DB에 update/delete 정책 자체가 없음)
+  const [deviceRegMemberId, setDeviceRegMemberId] = useState(null);
+  const [registerOfferMember, setRegisterOfferMember] = useState(null); // 방금 로그인한 멤버 — "이 기기 등록할까요?" 제안용
   const [tab, setTab] = useState('notice');
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [modalSelectedId, setModalSelectedId] = useState('');
@@ -315,6 +324,16 @@ export default function App() {
     setLoaded(true);
   };
   useEffect(() => { reload(); }, []);
+  // 기기 등록 여부 확인 — 등록돼 있으면 로그인 절차 없이 자동으로 그 멤버로 인식
+  useEffect(() => {
+    const deviceId = getDeviceId();
+    supabase.from('device_registrations').select('member_id').eq('device_id', deviceId).maybeSingle()
+      .then(({ data }) => {
+        if (data?.member_id) { setDeviceRegMemberId(data.member_id); setIdentity(data.member_id); }
+        else setDeviceRegMemberId(false);
+      })
+      .catch(() => setDeviceRegMemberId(false));
+  }, []);
   // 오늘 접속자수 집계용 — 페이지 로드마다 방문 기록 1건 남김 (site_visits 테이블, 전체 reload 사이클과는 무관하게 별도 처리)
   // 로그인 상태라면 어떤 멤버인지도 같이 기록 (localStorage에서 즉시 읽히므로 currentUserId는 마운트 시점에 이미 확정됨)
   useEffect(() => {
@@ -341,6 +360,14 @@ export default function App() {
     if (!ok) { setModalPinError('PIN이 일치하지 않아요.'); return; }
     setIdentity(m.id);
     closeLogin();
+    if (deviceRegMemberId === false) setRegisterOfferMember(m); // 이 기기가 아직 미등록이면 등록 제안
+  };
+  const registerThisDevice = async () => {
+    if (!registerOfferMember) return;
+    const deviceId = getDeviceId();
+    await supabase.from('device_registrations').insert({ device_id: deviceId, member_id: registerOfferMember.id });
+    setDeviceRegMemberId(registerOfferMember.id);
+    setRegisterOfferMember(null);
   };
 
   const currentMember = members.find((m) => m.id === currentUserId) || null;
@@ -409,11 +436,17 @@ export default function App() {
                   <Settings size={15} />
                 </button>
               )}
-              <button onClick={() => (currentMember ? logout() : openLogin())}
-                className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold"
-                style={{ background: currentMember ? BTN_BG : NEUTRAL_BG, color: currentMember ? BTN_TEXT : NEUTRAL_TEXT }}>
-                {currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} />{currentMember.name}님 · 로그아웃</> : <>로그인</>}
-              </button>
+              {deviceRegMemberId ? (
+                <span className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: BTN_BG, color: BTN_TEXT }} title="이 기기는 등록된 사용자 전용이에요. 다른 사람으로 전환할 수 없어요.">
+                  <Lock size={11} />{currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} />{currentMember.name}님</> : '등록된 기기'}
+                </span>
+              ) : (
+                <button onClick={() => (currentMember ? logout() : openLogin())}
+                  className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold"
+                  style={{ background: currentMember ? BTN_BG : NEUTRAL_BG, color: currentMember ? BTN_TEXT : NEUTRAL_TEXT }}>
+                  {currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} />{currentMember.name}님 · 로그아웃</> : <>로그인</>}
+                </button>
+              )}
             </div>
           </div>
           <h1 className="text-center text-4xl font-semibold mt-3" style={{ fontFamily: "'Fraunces', serif", color: INK }}>책스초코</h1>
@@ -472,6 +505,20 @@ export default function App() {
                   <PrimaryBtn onClick={submitLogin} icon={LogIn}>로그인</PrimaryBtn>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {registerOfferMember && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
+            <div className="w-full max-w-sm rounded-2xl border p-5" style={{ background: CARD_BG, borderColor: LINE }}>
+              <div className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: INK }}><Lock size={15} /> 이 기기를 등록할까요?</div>
+              <p className="text-sm mb-2" style={{ color: NEUTRAL_TEXT }}>이 기기를 <strong>{registerOfferMember.name}님 전용</strong>으로 등록하면, 다음부터 로그인 없이 자동으로 인식돼요.</p>
+              <p className="text-xs mb-4" style={{ color: '#F0A87C' }}>⚠️ 한 번 등록하면 앱에서는 되돌릴 수 없어요. 다른 사람이 이 기기로 로그인할 수 없게 돼요.</p>
+              <div className="flex gap-2">
+                <PrimaryBtn onClick={registerThisDevice} icon={Lock}>등록하기</PrimaryBtn>
+                <GhostBtn onClick={() => setRegisterOfferMember(null)}>나중에</GhostBtn>
+              </div>
             </div>
           </div>
         )}
@@ -1356,6 +1403,16 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   weeklyPenalties.forEach((w) => w.results.forEach((r) => {
     if (r.missedAll && !isWeekCompleted(w.weekKey, r.member.id)) penaltyByMember[r.member.id].pending += 1;
   }));
+  // 벌칙 규정 카드에 표로 보여줄 목록 — 이름 / 기준 주차 / 수행일자 / 완료여부 (최근 주가 위로 오도록 정렬)
+  const penaltyEntries = [];
+  weeklyPenalties.forEach((w) => w.results.forEach((r) => {
+    if (!r.missedAll) return;
+    const completion = penaltyCompletions.find((p) => p.session_id === w.weekKey && p.member_id === r.member.id);
+    const mon = new Date(`${w.weekKey}T00:00:00`);
+    penaltyEntries.push({ member: r.member, weekKey: w.weekKey, weekLabel: `${mon.getMonth() + 1}.${mon.getDate()}주`, completion });
+  }));
+  penaltyEntries.sort((a, b) => b.weekKey.localeCompare(a.weekKey));
+  const penaltyEntriesRecent = penaltyEntries.slice(0, 10); // 대시보드엔 최근 것만 — 전체 이력은 설정 탭에서 확인
 
   // 이번 주(진행 중) 지금까지 열린 독서일을 전부 결석한 경우 → 벌칙 예상 경고
   // (하루라도 출석/사유 있으면 그 시점에 바로 해제되어야 하므로, 월·화만 보지 않고 오늘까지의 모든 세션을 확인한다)
@@ -1685,15 +1742,26 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             <Card>
               <div className="flex items-center gap-1.5 text-sm font-semibold mb-1" style={{ color: INK }}><Gavel size={16} style={{ color: '#F0A87C' }} /> 벌칙 규정</div>
               <p className="text-sm whitespace-pre-wrap" style={{ color: NEUTRAL_TEXT }}>{penaltyRule}</p>
-              {Object.values(penaltyByMember).some((p) => p.pending > 0) && (
+              {penaltyEntriesRecent.length > 0 && (
                 <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-                  <div className="text-xs mb-1.5" style={{ color: MUTE }}>벌칙 대상자</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {members.filter((m) => penaltyByMember[m.id]?.pending > 0).map((m) => (
-                      <span key={m.id} className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}>{dispName(m.name, isLoggedIn)} · {penaltyByMember[m.id].pending}주</span>
+                  <div className="text-xs mb-2" style={{ color: MUTE }}>벌칙 대상자 (최근 10건)</div>
+                  <div className="space-y-2">
+                    {penaltyEntriesRecent.map((e, i) => (
+                      <div key={`${e.weekKey}_${e.member.id}_${i}`} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Stamp role={e.member.role} size={20} tilt={0} />
+                          <span className="truncate" style={{ color: INK }}>{dispName(e.member.name, isLoggedIn)}</span>
+                          <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{e.weekLabel}</span>
+                        </div>
+                        {e.completion ? (
+                          <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold shrink-0" style={{ background: '#12302C', color: '#7FDCCF' }}><Check size={10} /> {e.completion.performed_date ? fmtDate(e.completion.performed_date) : '완료'}</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold shrink-0" style={{ background: '#3A2213', color: '#F0A87C' }}>미완료</span>
+                        )}
+                      </div>
                     ))}
                   </div>
-                  <p className="text-[10px] mt-2" style={{ color: MUTE }}>해소는 설정 탭에서 간사가 처리하면 자동으로 명단에서 빠져요.</p>
+                  <p className="text-[10px] mt-2" style={{ color: MUTE }}>수행일자 기록·완료 처리는 설정 탭에서 간사가 해요.</p>
                 </div>
               )}
             </Card>
@@ -2572,12 +2640,13 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
   };
   const removeExcuse = async (id) => { await deleteRow('absence_excuses', 'id', id); await reload(); };
   const isWeekCompleted = (wk, memberId) => penaltyCompletions.some((p) => p.session_id === wk && p.member_id === memberId);
-  const toggleWeekCompletion = async (wk, memberId) => {
+  const toggleWeekCompletion = async (wk, memberId, performedDate) => {
     const existing = penaltyCompletions.find((p) => p.session_id === wk && p.member_id === memberId);
     if (existing) await deleteRow('penalty_completions', 'id', existing.id);
-    else await insertRow('penalty_completions', { id: uid('p'), session_id: wk, member_id: memberId, completed_at: new Date().toISOString() });
+    else await insertRow('penalty_completions', { id: uid('p'), session_id: wk, member_id: memberId, completed_at: new Date().toISOString(), performed_date: performedDate || todayStr() });
     await reload();
   };
+  const [performDateInputs, setPerformDateInputs] = useState({}); // { `${wk}_${memberId}`: 'YYYY-MM-DD' } — 완료 처리 전 날짜 선택용
   const weeksWithTargets = weeklyPenalties.filter((w) => w.results.some((r) => r.missedAll));
 
   const downloadMonthExcel = () => {
@@ -2703,10 +2772,23 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
                   <div className="pl-2 pb-2 space-y-1.5">
                     {targets.map((r) => {
                       const done = isWeekCompleted(w.weekKey, r.member.id);
+                      const completion = penaltyCompletions.find((p) => p.session_id === w.weekKey && p.member_id === r.member.id);
+                      const inputKey = `${w.weekKey}_${r.member.id}`;
                       return (
-                        <div key={r.member.id} className="flex items-center justify-between text-xs py-1">
-                          <div className="flex items-center gap-2"><Stamp role={r.member.role} size={22} tilt={0} /><span style={{ color: NEUTRAL_TEXT }}>{r.member.name}</span></div>
-                          <button onClick={() => toggleWeekCompletion(w.weekKey, r.member.id)} className="inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold" style={{ background: done ? '#12302C' : NEUTRAL_BG, color: done ? '#7FDCCF' : MUTE }}>{done ? <Check size={11} /> : null} {done ? '이행 완료' : '미이행'}</button>
+                        <div key={r.member.id} className="flex items-center justify-between text-xs py-1 gap-2">
+                          <div className="flex items-center gap-2 shrink-0"><Stamp role={r.member.role} size={22} tilt={0} /><span style={{ color: NEUTRAL_TEXT }}>{r.member.name}</span></div>
+                          {done ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{completion?.performed_date ? fmtDate(completion.performed_date) : '날짜 미기록'} 수행</span>
+                              <button onClick={() => toggleWeekCompletion(w.weekKey, r.member.id)} className="inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold shrink-0" style={{ background: '#12302C', color: '#7FDCCF' }}><Check size={11} /> 완료</button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <input type="date" value={performDateInputs[inputKey] || todayStr()} onChange={(e) => setPerformDateInputs((prev) => ({ ...prev, [inputKey]: e.target.value }))}
+                                className="rounded-lg border px-1.5 py-1 text-[11px] outline-none" style={inputStyle} aria-label="벌칙 수행일자" />
+                              <button onClick={() => toggleWeekCompletion(w.weekKey, r.member.id, performDateInputs[inputKey])} className="rounded-full px-2 py-1 font-semibold shrink-0" style={{ background: NEUTRAL_BG, color: MUTE }}>미이행</button>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
