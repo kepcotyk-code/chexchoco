@@ -1592,7 +1592,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             {(() => {
               const todayExcuses = absenceExcuses.filter((e) => e.date === todayStr());
               if (todayExcuses.length === 0) return null;
-              const reasonOrder = ['출장', '휴가', '개인일정'];
+              const reasonOrder = ['출장', '휴가', '업무', '개인일정'];
               const groups = reasonOrder.map((reason) => ({
                 reason,
                 names: todayExcuses.filter((e) => e.reason === reason).map((e) => members.find((m) => m.id === e.member_id)).filter(Boolean).map((m) => dispName(m.name, isLoggedIn)),
@@ -1769,7 +1769,10 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <p className="text-sm whitespace-pre-wrap" style={{ color: NEUTRAL_TEXT }}>{penaltyRule}</p>
               {penaltyEntriesRecent.length > 0 && (
                 <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-                  <div className="text-xs mb-2" style={{ color: MUTE }}>벌칙 대상자 (최근 10건)</div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs" style={{ color: MUTE }}>벌칙 대상자 (최근 10건)</span>
+                    <span className="text-[10px]" style={{ color: MUTE }}>완료 여부</span>
+                  </div>
                   <div className="space-y-2">
                     {penaltyEntriesRecent.map((e, i) => (
                       <div key={`${e.weekKey}_${e.member.id}_${i}`} className="flex items-center justify-between text-xs">
