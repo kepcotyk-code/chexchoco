@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import { supabase } from './supabaseClient';
 import {
   Crown, Shield, Wallet, User, Plus, Pencil, Trash2, Check, X, Lock, AlertCircle,
-  Megaphone, QrCode, BarChart3, Users, Settings2, Settings, Download, Upload, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
+  Megaphone, QrCode, BarChart3, Users, Settings2, Settings, Download, Upload, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Briefcase,
   LogIn, LogOut, Cake, PartyPopper, Archive, Paperclip, FileText, Eye, Pin, Gavel, BookOpen,
   Image as ImageIcon, Trophy, Plane,
 } from 'lucide-react';
@@ -188,7 +188,17 @@ const weekKeyOf = (dateStr) => {
   const m = getMonday(dateStr);
   return `${m.getFullYear()}-${pad(m.getMonth() + 1)}-${pad(m.getDate())}`;
 };
-const EXEMPT_EXCUSE_REASONS = ['출장', '휴가']; // 벌칙 계산에서 제외되는 사유 (개인일정은 제외 안 됨 — 결석으로 그대로 집계)
+// 어떤 날짜든 "그 날짜가 속한 달"을 기준으로 몇 월 몇 주차인지 계산 (일요일 시작, 그 달의 첫 완전한 주를 1주차로 삼음)
+const monthWeekLabelOf = (dateStr) => {
+  const d = new Date(`${dateStr}T00:00:00`);
+  const y = d.getFullYear(), mo = d.getMonth();
+  const firstOfMonth = new Date(y, mo, 1);
+  const firstFullSunday = firstOfMonth.getDay() === 0 ? firstOfMonth : new Date(y, mo, 1 + (7 - firstOfMonth.getDay()));
+  const sunday = new Date(d); sunday.setDate(sunday.getDate() - sunday.getDay());
+  const week = Math.max(1, Math.floor(Math.round((sunday - firstFullSunday) / 86400000) / 7) + 1);
+  return `${mo + 1}월 ${week}주차`;
+};
+const EXEMPT_EXCUSE_REASONS = ['출장', '휴가', '업무']; // 벌칙 계산에서 제외되는 사유 (개인일정은 제외 안 됨 — 결석으로 그대로 집계)
 
 // 주 단위 벌칙 계산: 월~목 4일이 모두 독서일이고 이미 다 지난 "완결된 주"에서,
 // 4일간 출석 환산 합계가 1일 미만(= 30분 이상 출석이 하나도 없고, 15~29분 출석도 2회 미만)인 멤버만 그 주의 벌칙 대상이 됨.
@@ -1276,6 +1286,12 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   const [cursor, setCursor] = useState(new Date());
   const [viewMode, setViewMode] = useState('month');
   const [selectedDate, setSelectedDate] = useState(null);
+  const [selfPerformDates, setSelfPerformDates] = useState({}); // { weekKey: 'YYYY-MM-DD' } — 본인이 벌칙 완료 처리할 때 쓰는 날짜 입력값
+  const markMyPenaltyDone = async (weekKey) => {
+    if (!currentMember) return;
+    await insertRow('penalty_completions', { id: uid('p'), session_id: weekKey, member_id: currentMember.id, completed_at: new Date().toISOString(), performed_date: selfPerformDates[weekKey] || todayStr() });
+    await reload();
+  };
   const ms = monthStr(cursor);
   const sessionsInMonth = sessions.filter((s) => s.date.startsWith(ms) && s.date <= todayStr());
   const shift = (delta) => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1));
@@ -1408,8 +1424,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   weeklyPenalties.forEach((w) => w.results.forEach((r) => {
     if (!r.missedAll) return;
     const completion = penaltyCompletions.find((p) => p.session_id === w.weekKey && p.member_id === r.member.id);
-    const mon = new Date(`${w.weekKey}T00:00:00`);
-    penaltyEntries.push({ member: r.member, weekKey: w.weekKey, weekLabel: `${mon.getMonth() + 1}.${mon.getDate()}주`, completion });
+    penaltyEntries.push({ member: r.member, weekKey: w.weekKey, weekLabel: monthWeekLabelOf(w.weekKey), completion });
   }));
   penaltyEntries.sort((a, b) => b.weekKey.localeCompare(a.weekKey));
   const penaltyEntriesRecent = penaltyEntries.slice(0, 10); // 대시보드엔 최근 것만 — 전체 이력은 설정 탭에서 확인
@@ -1502,7 +1517,8 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                   : metas.length === 1 ? metas[0].bg
                   : `linear-gradient(to bottom, ${metas.map((m, i) => `${m.bg} ${(i * 100) / metas.length}%, ${m.bg} ${((i + 1) * 100) / metas.length}%`).join(', ')})`;
                 const textColor = metas.length > 0 ? metas[0].color : (hasFeast ? dayTypeMeta('회식일').color : (isWeekendDefault ? WEEKEND_TEXT : MUTE));
-                const hasExempt = absenceExcuses.some((e) => e.date === date && EXEMPT_EXCUSE_REASONS.includes(e.reason));
+                const hasTravel = absenceExcuses.some((e) => e.date === date && (e.reason === '출장' || e.reason === '휴가'));
+                const hasWork = absenceExcuses.some((e) => e.date === date && e.reason === '업무');
                 const hasPersonal = absenceExcuses.some((e) => e.date === date && e.reason === '개인일정');
                 const hasDiscussion = types.includes('토론회');
                 const birthdayFolks = members.filter((m) => m.birthday && mdOf(m.birthday) === date.slice(5, 10));
@@ -1531,9 +1547,10 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       </span>
                     )}
                     <span>{day}</span>
-                    {(hasExempt || hasPersonal) && (
+                    {(hasTravel || hasWork || hasPersonal) && (
                       <span className="absolute bottom-0.5 flex items-center gap-0.5">
-                        {hasExempt && <Plane size={8} style={{ color: INK }} />}
+                        {hasTravel && <Plane size={8} style={{ color: INK }} />}
+                        {hasWork && <Briefcase size={8} style={{ color: '#D9A93A' }} />}
                         {hasPersonal && <User size={8} style={{ color: '#7FDCCF' }} />}
                       </span>
                     )}
@@ -1563,6 +1580,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 생일
               </span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Plane size={11} /> 출장·휴가</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Briefcase size={11} style={{ color: '#D9A93A' }} /> 업무</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><User size={11} style={{ color: '#7FDCCF' }} /> 개인일정</span>
             </div>
             {(() => {
@@ -1636,6 +1654,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                         <div className="flex gap-1.5 flex-wrap">
                           <button onClick={() => setMyExcuseForDate('출장')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>출장</button>
                           <button onClick={() => setMyExcuseForDate('휴가')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>휴가</button>
+                          <button onClick={() => setMyExcuseForDate('업무')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>업무</button>
                           <button onClick={() => setMyExcuseForDate('개인일정')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>개인일정</button>
                         </div>
                       )}
@@ -1740,7 +1759,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
           </Card>
           {penaltyRule && (Object.values(penaltyByMember).some((p) => p.pending > 0) || warningMemberIds.size > 0) && (
             <Card>
-              <div className="flex items-center gap-1.5 text-sm font-semibold mb-1" style={{ color: INK }}><Gavel size={16} style={{ color: '#F0A87C' }} /> 벌칙 규정</div>
+              <div className="flex items-center gap-1.5 text-sm font-semibold mb-1" style={{ color: INK }}><Gavel size={16} style={{ color: '#F0A87C' }} /> 벌칙 현황</div>
               <p className="text-sm whitespace-pre-wrap" style={{ color: NEUTRAL_TEXT }}>{penaltyRule}</p>
               {penaltyEntriesRecent.length > 0 && (
                 <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
@@ -1755,13 +1774,19 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                         </div>
                         {e.completion ? (
                           <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold shrink-0" style={{ background: '#12302C', color: '#7FDCCF' }}><Check size={10} /> {e.completion.performed_date ? fmtDate(e.completion.performed_date) : '완료'}</span>
+                        ) : e.member.id === currentMember?.id ? (
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <input type="date" value={selfPerformDates[e.weekKey] || todayStr()} onChange={(ev) => setSelfPerformDates((prev) => ({ ...prev, [e.weekKey]: ev.target.value }))}
+                              className="rounded-lg border px-1.5 py-1 text-[11px] outline-none" style={inputStyle} aria-label="벌칙 수행일자" />
+                            <button onClick={() => markMyPenaltyDone(e.weekKey)} className="rounded-full px-2 py-0.5 font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}>완료 처리</button>
+                          </div>
                         ) : (
                           <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold shrink-0" style={{ background: '#3A2213', color: '#F0A87C' }}>미완료</span>
                         )}
                       </div>
                     ))}
                   </div>
-                  <p className="text-[10px] mt-2" style={{ color: MUTE }}>수행일자 기록·완료 처리는 설정 탭에서 간사가 해요.</p>
+                  <p className="text-[10px] mt-2" style={{ color: MUTE }}>본인은 직접 수행일자를 입력해 완료 처리할 수 있어요. 취소·수정은 설정 탭에서 간사가 해요.</p>
                 </div>
               )}
             </Card>
