@@ -204,11 +204,16 @@ const EXEMPT_EXCUSE_REASONS = ['출장', '휴가', '업무']; // 벌칙 계산�
 // 4일간 출석 환산 합계가 1일 미만(= 30분 이상 출석이 하나도 없고, 15~29분 출석도 2회 미만)인 멤버만 그 주의 벌칙 대상이 됨.
 // (15~29분 출석은 0.5일로 환산되므로, 그런 날이 2번이면 1일로 합산되어 벌칙에서 제외됨)
 const computeWeeklyPenalties = (sessions, checkins, calendarDays, members, absenceExcuses = []) => {
-  const eligible = filterPenaltyEligibleSessions(sessions.filter((s) => s.date < todayStr()), calendarDays);
+  const now = new Date();
+  const eligible = filterPenaltyEligibleSessions(sessions, calendarDays);
   const byWeek = {};
   eligible.forEach((s) => { const wk = weekKeyOf(s.date); (byWeek[wk] = byWeek[wk] || []).push(s); });
   return Object.entries(byWeek)
-    .filter(([, sess]) => sess.length === 4) // 4일이 다 지나서 세션이 다 있는 주만 (진행 중인 주는 아직 판단 보류)
+    .filter(([wk, sess]) => {
+      if (sess.length !== 4) return false; // 월~목 4일 세션이 다 있어야 함
+      const thuCutoff = new Date(`${wk}T00:00:00`); thuCutoff.setDate(thuCutoff.getDate() + 3); thuCutoff.setHours(14, 0, 0, 0); // 그 주 목요일 14:00
+      return now >= thuCutoff; // 목요일 14시 이후에만 벌칙 확정 (그 전엔 진행 중인 주로 보류)
+    })
     .map(([wk, sess]) => {
       const sorted = [...sess].sort((a, b) => a.date.localeCompare(b.date));
       const results = members.map((m) => {
@@ -1182,6 +1187,7 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
                     <span className="text-xs" style={{ color: MUTE }}>오늘 못 오시나요?</span>
                     <button onClick={() => setMyExcuse('출장')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>출장</button>
                     <button onClick={() => setMyExcuse('휴가')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>휴가</button>
+                    <button onClick={() => setMyExcuse('업무')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>업무</button>
                     <button onClick={() => setMyExcuse('개인일정')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>개인일정</button>
                   </div>
                 )}
@@ -2730,6 +2736,7 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
                   <div className="flex gap-1.5 shrink-0 flex-wrap justify-end">
                     <button onClick={() => addExcuse(m.id, '출장')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>출장</button>
                     <button onClick={() => addExcuse(m.id, '휴가')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>휴가</button>
+                    <button onClick={() => addExcuse(m.id, '업무')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>업무</button>
                     <button onClick={() => addExcuse(m.id, '개인일정')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>개인일정</button>
                   </div>
                 )}
