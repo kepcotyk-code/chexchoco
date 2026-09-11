@@ -181,9 +181,6 @@ const weekQualifiesForPenalty = (dateStr, calendarDays) => {
   }
   return true;
 };
-const filterPenaltyEligibleSessions = (sessions, calendarDays) =>
-  sessions.filter((s) => isMonToThu(s.date) && weekQualifiesForPenalty(s.date, calendarDays));
-
 const weekKeyOf = (dateStr) => {
   const m = getMonday(dateStr);
   return `${m.getFullYear()}-${pad(m.getMonth() + 1)}-${pad(m.getDate())}`;
@@ -205,29 +202,36 @@ const EXEMPT_EXCUSE_REASONS = ['출장', '휴가', '업무']; // 벌칙 계산�
 // (15~29분 출석은 0.5일로 환산되므로, 그런 날이 2번이면 1일로 합산되어 벌칙에서 제외됨)
 const computeWeeklyPenalties = (sessions, checkins, calendarDays, members, absenceExcuses = []) => {
   const now = new Date();
-  const eligible = filterPenaltyEligibleSessions(sessions, calendarDays);
+  // 세션 레코드가 우연히 생성 안 된 날이 있어도 결석으로 정확히 판정되도록, calendarDays에 지정된 '독서일' 날짜를 기준으로 주를 구성
+  const readingDates = calendarDays.filter((d) => d.type === '독서일').map((d) => d.date);
   const byWeek = {};
-  eligible.forEach((s) => { const wk = weekKeyOf(s.date); (byWeek[wk] = byWeek[wk] || []).push(s); });
+  readingDates.forEach((ds) => {
+    if (!isMonToThu(ds)) return;
+    const wk = weekKeyOf(ds);
+    (byWeek[wk] = byWeek[wk] || new Set()).add(ds);
+  });
   return Object.entries(byWeek)
-    .filter(([wk, sess]) => {
-      if (sess.length !== 4) return false; // 월~목 4일 세션이 다 있어야 함
-      const thuCutoff = new Date(`${wk}T00:00:00`); thuCutoff.setDate(thuCutoff.getDate() + 3); thuCutoff.setHours(14, 0, 0, 0); // 그 주 목요일 14:00
-      return now >= thuCutoff; // 목요일 14시 이후에만 벌칙 확정 (그 전엔 진행 중인 주로 보류)
+    .filter(([wk, dateSet]) => {
+      if (dateSet.size !== 4) return false; // 월~목 4일이 전부 독서일로 지정된 "정상 주"만
+      if (!weekQualifiesForPenalty(wk, calendarDays)) return false;
+      const thuCutoff = new Date(`${wk}T00:00:00`); thuCutoff.setDate(thuCutoff.getDate() + 3); thuCutoff.setHours(13, 0, 0, 0); // 그 주 목요일 13:00
+      return now >= thuCutoff; // 목요일 13시 이후에만 벌칙 확정 (그 전엔 진행 중인 주로 보류)
     })
-    .map(([wk, sess]) => {
-      const sorted = [...sess].sort((a, b) => a.date.localeCompare(b.date));
+    .map(([wk, dateSet]) => {
+      const datesSorted = [...dateSet].sort();
       const results = members.map((m) => {
-        // 출장/휴가 사유가 있는 날만 그 멤버에 한해 판단 대상에서 제외 (개인일정은 제외 안 됨)
-        const relevant = sorted.filter((s) => !absenceExcuses.some((e) => e.date === s.date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason)));
+        // 출장/휴가/업무 사유가 있는 날만 그 멤버에 한해 판단 대상에서 제외 (개인일정은 제외 안 됨)
+        const relevant = datesSorted.filter((ds) => !absenceExcuses.some((e) => e.date === ds && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason)));
         if (relevant.length === 0) return { member: m, missedAll: false }; // 4일 다 사유 있으면 벌칙 대상 아님
-        const totalEquivalent = relevant.reduce((sum, s) => {
-          const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
+        const totalEquivalent = relevant.reduce((sum, ds) => {
+          const s = sessions.find((ss) => ss.date === ds); // 그 날 세션 레코드가 아예 없으면 = 아무도 체크인 안 한 것 = 결석 처리
+          const c = s ? checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id) : null;
           const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
           return sum + attendanceEquivalent(dur);
         }, 0);
         return { member: m, missedAll: totalEquivalent < 1 };
       });
-      return { weekKey: wk, sessions: sorted, results };
+      return { weekKey: wk, sessions: datesSorted, results };
     })
     .sort((a, b) => b.weekKey.localeCompare(a.weekKey));
 };
@@ -1782,7 +1786,11 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                           <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{e.weekLabel}</span>
                         </div>
                         {e.completion ? (
-                          <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold shrink-0" style={{ background: '#12302C', color: '#7FDCCF' }}><Check size={10} /> {e.completion.performed_date ? fmtDate(e.completion.performed_date) : '완료'}</span>
+                          e.completion.performed_date && e.completion.performed_date > todayStr() ? (
+                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold shrink-0" style={{ background: '#3A2E10', color: '#EFC94C' }}>예정 · {fmtDate(e.completion.performed_date)}</span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold shrink-0" style={{ background: '#12302C', color: '#7FDCCF' }}><Check size={10} /> 완료 · {e.completion.performed_date ? fmtDate(e.completion.performed_date) : ''}</span>
+                          )
                         ) : e.member.id === currentMember?.id ? (
                           <div className="flex items-center gap-1.5 shrink-0">
                             <input type="date" value={selfPerformDates[e.weekKey] || todayStr()} onChange={(ev) => setSelfPerformDates((prev) => ({ ...prev, [e.weekKey]: ev.target.value }))}
@@ -2795,7 +2803,7 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
               <div key={w.weekKey}>
                 <button onClick={() => setExpandedPenaltyId(expanded ? null : w.weekKey)} className="w-full flex items-center justify-between py-1.5">
                   <div>
-                    <div className="text-sm font-semibold" style={{ color: INK }}>{fmtDate(w.sessions[0].date)} ~ {fmtDate(w.sessions[3].date)}</div>
+                    <div className="text-sm font-semibold" style={{ color: INK }}>{fmtDate(w.sessions[0])} ~ {fmtDate(w.sessions[3])}</div>
                     <div className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>월~목 4일 모두 독서일</div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -2814,8 +2822,12 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
                           <div className="flex items-center gap-2 shrink-0"><Stamp role={r.member.role} size={22} tilt={0} /><span style={{ color: NEUTRAL_TEXT }}>{r.member.name}</span></div>
                           {done ? (
                             <div className="flex items-center gap-2">
-                              <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{completion?.performed_date ? fmtDate(completion.performed_date) : '날짜 미기록'} 수행</span>
-                              <button onClick={() => toggleWeekCompletion(w.weekKey, r.member.id)} className="inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold shrink-0" style={{ background: '#12302C', color: '#7FDCCF' }}><Check size={11} /> 완료</button>
+                              {completion?.performed_date && completion.performed_date > todayStr() ? (
+                                <span className="text-[11px]" style={{ color: '#EFC94C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(completion.performed_date)} 수행 예정</span>
+                              ) : (
+                                <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{completion?.performed_date ? fmtDate(completion.performed_date) : '날짜 미기록'} 수행 완료</span>
+                              )}
+                              <button onClick={() => toggleWeekCompletion(w.weekKey, r.member.id)} className="inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold shrink-0" style={{ background: '#12302C', color: '#7FDCCF' }}><Check size={11} /> 취소</button>
                             </div>
                           ) : (
                             <div className="flex items-center gap-1.5">
