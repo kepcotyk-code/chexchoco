@@ -1368,8 +1368,8 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   const rowsUnranked = members.map((m) => {
     const flags = monthDayList.map(({ date, session }) => {
       if (!session) return 'holiday'; // 휴무일
-      const excused = absenceExcuses.some((e) => e.date === date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason));
-      if (excused) return 'excused';
+      const excuse = absenceExcuses.find((e) => e.date === date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason));
+      if (excuse) return excuse.reason === '업무' ? 'work' : excuse.reason === '휴가' ? 'vacation' : 'trip'; // 출장/휴가/업무를 서로 다른 상태로 구분
       const c = checkins.find((ck) => ck.session_id === session.id && ck.member_id === m.id);
       const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
       return attendanceStatus(dur);
@@ -1378,7 +1378,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     flags.forEach((f) => {
       if (f === 'full') present += 1;
       else if (f === 'half') present += 0.5;
-      else if (f === 'excused') excusedCount += 1;
+      else if (f === 'trip' || f === 'vacation' || f === 'work') excusedCount += 1;
     });
     const denom = totalDays - excusedCount;
     return { ...m, present, flags, excusedCount, denom, rate: denom > 0 ? Math.round((present / denom) * 100) : 0 };
@@ -1730,7 +1730,9 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FA8D9' }} />출석</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: 'linear-gradient(90deg, #7FA8D9 50%, transparent 50%)', border: `1px solid ${LINE}` }} />절반출석(15~29분)</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#E0958C' }} />휴무일</span>
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: INK }} />출장·휴가</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: '#F0A87C' }} />출장</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: '#7FA8D9' }} />휴가</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Briefcase size={9} style={{ color: '#D9A93A' }} />업무</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
             </div>
             {weekChunkRanges.length > 0 && (
@@ -1774,9 +1776,13 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                         <div className="flex items-center justify-center gap-1" style={{ width: weekColWidths[wi] }}>
                           {r.flags.slice(start, end).map((status, i) => {
                             const fromPrevMonth = !monthDayList[start + i].inCurrentMonth;
-                            return status === 'excused' ? (
-                              <Plane key={i} size={9} style={{ color: INK, opacity: fromPrevMonth ? 0.6 : 1 }} />
-                            ) : (
+                            if (status === 'trip' || status === 'vacation') {
+                              return <Plane key={i} size={9} style={{ color: status === 'trip' ? '#F0A87C' : '#7FA8D9', opacity: fromPrevMonth ? 0.6 : 1 }} />;
+                            }
+                            if (status === 'work') {
+                              return <Briefcase key={i} size={9} style={{ color: '#D9A93A', opacity: fromPrevMonth ? 0.6 : 1 }} />;
+                            }
+                            return (
                               <span key={i} className="relative rounded-full" style={{
                                 width: 9, height: 9,
                                 background: status === 'full' ? '#7FA8D9' : status === 'half' ? 'linear-gradient(90deg, #7FA8D9 50%, transparent 50%)' : status === 'holiday' ? '#E0958C' : 'transparent',
@@ -1799,7 +1805,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가</p>
             <p className="text-[10px] mt-1" style={{ color: MUTE }}>※ 출석률 산정기준 : 주 단위(월 경계에 걸친 경우, 전월분 포함 산정)</p>
           </Card>
-          {penaltyRule && (Object.values(penaltyByMember).some((p) => p.pending > 0) || warningMemberIds.size > 0) && (
+          {penaltyRule && (penaltyEntries.length > 0 || warningMemberIds.size > 0) && (
             <Card>
               <div className="flex items-center gap-1.5 text-sm font-semibold mb-1" style={{ color: INK }}><Gavel size={16} style={{ color: '#F0A87C' }} /> 벌칙 현황</div>
               <p className="text-sm whitespace-pre-wrap" style={{ color: NEUTRAL_TEXT }}>{penaltyRule}</p>
