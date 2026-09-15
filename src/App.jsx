@@ -1731,8 +1731,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: 'linear-gradient(90deg, #7FA8D9 50%, transparent 50%)', border: `1px solid ${LINE}` }} />절반출석(15~29분)</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#E0958C' }} />휴무일</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: '#F0A87C' }} />출장</span>
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: '#7FA8D9' }} />휴가</span>
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Briefcase size={9} style={{ color: '#D9A93A' }} />업무</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: INK }} />휴가</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
             </div>
             {weekChunkRanges.length > 0 && (
@@ -1777,10 +1776,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                           {r.flags.slice(start, end).map((status, i) => {
                             const fromPrevMonth = !monthDayList[start + i].inCurrentMonth;
                             if (status === 'trip' || status === 'vacation') {
-                              return <Plane key={i} size={9} style={{ color: status === 'trip' ? '#F0A87C' : '#7FA8D9', opacity: fromPrevMonth ? 0.6 : 1 }} />;
-                            }
-                            if (status === 'work') {
-                              return <Briefcase key={i} size={9} style={{ color: '#D9A93A', opacity: fromPrevMonth ? 0.6 : 1 }} />;
+                              return <Plane key={i} size={9} style={{ color: status === 'trip' ? '#F0A87C' : INK, opacity: fromPrevMonth ? 0.6 : 1 }} />;
                             }
                             return (
                               <span key={i} className="relative rounded-full" style={{
