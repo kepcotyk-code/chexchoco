@@ -195,7 +195,7 @@ const monthWeekLabelOf = (dateStr) => {
   const week = Math.max(1, Math.floor(Math.round((sunday - firstFullSunday) / 86400000) / 7) + 1);
   return `${mo + 1}월 ${week}주차`;
 };
-const EXEMPT_EXCUSE_REASONS = ['출장', '휴가', '업무']; // 벌칙 계산에서 제외되는 사유 (개인일정은 제외 안 됨 — 결석으로 그대로 집계)
+const EXEMPT_EXCUSE_REASONS = ['출장', '휴가']; // 벌칙·출석률 계산에서 제외되는 사유 (업무·개인일정은 제외 안 됨 — 결석으로 그대로 집계)
 
 // 주 단위 벌칙 계산: 월~목 4일이 모두 독서일이고 이미 다 지난 "완결된 주"에서,
 // 4일간 출석 환산 합계가 1일 미만(= 30분 이상 출석이 하나도 없고, 15~29분 출석도 2회 미만)인 멤버만 그 주의 벌칙 대상이 됨.
@@ -1296,21 +1296,26 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   const [cursor, setCursor] = useState(new Date());
   const [viewMode, setViewMode] = useState('month');
   const [selectedDate, setSelectedDate] = useState(null);
-  const [selfPerformDates, setSelfPerformDates] = useState({}); // { weekKey: 'YYYY-MM-DD' } — 본인이 벌칙 완료 처리할 때 쓰는 날짜 입력값
-  // 본인 벌칙 수행일 설정/변경 — 이미 지정돼 있어도 자유롭게 날짜를 바꿀 수 있음(upsert)
-  const setMyPenaltyDate = async (weekKey, performedDate) => {
-    if (!currentMember) return;
-    const existing = penaltyCompletions.find((p) => p.session_id === weekKey && p.member_id === currentMember.id);
+  const [expandedPenaltyRow, setExpandedPenaltyRow] = useState(null); // `${weekKey}_${memberId}` — 펼쳐진 벌칙 수정 패널
+  const [penaltyDateDrafts, setPenaltyDateDrafts] = useState({}); // { `${weekKey}_${memberId}`: 'YYYY-MM-DD' }
+  // 벌칙 수행 예정일만 저장 — confirmed는 건드리지 않음(날짜만 넣는다고 자동으로 완료되지 않도록)
+  const setPenaltyDate = async (weekKey, memberId, performedDate) => {
+    const existing = penaltyCompletions.find((p) => p.session_id === weekKey && p.member_id === memberId);
     if (existing) await updateRow('penalty_completions', 'id', existing.id, { performed_date: performedDate });
-    else await insertRow('penalty_completions', { id: uid('p'), session_id: weekKey, member_id: currentMember.id, completed_at: new Date().toISOString(), performed_date: performedDate });
+    else await insertRow('penalty_completions', { id: uid('p'), session_id: weekKey, member_id: memberId, completed_at: new Date().toISOString(), performed_date: performedDate, confirmed: false });
     await reload();
   };
-  const clearMyPenaltyDate = async (weekKey) => {
-    if (!currentMember) return;
-    const existing = penaltyCompletions.find((p) => p.session_id === weekKey && p.member_id === currentMember.id);
+  // 완료 확정/취소 — 본인 또는 운영진이 명시적으로 눌러야만 바뀜
+  const setPenaltyConfirmed = async (weekKey, memberId, confirmed) => {
+    const existing = penaltyCompletions.find((p) => p.session_id === weekKey && p.member_id === memberId);
+    if (existing) await updateRow('penalty_completions', 'id', existing.id, { confirmed });
+    else await insertRow('penalty_completions', { id: uid('p'), session_id: weekKey, member_id: memberId, completed_at: new Date().toISOString(), performed_date: todayStr(), confirmed });
+    await reload();
+  };
+  const clearPenaltyDate = async (weekKey, memberId) => {
+    const existing = penaltyCompletions.find((p) => p.session_id === weekKey && p.member_id === memberId);
     if (existing) { await deleteRow('penalty_completions', 'id', existing.id); await reload(); }
   };
-  const markMyPenaltyDone = async (weekKey) => { await setMyPenaltyDate(weekKey, selfPerformDates[weekKey] || todayStr()); };
   const ms = monthStr(cursor);
   const sessionsInMonth = sessions.filter((s) => s.date.startsWith(ms) && s.date <= todayStr());
   const shift = (delta) => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1));
@@ -1369,7 +1374,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     const flags = monthDayList.map(({ date, session }) => {
       if (!session) return 'holiday'; // 휴무일
       const excuse = absenceExcuses.find((e) => e.date === date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason));
-      if (excuse) return excuse.reason === '업무' ? 'work' : excuse.reason === '휴가' ? 'vacation' : 'trip'; // 출장/휴가/업무를 서로 다른 상태로 구분
+      if (excuse) return excuse.reason === '휴가' ? 'vacation' : 'trip'; // 출장/휴가만 구분 (업무는 더 이상 제외 대상이 아니라 여기 걸리지 않음)
       const c = checkins.find((ck) => ck.session_id === session.id && ck.member_id === m.id);
       const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
       return attendanceStatus(dur);
@@ -1378,7 +1383,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     flags.forEach((f) => {
       if (f === 'full') present += 1;
       else if (f === 'half') present += 0.5;
-      else if (f === 'trip' || f === 'vacation' || f === 'work') excusedCount += 1;
+      else if (f === 'trip' || f === 'vacation') excusedCount += 1;
     });
     const denom = totalDays - excusedCount;
     return { ...m, present, flags, excusedCount, denom, rate: denom > 0 ? Math.round((present / denom) * 100) : 0 };
@@ -1432,7 +1437,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   });
 
   const weeklyPenalties = computeWeeklyPenalties(sessions, checkins, calendarDays, members, absenceExcuses);
-  const isWeekCompleted = (wk, memberId) => penaltyCompletions.some((p) => p.session_id === wk && p.member_id === memberId);
+  const isWeekCompleted = (wk, memberId) => penaltyCompletions.some((p) => p.session_id === wk && p.member_id === memberId && p.confirmed);
   const penaltyByMember = {};
   members.forEach((m) => { penaltyByMember[m.id] = { pending: 0 }; });
   weeklyPenalties.forEach((w) => w.results.forEach((r) => {
@@ -1552,7 +1557,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                     {(hasDiscussion || hasBirthday || myPenaltyOnDate) && (
                       <span className="absolute top-0.5 flex items-center gap-0.5">
                         {hasDiscussion && <BookOpen size={8} style={{ color: '#D9C24C' }} />}
-                        {myPenaltyOnDate && <Coffee size={8} style={{ color: '#EFC94C', opacity: date > todayStr() ? 0.55 : 1 }} />}
+                        {myPenaltyOnDate && <Coffee size={8} style={{ color: '#EFC94C', opacity: myPenaltyOnDate.completion?.confirmed ? 1 : 0.55 }} />}
                         {hasBirthday && (
                           <svg width="9" height="9" viewBox="0 0 24 24" fill="none">
                             <circle cx="7.5" cy="5.2" r="1.3" fill="#F0A87C" />
@@ -1692,9 +1697,9 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                             <div key={e.weekKey} className="flex items-center justify-between text-xs">
                               <span style={{ color: NEUTRAL_TEXT }}>{e.weekLabel}</span>
                               {isSetToThisDate ? (
-                                <button onClick={() => clearMyPenaltyDate(e.weekKey)} className="text-[11px] underline underline-offset-2" style={{ color: MUTE }}>이 날짜 지정 취소</button>
+                                <button onClick={() => clearPenaltyDate(e.weekKey, currentMember.id)} className="text-[11px] underline underline-offset-2" style={{ color: MUTE }}>이 날짜 지정 취소</button>
                               ) : (
-                                <button onClick={() => setMyPenaltyDate(e.weekKey, selectedDate)} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}><Coffee size={11} /> 이 날짜로 지정</button>
+                                <button onClick={() => setPenaltyDate(e.weekKey, currentMember.id, selectedDate)} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}><Coffee size={11} /> 이 날짜로 지정(예정)</button>
                               )}
                             </div>
                           );
@@ -1813,39 +1818,53 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                   </div>
                   <div className="space-y-2">
                     {penaltyEntriesRecent.map((e, i) => {
-                      const isMine = e.member.id === currentMember?.id;
-                      const isFuture = e.completion?.performed_date && e.completion.performed_date > todayStr();
+                      const canEdit = e.member.id === currentMember?.id || canManage;
+                      const rowKey = `${e.weekKey}_${e.member.id}`;
+                      const isExpanded = expandedPenaltyRow === rowKey;
+                      const confirmed = !!e.completion?.confirmed;
+                      const hasDate = !!e.completion?.performed_date;
+                      const draft = penaltyDateDrafts[rowKey] ?? e.completion?.performed_date ?? todayStr();
                       return (
-                        <div key={`${e.weekKey}_${e.member.id}_${i}`} className="flex items-center justify-between text-xs gap-2 flex-wrap">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <Stamp role={e.member.role} size={20} tilt={0} />
-                            <span className="truncate" style={{ color: INK }}>{dispName(e.member.name, isLoggedIn)}</span>
-                            <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{e.weekLabel}</span>
-                          </div>
-                          {isMine ? (
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              {e.completion && (
-                                <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold" style={isFuture ? { background: '#3A2E10', color: '#EFC94C' } : { background: '#12302C', color: '#7FDCCF' }}>
-                                  {isFuture ? '예정' : <Check size={10} />} {fmtDate(e.completion.performed_date)}
-                                </span>
-                              )}
-                              <input type="date" value={selfPerformDates[e.weekKey] || e.completion?.performed_date || todayStr()} onChange={(ev) => setSelfPerformDates((prev) => ({ ...prev, [e.weekKey]: ev.target.value }))}
-                                className="rounded-lg border px-1.5 py-1 text-[11px] outline-none" style={inputStyle} aria-label="벌칙 수행일자" />
-                              <button onClick={() => setMyPenaltyDate(e.weekKey, selfPerformDates[e.weekKey] || e.completion?.performed_date || todayStr())} className="rounded-full px-2 py-0.5 font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}>{e.completion ? '날짜 변경' : '완료 처리'}</button>
-                              {e.completion && <button onClick={() => clearMyPenaltyDate(e.weekKey)} className="text-[11px] underline underline-offset-2" style={{ color: MUTE }}>취소</button>}
+                        <div key={rowKey} className="text-xs">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Stamp role={e.member.role} size={20} tilt={0} />
+                              <span className="truncate" style={{ color: INK }}>{dispName(e.member.name, isLoggedIn)}</span>
+                              <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{e.weekLabel}</span>
                             </div>
-                          ) : e.completion ? (
-                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold shrink-0" style={isFuture ? { background: '#3A2E10', color: '#EFC94C' } : { background: '#12302C', color: '#7FDCCF' }}>
-                              {isFuture ? '예정' : <Check size={10} />} {fmtDate(e.completion.performed_date)}
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold shrink-0" style={{ background: '#3A2213', color: '#F0A87C' }}>미완료</span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {confirmed ? (
+                                <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold" style={{ background: '#12302C', color: '#7FDCCF' }}><Check size={10} /> 완료 · {fmtDate(e.completion.performed_date)}</span>
+                              ) : hasDate ? (
+                                <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold" style={{ background: '#3A2E10', color: '#EFC94C' }}>예정 · {fmtDate(e.completion.performed_date)}</span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}>미완료</span>
+                              )}
+                              {canEdit && (
+                                <button onClick={() => setExpandedPenaltyRow(isExpanded ? null : rowKey)} className="p-1" style={{ color: MUTE }} aria-label="벌칙 정보 수정">
+                                  <Pencil size={12} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          {isExpanded && canEdit && (
+                            <div className="flex items-center flex-wrap gap-1.5 mt-1.5 pl-6">
+                              <input type="date" value={draft} onChange={(ev) => setPenaltyDateDrafts((prev) => ({ ...prev, [rowKey]: ev.target.value }))}
+                                className="rounded-lg border px-1.5 py-1 text-[11px] outline-none" style={inputStyle} aria-label="벌칙 수행 예정일" />
+                              <button onClick={() => setPenaltyDate(e.weekKey, e.member.id, draft)} className="rounded-full px-2 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>예정일 저장</button>
+                              {confirmed ? (
+                                <button onClick={() => setPenaltyConfirmed(e.weekKey, e.member.id, false)} className="rounded-full px-2 py-1 font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}>완료 취소</button>
+                              ) : (
+                                <button onClick={() => setPenaltyConfirmed(e.weekKey, e.member.id, true)} className="inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold" style={{ background: '#12302C', color: '#7FDCCF' }}><Check size={10} /> 완료로 확정</button>
+                              )}
+                              {hasDate && <button onClick={() => clearPenaltyDate(e.weekKey, e.member.id)} className="text-[11px] underline underline-offset-2" style={{ color: MUTE }}>일정 삭제</button>}
+                            </div>
                           )}
                         </div>
                       );
                     })}
                   </div>
-                  <p className="text-[10px] mt-2" style={{ color: MUTE }}>본인은 날짜를 자유롭게 지정·변경·취소할 수 있어요 (달력에서 날짜를 눌러도 지정 가능). 다른 사람 항목 수정은 설정 탭에서 간사가 해요.</p>
+                  <p className="text-[10px] mt-2" style={{ color: MUTE }}>날짜만 저장해선 자동으로 완료되지 않아요 — 본인 또는 운영진이 "완료로 확정"을 눌러야 완료 처리돼요. 연필 아이콘을 눌러 수정할 수 있어요.</p>
                 </div>
               )}
             </Card>
@@ -2723,11 +2742,12 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
     await reload();
   };
   const removeExcuse = async (id) => { await deleteRow('absence_excuses', 'id', id); await reload(); };
-  const isWeekCompleted = (wk, memberId) => penaltyCompletions.some((p) => p.session_id === wk && p.member_id === memberId);
+  const isWeekCompleted = (wk, memberId) => penaltyCompletions.some((p) => p.session_id === wk && p.member_id === memberId && p.confirmed);
   const toggleWeekCompletion = async (wk, memberId, performedDate) => {
     const existing = penaltyCompletions.find((p) => p.session_id === wk && p.member_id === memberId);
-    if (existing) await deleteRow('penalty_completions', 'id', existing.id);
-    else await insertRow('penalty_completions', { id: uid('p'), session_id: wk, member_id: memberId, completed_at: new Date().toISOString(), performed_date: performedDate || todayStr() });
+    if (existing?.confirmed) await updateRow('penalty_completions', 'id', existing.id, { confirmed: false }); // 완료 취소 (기록은 남김)
+    else if (existing) await updateRow('penalty_completions', 'id', existing.id, { confirmed: true, performed_date: performedDate || existing.performed_date || todayStr() }); // 예정 상태였던 걸 확정으로 전환
+    else await insertRow('penalty_completions', { id: uid('p'), session_id: wk, member_id: memberId, completed_at: new Date().toISOString(), performed_date: performedDate || todayStr(), confirmed: true }); // 완전히 새로 생성+확정
     await reload();
   };
   const [performDateInputs, setPerformDateInputs] = useState({}); // { `${wk}_${memberId}`: 'YYYY-MM-DD' } — 완료 처리 전 날짜 선택용
@@ -2864,18 +2884,15 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
                           <div className="flex items-center gap-2 shrink-0"><Stamp role={r.member.role} size={22} tilt={0} /><span style={{ color: NEUTRAL_TEXT }}>{r.member.name}</span></div>
                           {done ? (
                             <div className="flex items-center gap-2">
-                              {completion?.performed_date && completion.performed_date > todayStr() ? (
-                                <span className="text-[11px]" style={{ color: '#EFC94C', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(completion.performed_date)} 수행 예정</span>
-                              ) : (
-                                <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{completion?.performed_date ? fmtDate(completion.performed_date) : '날짜 미기록'} 수행 완료</span>
-                              )}
+                              <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{completion?.performed_date ? fmtDate(completion.performed_date) : '날짜 미기록'} 수행 완료</span>
                               <button onClick={() => toggleWeekCompletion(w.weekKey, r.member.id)} className="inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold shrink-0" style={{ background: '#12302C', color: '#7FDCCF' }}><Check size={11} /> 취소</button>
                             </div>
                           ) : (
                             <div className="flex items-center gap-1.5">
-                              <input type="date" value={performDateInputs[inputKey] || todayStr()} onChange={(e) => setPerformDateInputs((prev) => ({ ...prev, [inputKey]: e.target.value }))}
+                              {completion?.performed_date && <span className="text-[11px]" style={{ color: '#EFC94C', fontFamily: "'IBM Plex Mono', monospace" }}>예정 · {fmtDate(completion.performed_date)}</span>}
+                              <input type="date" value={performDateInputs[inputKey] || completion?.performed_date || todayStr()} onChange={(e) => setPerformDateInputs((prev) => ({ ...prev, [inputKey]: e.target.value }))}
                                 className="rounded-lg border px-1.5 py-1 text-[11px] outline-none" style={inputStyle} aria-label="벌칙 수행일자" />
-                              <button onClick={() => toggleWeekCompletion(w.weekKey, r.member.id, performDateInputs[inputKey])} className="rounded-full px-2 py-1 font-semibold shrink-0" style={{ background: NEUTRAL_BG, color: MUTE }}>미이행</button>
+                              <button onClick={() => toggleWeekCompletion(w.weekKey, r.member.id, performDateInputs[inputKey])} className="rounded-full px-2 py-1 font-semibold shrink-0" style={{ background: '#3A2213', color: '#F0A87C' }}>완료로 확정</button>
                             </div>
                           )}
                         </div>
