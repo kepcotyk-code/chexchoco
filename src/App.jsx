@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import { supabase } from './supabaseClient';
 import {
   Crown, Shield, Wallet, User, Plus, Pencil, Trash2, Check, X, Lock, AlertCircle,
-  Megaphone, QrCode, BarChart3, Users, Settings2, Settings, Download, Upload, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Briefcase, Coffee,
+  Megaphone, QrCode, BarChart3, Users, Settings2, Settings, Download, Upload, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Briefcase, Coffee, TrainFront,
   LogIn, LogOut, Cake, PartyPopper, Archive, Paperclip, FileText, Eye, Pin, Gavel, BookOpen,
   Image as ImageIcon, Trophy, Plane,
 } from 'lucide-react';
@@ -1541,7 +1541,8 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                   : metas.length === 1 ? metas[0].bg
                   : `linear-gradient(to bottom, ${metas.map((m, i) => `${m.bg} ${(i * 100) / metas.length}%, ${m.bg} ${((i + 1) * 100) / metas.length}%`).join(', ')})`;
                 const textColor = metas.length > 0 ? metas[0].color : (hasFeast ? dayTypeMeta('회식일').color : (isWeekendDefault ? WEEKEND_TEXT : MUTE));
-                const hasTravel = absenceExcuses.some((e) => e.date === date && (e.reason === '출장' || e.reason === '휴가'));
+                const hasBusinessTrip = absenceExcuses.some((e) => e.date === date && e.reason === '출장');
+                const hasVacation = absenceExcuses.some((e) => e.date === date && e.reason === '휴가');
                 const hasWork = absenceExcuses.some((e) => e.date === date && e.reason === '업무');
                 const hasPersonal = absenceExcuses.some((e) => e.date === date && e.reason === '개인일정');
                 const hasDiscussion = types.includes('토론회');
@@ -1573,10 +1574,11 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       </span>
                     )}
                     <span>{day}</span>
-                    {(hasTravel || hasWork || hasPersonal) && (
+                    {(hasBusinessTrip || hasVacation || hasWork || hasPersonal) && (
                       <span className="absolute bottom-0.5 flex items-center gap-0.5">
-                        {hasTravel && <Plane size={8} style={{ color: INK }} />}
-                        {hasWork && <Briefcase size={8} style={{ color: '#D9A93A' }} />}
+                        {hasBusinessTrip && <TrainFront size={8} style={{ color: '#F0A87C' }} />}
+                        {hasVacation && <Plane size={8} style={{ color: INK }} />}
+                        {hasWork && <Briefcase size={8} style={{ color: '#8A6440' }} />}
                         {hasPersonal && <User size={8} style={{ color: '#7FDCCF' }} />}
                       </span>
                     )}
@@ -1605,8 +1607,9 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 </svg>
                 생일
               </span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Plane size={11} /> 출장·휴가</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Briefcase size={11} style={{ color: '#D9A93A' }} /> 업무</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><TrainFront size={11} style={{ color: '#F0A87C' }} /> 출장</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Plane size={11} /> 휴가</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Briefcase size={11} style={{ color: '#8A6440' }} /> 업무</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Coffee size={11} style={{ color: '#EFC94C' }} /> 내 벌칙 수행일</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><User size={11} style={{ color: '#7FDCCF' }} /> 개인일정</span>
             </div>
@@ -1735,7 +1738,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FA8D9' }} />출석</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: 'linear-gradient(90deg, #7FA8D9 50%, transparent 50%)', border: `1px solid ${LINE}` }} />절반출석(15~29분)</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#E0958C' }} />휴무일</span>
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: '#F0A87C' }} />출장</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><TrainFront size={9} style={{ color: '#F0A87C' }} />출장</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: INK }} />휴가</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
             </div>
@@ -1780,8 +1783,11 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                         <div className="flex items-center justify-center gap-1" style={{ width: weekColWidths[wi] }}>
                           {r.flags.slice(start, end).map((status, i) => {
                             const fromPrevMonth = !monthDayList[start + i].inCurrentMonth;
-                            if (status === 'trip' || status === 'vacation') {
-                              return <Plane key={i} size={9} style={{ color: status === 'trip' ? '#F0A87C' : INK, opacity: fromPrevMonth ? 0.6 : 1 }} />;
+                            if (status === 'trip') {
+                              return <TrainFront key={i} size={9} style={{ color: '#F0A87C', opacity: fromPrevMonth ? 0.6 : 1 }} />;
+                            }
+                            if (status === 'vacation') {
+                              return <Plane key={i} size={9} style={{ color: INK, opacity: fromPrevMonth ? 0.6 : 1 }} />;
                             }
                             return (
                               <span key={i} className="relative rounded-full" style={{
