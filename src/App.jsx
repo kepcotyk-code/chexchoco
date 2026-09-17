@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import { supabase } from './supabaseClient';
 import {
   Crown, Shield, Wallet, User, Plus, Pencil, Trash2, Check, X, Lock, AlertCircle,
-  Megaphone, QrCode, BarChart3, Users, Settings2, Settings, Download, Upload, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Briefcase, Coffee, TrainFront,
+  Megaphone, QrCode, BarChart3, Users, Settings2, Settings, Download, Upload, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Briefcase, Coffee,
   LogIn, LogOut, Cake, PartyPopper, Archive, Paperclip, FileText, Eye, Pin, Gavel, BookOpen,
   Image as ImageIcon, Trophy, Plane,
 } from 'lucide-react';
@@ -1576,9 +1576,9 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                     <span>{day}</span>
                     {(hasBusinessTrip || hasVacation || hasWork || hasPersonal) && (
                       <span className="absolute bottom-0.5 flex items-center gap-0.5">
-                        {hasBusinessTrip && <TrainFront size={8} style={{ color: '#F0A87C' }} />}
+                        {hasBusinessTrip && <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={ color: '#F0A87C' }><rect x="2" y="6" width="20" height="9" rx="2" /><rect x="5" y="8.5" width="5" height="4" /><rect x="14" y="8.5" width="5" height="4" /><line x1="2" y1="15" x2="22" y2="15" /><circle cx="7" cy="18.5" r="1.6" /><circle cx="17" cy="18.5" r="1.6" /></svg>}
                         {hasVacation && <Plane size={8} style={{ color: INK }} />}
-                        {hasWork && <Briefcase size={8} style={{ color: '#8A6440' }} />}
+                        {hasWork && <Briefcase size={8} style={{ color: '#D9A93A' }} />}
                         {hasPersonal && <User size={8} style={{ color: '#7FDCCF' }} />}
                       </span>
                     )}
@@ -1607,9 +1607,9 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 </svg>
                 생일
               </span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><TrainFront size={11} style={{ color: '#F0A87C' }} /> 출장</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={ color: '#F0A87C' }><rect x="2" y="6" width="20" height="9" rx="2" /><rect x="5" y="8.5" width="5" height="4" /><rect x="14" y="8.5" width="5" height="4" /><line x1="2" y1="15" x2="22" y2="15" /><circle cx="7" cy="18.5" r="1.6" /><circle cx="17" cy="18.5" r="1.6" /></svg> 출장</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Plane size={11} /> 휴가</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Briefcase size={11} style={{ color: '#8A6440' }} /> 업무</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Briefcase size={11} style={{ color: '#D9A93A' }} /> 업무</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Coffee size={11} style={{ color: '#EFC94C' }} /> 내 벌칙 수행일</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><User size={11} style={{ color: '#7FDCCF' }} /> 개인일정</span>
             </div>
@@ -1623,7 +1623,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               })).filter((g) => g.names.length > 0);
               if (groups.length === 0) return null;
               return (
-                <div className="mt-3 p-3 rounded-xl" style={{ background: 'rgba(240,168,124,0.05)', border: '1px solid rgba(240,168,124,0.22)' }}>
+                <div className="mt-3 p-3 rounded-xl" style={{ background: 'rgba(240,168,124,0.09)', border: '1px solid rgba(240,168,124,0.32)' }}>
                   <div className="text-xs mb-1.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>오늘 참석불가</div>
                   <div className="space-y-1">
                     {groups.map((g) => (
@@ -1738,7 +1738,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FA8D9' }} />출석</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: 'linear-gradient(90deg, #7FA8D9 50%, transparent 50%)', border: `1px solid ${LINE}` }} />절반출석(15~29분)</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#E0958C' }} />휴무일</span>
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><TrainFront size={9} style={{ color: '#F0A87C' }} />출장</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={ color: '#F0A87C' }><rect x="2" y="6" width="20" height="9" rx="2" /><rect x="5" y="8.5" width="5" height="4" /><rect x="14" y="8.5" width="5" height="4" /><line x1="2" y1="15" x2="22" y2="15" /><circle cx="7" cy="18.5" r="1.6" /><circle cx="17" cy="18.5" r="1.6" /></svg>출장</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: INK }} />휴가</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
             </div>
@@ -1784,7 +1784,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                           {r.flags.slice(start, end).map((status, i) => {
                             const fromPrevMonth = !monthDayList[start + i].inCurrentMonth;
                             if (status === 'trip') {
-                              return <TrainFront key={i} size={9} style={{ color: '#F0A87C', opacity: fromPrevMonth ? 0.6 : 1 }} />;
+                              return <svg key={i} width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={ color: '#F0A87C', opacity: fromPrevMonth ? 0.6 : 1 }><rect x="2" y="6" width="20" height="9" rx="2" /><rect x="5" y="8.5" width="5" height="4" /><rect x="14" y="8.5" width="5" height="4" /><line x1="2" y1="15" x2="22" y2="15" /><circle cx="7" cy="18.5" r="1.6" /><circle cx="17" cy="18.5" r="1.6" /></svg>;
                             }
                             if (status === 'vacation') {
                               return <Plane key={i} size={9} style={{ color: INK, opacity: fromPrevMonth ? 0.6 : 1 }} />;
