@@ -442,6 +442,19 @@ export default function App() {
     { key: 'users', label: '멤버', icon: Users },
   ];
 
+  // 오늘 생일인 멤버가 있으면 00시~24시 하루 종일 화면 전체에 꽃가루 효과
+  const todayMdForConfetti = todayStr().slice(5, 10);
+  const hasBirthdayToday = members.some((m) => m.birthday && mdOf(m.birthday) === todayMdForConfetti);
+  const confettiColors = ['#F0A87C', '#7FA8D9', '#EFC94C', '#7FDCCF', '#E0958C', '#D9C24C'];
+  const confettiPieces = useMemo(() => Array.from({ length: 24 }).map((_, i) => ({
+    left: Math.round(Math.random() * 100),
+    delay: (Math.random() * 6).toFixed(2),
+    duration: (7 + Math.random() * 5).toFixed(2),
+    color: confettiColors[i % confettiColors.length],
+    size: 6 + Math.round(Math.random() * 6),
+    rotate: Math.round(Math.random() * 360),
+  })), [hasBirthdayToday]);
+
   if (!loaded) {
     return <div className="min-h-screen flex items-center justify-center" style={{ background: PAPER_BG }}>
       <div className="text-sm" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>불러오는 중…</div>
@@ -456,7 +469,23 @@ export default function App() {
           outline: 2px solid #7FA8D9;
           outline-offset: 2px;
         }
+        @keyframes confettiFall {
+          0% { transform: translateY(-5vh) rotate(0deg); opacity: 0.9; }
+          100% { transform: translateY(105vh) rotate(720deg); opacity: 0.9; }
+        }
       `}</style>
+      {hasBirthdayToday && (
+        <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 60 }} aria-hidden="true">
+          {confettiPieces.map((p, i) => (
+            <span key={i} style={{
+              position: 'absolute', top: 0, left: `${p.left}%`, width: p.size, height: p.size * 0.4,
+              background: p.color, borderRadius: 2, opacity: 0.9,
+              animation: `confettiFall ${p.duration}s linear ${p.delay}s infinite`,
+              transform: `rotate(${p.rotate}deg)`,
+            }} />
+          ))}
+        </div>
+      )}
       <div className="max-w-3xl mx-auto px-4 pt-6 pb-24">
         <div className="mb-6">
           <div className="flex items-center justify-between mb-1.5">
@@ -970,6 +999,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [sharePublisher, setSharePublisher] = useState('');
   const [viewingShareId, setViewingShareId] = useState(null);
   const [dueDateInput, setDueDateInput] = useState('');
+  const [borrowedDateInput, setBorrowedDateInput] = useState('');
   const [editingShare, setEditingShare] = useState(false);
   const [editShareTitle, setEditShareTitle] = useState('');
   const [editShareAuthor, setEditShareAuthor] = useState('');
@@ -1018,10 +1048,22 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     await updateRow('book_shares', 'id', share.id, { due_date: newDate });
     await reload();
   };
+  const updateBorrowedDate = async (share, newDate) => {
+    const due = new Date(`${newDate}T00:00:00`); due.setDate(due.getDate() + 14);
+    const dueStr = `${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())}`;
+    await updateRow('book_shares', 'id', share.id, { borrowed_at: newDate, due_date: dueStr });
+    setDueDateInput('');
+    await reload();
+  };
   const randomPastel = () => {
-    const hues = [200, 150, 30, 340, 260, 100, 20, 280, 180];
-    const h = hues[Math.floor(Math.random() * hues.length)];
-    return `hsl(${h}, 55%, 68%)`;
+    // 레퍼런스처럼 채도 낮은 차분한 톤(크림, 모브, 브라운, 더스티핑크 등)
+    const palette = ['#D9CFC1', '#B9A695', '#D98C8C', '#3A2C25', '#D6C79E', '#C9B8AC'];
+    return palette[Math.floor(Math.random() * palette.length)];
+  };
+  const isDarkColor = (hex) => {
+    const c = (hex || '#D9CFC1').replace('#', '');
+    const r = parseInt(c.substr(0, 2), 16), g = parseInt(c.substr(2, 2), 16), b = parseInt(c.substr(4, 2), 16);
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.5;
   };
   const confirmReturn = async (share) => {
     const borrowerId = share.kind === 'offer' ? share.matched_by : share.posted_by;
@@ -1153,7 +1195,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           {offers.map((s) => {
             const poster = members.find((m) => m.id === s.posted_by);
             return (
-              <button key={s.id} onClick={() => { setViewingShareId(s.id); setDueDateInput(''); setEditingShare(false); }} className="w-full flex items-center justify-between rounded-xl px-3 py-2 text-left" style={{ background: NEUTRAL_BG }}>
+              <button key={s.id} onClick={() => { setViewingShareId(s.id); setDueDateInput(''); setBorrowedDateInput(''); setEditingShare(false); }} className="w-full flex items-center justify-between rounded-xl px-3 py-2 text-left" style={{ background: NEUTRAL_BG }}>
                 <div className="min-w-0">
                   <div className="text-sm truncate" style={{ color: INK }}>{s.book_title}</div>
                   <div className="text-[10px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{dispName(poster?.name || '', isLoggedIn)}</div>
@@ -1169,7 +1211,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           {requests.map((s) => {
             const poster = members.find((m) => m.id === s.posted_by);
             return (
-              <button key={s.id} onClick={() => { setViewingShareId(s.id); setDueDateInput(''); setEditingShare(false); }} className="w-full flex items-center justify-between rounded-xl px-3 py-2 text-left" style={{ background: NEUTRAL_BG }}>
+              <button key={s.id} onClick={() => { setViewingShareId(s.id); setDueDateInput(''); setBorrowedDateInput(''); setEditingShare(false); }} className="w-full flex items-center justify-between rounded-xl px-3 py-2 text-left" style={{ background: NEUTRAL_BG }}>
                 <div className="min-w-0">
                   <div className="text-sm truncate" style={{ color: INK }}>{s.book_title}</div>
                   <div className="text-[10px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{dispName(poster?.name || '', isLoggedIn)}</div>
@@ -1217,7 +1259,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                   <div className="text-xs space-y-1 mb-3" style={{ color: NEUTRAL_TEXT }}>
                     {viewingShare.book_author && <div>저자: {viewingShare.book_author}</div>}
                     {viewingShare.book_publisher && <div>출판사: {viewingShare.book_publisher}</div>}
-                    <div style={{ color: MUTE }}>글쓴이: {dispName(poster?.name || '', isLoggedIn)}</div>
+                    <div style={{ color: MUTE }}>작성자: {dispName(poster?.name || '', isLoggedIn)}</div>
                   </div>
                 </>
               )}
@@ -1239,14 +1281,22 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                       <GhostBtn onClick={() => cancelRequest(viewingShare)}>취소</GhostBtn>
                     </div>
                   ) : (
-                    <p className="text-xs" style={{ color: MUTE }}>글쓴이가 확인 후 확정하면 대여가 시작돼요.</p>
+                    <p className="text-xs" style={{ color: MUTE }}>작성자가 확인 후 확정하면 대여가 시작돼요.</p>
                   )}
                 </div>
               )}
               {(viewingShare.status === 'matched' || viewingShare.status === 'returned') && !editingShare && (
                 <div className="space-y-2 pt-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
                   <div className="text-xs" style={{ color: NEUTRAL_TEXT }}>응답: {dispName(matcher?.name || '', isLoggedIn)}</div>
-                  <div className="text-xs" style={{ color: MUTE }}>대여일: {fmtDate(viewingShare.borrowed_at)}</div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs" style={{ color: MUTE }}>대여일:</span>
+                    {viewingShare.status === 'matched' && (isOwner || currentMember?.id === borrowerId) ? (
+                      <input type="date" value={borrowedDateInput || viewingShare.borrowed_at || ''} onChange={(e) => setBorrowedDateInput(e.target.value)} onBlur={() => borrowedDateInput && updateBorrowedDate(viewingShare, borrowedDateInput)}
+                        className="rounded-lg border px-1.5 py-1 text-[11px] outline-none" style={inputStyle} aria-label="대여일" />
+                    ) : (
+                      <span className="text-xs" style={{ color: NEUTRAL_TEXT }}>{fmtDate(viewingShare.borrowed_at)}</span>
+                    )}
+                  </div>
                   {viewingShare.status === 'matched' && (
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs" style={{ color: MUTE }}>반납기한:</span>
@@ -1297,16 +1347,22 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           const list = towerView === 'mine' ? myTower : groupTower;
           if (list.length === 0) return <p className="text-xs text-center py-6" style={{ color: MUTE }}>아직 쌓인 책이 없어요.</p>;
           return (
-            <div className="flex flex-col-reverse gap-1 max-h-96 overflow-y-auto pr-1">
+            <div className="flex flex-col-reverse gap-1.5 max-h-[28rem] overflow-y-auto pr-1">
               {list.map((t) => {
                 const owner = towerView === 'group' ? members.find((m) => m.id === t.member_id) : null;
                 const isMine = towerView === 'mine' && currentMember;
                 const isEditing = editingTowerId === t.id;
+                const dark = isDarkColor(t.color);
+                const fg = dark ? '#F2EEE3' : '#2A2620';
+                const fgMute = dark ? 'rgba(242,238,227,0.65)' : 'rgba(42,38,32,0.6)';
+                const statusText = t.finished_date ? '완독' : t.current_page ? `p.${t.current_page}` : '읽는 중';
                 return (
-                  <div key={t.id} className="rounded-lg px-2.5 py-2" style={{ background: t.color, opacity: 0.92 }}>
+                  <div key={t.id} className="relative" style={{ background: t.color, borderRadius: 10, boxShadow: '0 2px 4px rgba(0,0,0,0.25)' }}>
+                    {/* 책갈피 리본 장식 */}
+                    <div className="absolute pointer-events-none" style={{ top: 0, right: 16, width: 10, height: 20, background: dark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.14)', clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 75%, 0 100%)' }} />
                     {isEditing ? (
-                      <div className="space-y-1.5">
-                        <div className="text-xs font-semibold" style={{ color: '#1E1C16' }}>{t.book_title}</div>
+                      <div className="space-y-1.5 px-4 py-3">
+                        <div className="text-sm font-bold" style={{ color: fg }}>{t.book_title}</div>
                         <div className="grid grid-cols-2 gap-1.5">
                           <input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="rounded-lg px-2 py-1 text-[11px] outline-none" style={{ background: 'rgba(255,255,255,0.6)', color: '#1E1C16', border: 'none' }} aria-label="읽기 시작일" />
                           <input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="rounded-lg px-2 py-1 text-[11px] outline-none" style={{ background: 'rgba(255,255,255,0.6)', color: '#1E1C16', border: 'none' }} aria-label="다 읽은 날" />
@@ -1318,20 +1374,22 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                         </div>
                       </div>
                     ) : (
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between px-4 py-3 gap-2">
                         <div className="min-w-0">
-                          <div className="text-xs font-semibold truncate" style={{ color: '#1E1C16' }}>{t.book_title}{owner && ` · ${dispName(owner.name, isLoggedIn)}`}</div>
-                          <div className="text-[10px]" style={{ color: 'rgba(30,28,22,0.7)', fontFamily: "'IBM Plex Mono', monospace" }}>
-                            {t.finished_date ? `완독 ${fmtDate(t.finished_date)}` : t.current_page ? `읽는 중 · p.${t.current_page}` : '읽는 중'}
-                            {t.start_date && ` · 시작 ${fmtDate(t.start_date)}`}
+                          <div className="text-sm font-bold truncate" style={{ color: fg }}>{t.book_title}</div>
+                          <div className="text-[11px] truncate" style={{ color: fgMute }}>
+                            {owner ? dispName(owner.name, isLoggedIn) : (t.start_date ? `시작 ${fmtDate(t.start_date)}` : '')}
                           </div>
                         </div>
-                        {isMine && (
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button onClick={() => startTowerEdit(t)} className="p-1" aria-label="책탑 항목 수정"><Pencil size={12} style={{ color: 'rgba(30,28,22,0.6)' }} /></button>
-                            <button onClick={() => removeTowerEntry(t.id)} className="p-1" aria-label="책탑에서 제거"><X size={12} style={{ color: 'rgba(30,28,22,0.6)' }} /></button>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-xs font-medium" style={{ color: fgMute }}>{statusText}</span>
+                          {isMine && (
+                            <>
+                              <button onClick={() => startTowerEdit(t)} className="p-1" aria-label="책탑 항목 수정"><Pencil size={12} style={{ color: fgMute }} /></button>
+                              <button onClick={() => removeTowerEntry(t.id)} className="p-1" aria-label="책탑에서 제거"><X size={12} style={{ color: fgMute }} /></button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1984,7 +2042,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                     <span>{day}</span>
                     {(hasBusinessTrip || hasVacation || hasWork || hasPersonal) && (
                       <span className="absolute bottom-0.5 flex items-center gap-0.5">
-                        {hasBusinessTrip && <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>}
+                        {hasBusinessTrip && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>}
                         {hasVacation && <Plane size={8} style={{ color: INK }} />}
                         {hasWork && <Briefcase size={8} style={{ color: '#D9A93A' }} />}
                         {hasPersonal && <User size={8} style={{ color: '#7FDCCF' }} />}
@@ -2015,7 +2073,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 </svg>
                 생일
               </span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg> 출장</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg> 출장</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Plane size={11} /> 휴가</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Briefcase size={11} style={{ color: '#D9A93A' }} /> 업무</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Coffee size={11} style={{ color: '#EFC94C' }} /> 내 벌칙 수행일</span>
@@ -2146,7 +2204,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FA8D9' }} />출석</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: 'linear-gradient(90deg, #7FA8D9 50%, transparent 50%)', border: `1px solid ${LINE}` }} />절반출석(15~29분)</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#E0958C' }} />휴무일</span>
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>출장</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>출장</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: INK }} />휴가</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
             </div>
@@ -2192,7 +2250,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                           {r.flags.slice(start, end).map((status, i) => {
                             const fromPrevMonth = !monthDayList[start + i].inCurrentMonth;
                             if (status === 'trip') {
-                              return <svg key={i} width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C', opacity: fromPrevMonth ? 0.6 : 1 }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>;
+                              return <svg key={i} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C', opacity: fromPrevMonth ? 0.6 : 1 }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>;
                             }
                             if (status === 'vacation') {
                               return <Plane key={i} size={9} style={{ color: INK, opacity: fromPrevMonth ? 0.6 : 1 }} />;
@@ -2371,6 +2429,8 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
   const [editMode, setEditMode] = useState('full'); // 'full' | 'self'
   const [editName, setEditName] = useState(''); const [editRole, setEditRole] = useState('회원'); const [editBirthday, setEditBirthday] = useState(''); const [editPin, setEditPin] = useState(''); const [clearPin, setClearPin] = useState(false);
   const [editDept, setEditDept] = useState(''); const [editJobType, setEditJobType] = useState(''); const [editJoinedAt, setEditJoinedAt] = useState(''); const [editGenre, setEditGenre] = useState(''); const [editNote, setEditNote] = useState('');
+  // 멤버 탭 화면 표시용 — 로그인한 본인이 맨 위로 오도록 재배치 (다른 탭에서 쓰는 sortedMembers 순서엔 영향 없음)
+  const displayMembers = isLoggedIn ? [...sortedMembers].sort((a, b) => (a.id === currentUserId ? -1 : b.id === currentUserId ? 1 : 0)) : sortedMembers;
 
   const handleAdd = async () => {
     if (!newName.trim()) return;
@@ -2445,8 +2505,8 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
       {!canManage && members.length > 0 && <div className="flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-sm" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}><Lock size={15} /> 이름·직급 변경은 회장·간사·총무만 가능해요. 본인의 생일·PIN은 각자 수정할 수 있어요.</div>}
 
       <Card className="!p-0 overflow-hidden">
-        {sortedMembers.length === 0 && <div className="px-4 py-8 text-center text-sm" style={{ color: MUTE }}>등록된 멤버가 없어요.</div>}
-        {sortedMembers.map((m, idx) => (
+        {displayMembers.length === 0 && <div className="px-4 py-8 text-center text-sm" style={{ color: MUTE }}>등록된 멤버가 없어요.</div>}
+        {displayMembers.map((m, idx) => (
           <div key={m.id} style={{ borderTop: idx === 0 ? 'none' : `1px solid ${ROW_LINE}` }}>
             {editingId === m.id ? (
               <div className="p-4 space-y-3" style={{ background: '#1A1812' }}>
