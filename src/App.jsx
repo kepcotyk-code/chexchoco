@@ -970,6 +970,10 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [sharePublisher, setSharePublisher] = useState('');
   const [viewingShareId, setViewingShareId] = useState(null);
   const [dueDateInput, setDueDateInput] = useState('');
+  const [editingShare, setEditingShare] = useState(false);
+  const [editShareTitle, setEditShareTitle] = useState('');
+  const [editShareAuthor, setEditShareAuthor] = useState('');
+  const [editSharePublisher, setEditSharePublisher] = useState('');
   const notify = async (memberId, message, linkId) => {
     await insertRow('notifications', { id: uid('nt'), member_id: memberId, message, link_id: linkId, created_at: new Date().toISOString() });
   };
@@ -983,13 +987,31 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     setShareTitle(''); setShareAuthor(''); setSharePublisher(''); setShowShareForm(false);
     await reload();
   };
-  const respondToShare = async (share) => {
+  const saveShareEdit = async (share) => {
+    if (!editShareTitle.trim()) return;
+    await updateRow('book_shares', 'id', share.id, { book_title: editShareTitle.trim(), book_author: editShareAuthor.trim() || null, book_publisher: editSharePublisher.trim() || null });
+    setEditingShare(false);
+    await reload();
+  };
+  // 1단계: 요청하기 — 아직 확정 아님, 글쓴이가 확인 후 확정해야 함
+  const requestShare = async (share) => {
     if (!currentMember) return;
+    await updateRow('book_shares', 'id', share.id, { status: 'requested', matched_by: currentMember.id });
+    await notify(share.posted_by, `${currentMember.name}님이 [${share.book_title}] ${share.kind === 'offer' ? '제공' : '요청'}에 응답했어요. 확인 후 확정해주세요.`, share.id);
+    await reload();
+  };
+  // 요청 취소 — 글쓴이가 다시 대기 상태로 되돌림 (다른 사람이 다시 요청할 수 있도록)
+  const cancelRequest = async (share) => {
+    await updateRow('book_shares', 'id', share.id, { status: 'open', matched_by: null });
+    await reload();
+  };
+  // 2단계: 확정 — 이때 대여일/반납기한이 정해짐
+  const confirmMatch = async (share) => {
     const today = todayStr();
     const due = new Date(); due.setDate(due.getDate() + 14);
     const dueStr = `${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())}`;
-    await updateRow('book_shares', 'id', share.id, { status: 'matched', matched_by: currentMember.id, borrowed_at: today, due_date: dueStr });
-    await notify(share.posted_by, `${currentMember.name}님이 [${share.book_title}] ${share.kind === 'offer' ? '제공' : '요청'}에 응답했어요.`, share.id);
+    await updateRow('book_shares', 'id', share.id, { status: 'matched', borrowed_at: today, due_date: dueStr });
+    await notify(share.matched_by, `[${share.book_title}] 대여가 확정됐어요. 반납기한: ${dueStr}`, share.id);
     await reload();
   };
   const updateDueDate = async (share, newDate) => {
@@ -1005,7 +1027,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     const borrowerId = share.kind === 'offer' ? share.matched_by : share.posted_by;
     const today = todayStr();
     await updateRow('book_shares', 'id', share.id, { status: 'returned', returned_at: today });
-    await insertRow('book_tower_entries', { id: uid('bt'), member_id: borrowerId, book_title: share.book_title, finished_date: today, color: randomPastel(), source_share_id: share.id, created_at: new Date().toISOString() });
+    await insertRow('book_tower_entries', { id: uid('bt'), member_id: borrowerId, book_title: share.book_title, start_date: share.borrowed_at, finished_date: today, current_page: null, color: randomPastel(), source_share_id: share.id, created_at: new Date().toISOString() });
     await notify(borrowerId, `[${share.book_title}] 반납 완료 처리됐어요. 내 책탑에 추가됐어요.`, share.id);
     await reload();
   };
@@ -1013,6 +1035,12 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     await deleteRow('book_shares', 'id', share.id);
     setViewingShareId(null);
     await reload();
+  };
+  const shareStatusInfo = (s) => {
+    if (s.status === 'open') return { label: s.kind === 'offer' ? '대여가능' : '대기중', style: { background: '#12302C', color: '#7FDCCF' } };
+    if (s.status === 'requested') return { label: '요청중', style: { background: '#332815', color: '#EFC94C' } };
+    if (s.status === 'matched') return { label: '대여중', style: { background: '#3A2E10', color: '#EFC94C' } };
+    return { label: '반납완료', style: { background: NEUTRAL_BG, color: MUTE, border: `1px solid ${LINE}` } };
   };
   const offers = bookShares.filter((s) => s.kind === 'offer').sort((a, b) => b.created_at.localeCompare(a.created_at));
   const requests = bookShares.filter((s) => s.kind === 'request').sort((a, b) => b.created_at.localeCompare(a.created_at));
@@ -1022,57 +1050,81 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [towerView, setTowerView] = useState('mine'); // 'mine' | 'group'
   const [showTowerAdd, setShowTowerAdd] = useState(false);
   const [towerTitleInput, setTowerTitleInput] = useState('');
-  const [towerDateInput, setTowerDateInput] = useState(todayStr());
+  const [towerStartInput, setTowerStartInput] = useState(todayStr());
+  const [towerPageInput, setTowerPageInput] = useState('');
+  const [towerFinishedInput, setTowerFinishedInput] = useState('');
+  const [editingTowerId, setEditingTowerId] = useState(null);
   const addManualTowerEntry = async () => {
     if (!currentMember || !towerTitleInput.trim()) return;
-    await insertRow('book_tower_entries', { id: uid('bt'), member_id: currentMember.id, book_title: towerTitleInput.trim(), finished_date: towerDateInput || todayStr(), color: randomPastel(), source_share_id: null, created_at: new Date().toISOString() });
-    setTowerTitleInput(''); setTowerDateInput(todayStr()); setShowTowerAdd(false);
+    await insertRow('book_tower_entries', {
+      id: uid('bt'), member_id: currentMember.id, book_title: towerTitleInput.trim(),
+      start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null,
+      color: randomPastel(), source_share_id: null, created_at: new Date().toISOString(),
+    });
+    setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setShowTowerAdd(false);
     await reload();
   };
+  const saveTowerEdit = async (entry) => {
+    await updateRow('book_tower_entries', 'id', entry.id, { start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null });
+    setEditingTowerId(null);
+    await reload();
+  };
+  const startTowerEdit = (entry) => {
+    setEditingTowerId(entry.id);
+    setTowerStartInput(entry.start_date || '');
+    setTowerPageInput(entry.current_page ? String(entry.current_page) : '');
+    setTowerFinishedInput(entry.finished_date || '');
+  };
   const removeTowerEntry = async (entryId) => { await deleteRow('book_tower_entries', 'id', entryId); await reload(); };
-  const myTower = currentMember ? bookTowerEntries.filter((t) => t.member_id === currentMember.id).sort((a, b) => a.finished_date.localeCompare(b.finished_date)) : [];
-  const groupTower = [...bookTowerEntries].sort((a, b) => a.finished_date.localeCompare(b.finished_date));
+  const towerSortKey = (t) => t.finished_date || t.start_date || t.created_at.slice(0, 10);
+  const myTower = currentMember ? bookTowerEntries.filter((t) => t.member_id === currentMember.id).sort((a, b) => towerSortKey(a).localeCompare(towerSortKey(b))) : [];
+  const groupTower = [...bookTowerEntries].sort((a, b) => towerSortKey(a).localeCompare(towerSortKey(b)));
 
   return (
     <div className="space-y-4">
-      <div>
-        <label className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 px-4 text-sm font-semibold cursor-pointer w-full"
-          style={{ background: currentMember ? NEUTRAL_BG : ROW_LINE, color: currentMember ? NEUTRAL_TEXT : MUTE, opacity: uploading ? 0.6 : 1 }}>
-          <ImageIcon size={15} /> {uploading ? '업로드 중…' : '사진 추가'}
-          <input type="file" accept="image/*" onChange={handleFile} className="hidden" disabled={!currentMember || uploading} />
-        </label>
-        {!currentMember && <p className="text-xs mt-1.5" style={{ color: MUTE }}>상단에서 본인을 먼저 선택해야 업로드할 수 있어요.</p>}
-        {error && <p className="text-xs mt-1.5" style={{ color: '#F0A87C' }}>{error}</p>}
-      </div>
-      {photos.length > 0 && (
-        <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="캡션, 게시자, 참석자 이름으로 검색"
-          className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none" style={inputStyle} />
-      )}
-      {sorted.length === 0 ? (
-        <Card><p className="text-sm text-center py-6" style={{ color: MUTE }}>아직 올라온 사진이 없어요.</p></Card>
-      ) : filtered.length === 0 ? (
-        <Card><p className="text-sm text-center py-6" style={{ color: MUTE }}>검색 결과가 없어요.</p></Card>
-      ) : (
-        <div className="grid grid-cols-3 gap-2">
-          {pagedPhotos.map((p) => (
-            <button key={p.id} onClick={() => { setViewingId(p.id); setEditingDate(false); setEditingCaption(false); }} className="relative aspect-square rounded-lg overflow-hidden" style={{ background: NEUTRAL_BG }}>
-              <img src={publicUrl('photos', p.file_path)} className="w-full h-full object-cover" alt="" loading="lazy" />
-              {p.caption && <div className="absolute top-1 right-1.5" style={{ color: 'rgba(255,255,255,0.85)', textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}><FileText size={12} /></div>}
-              <div className="absolute bottom-1 left-1.5 right-1.5 flex items-center justify-between text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 2px rgba(0,0,0,0.6)', fontFamily: "'IBM Plex Mono', monospace" }}>
-                <span>{p.created_at.slice(0, 10)}</span>
-                <span className="truncate ml-1">{dispName(p.uploader_name, isLoggedIn)}</span>
-              </div>
-            </button>
-          ))}
+      <Card>
+        <div className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: INK }}><ImageIcon size={16} style={{ color: '#7FDCCF' }} /> 포토로그</div>
+        <div>
+          <label className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 px-4 text-sm font-semibold cursor-pointer w-full"
+            style={{ background: currentMember ? NEUTRAL_BG : ROW_LINE, color: currentMember ? NEUTRAL_TEXT : MUTE, opacity: uploading ? 0.6 : 1 }}>
+            <ImageIcon size={15} /> {uploading ? '업로드 중…' : '사진 추가'}
+            <input type="file" accept="image/*" onChange={handleFile} className="hidden" disabled={!currentMember || uploading} />
+          </label>
+          {!currentMember && <p className="text-xs mt-1.5" style={{ color: MUTE }}>상단에서 본인을 먼저 선택해야 업로드할 수 있어요.</p>}
+          {error && <p className="text-xs mt-1.5" style={{ color: '#F0A87C' }}>{error}</p>}
         </div>
-      )}
-      {filtered.length > PHOTOS_PER_PAGE && (
-        <div className="flex items-center justify-center gap-3">
-          <button onClick={() => setPhotoPage((p) => Math.max(0, p - 1))} disabled={safePage === 0} aria-label="이전 페이지" className="p-1.5 rounded-full" style={{ color: safePage === 0 ? LINE : MUTE }}><ChevronLeft size={16} /></button>
-          <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{safePage + 1} / {totalPhotoPages}</span>
-          <button onClick={() => setPhotoPage((p) => Math.min(totalPhotoPages - 1, p + 1))} disabled={safePage >= totalPhotoPages - 1} aria-label="다음 페이지" className="p-1.5 rounded-full" style={{ color: safePage >= totalPhotoPages - 1 ? LINE : MUTE }}><ChevronRight size={16} /></button>
+        {photos.length > 0 && (
+          <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="캡션, 게시자, 참석자 이름으로 검색"
+            className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none mt-3" style={inputStyle} />
+        )}
+        <div className="mt-3">
+          {sorted.length === 0 ? (
+            <p className="text-sm text-center py-6" style={{ color: MUTE }}>아직 올라온 사진이 없어요.</p>
+          ) : filtered.length === 0 ? (
+            <p className="text-sm text-center py-6" style={{ color: MUTE }}>검색 결과가 없어요.</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {pagedPhotos.map((p) => (
+                <button key={p.id} onClick={() => { setViewingId(p.id); setEditingDate(false); setEditingCaption(false); }} className="relative aspect-square rounded-lg overflow-hidden" style={{ background: NEUTRAL_BG }}>
+                  <img src={publicUrl('photos', p.file_path)} className="w-full h-full object-cover" alt="" loading="lazy" />
+                  {p.caption && <div className="absolute top-1 right-1.5" style={{ color: 'rgba(255,255,255,0.85)', textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}><FileText size={12} /></div>}
+                  <div className="absolute bottom-1 left-1.5 right-1.5 flex items-center justify-between text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 2px rgba(0,0,0,0.6)', fontFamily: "'IBM Plex Mono', monospace" }}>
+                    <span>{p.created_at.slice(0, 10)}</span>
+                    <span className="truncate ml-1">{dispName(p.uploader_name, isLoggedIn)}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-      )}
+        {filtered.length > PHOTOS_PER_PAGE && (
+          <div className="flex items-center justify-center gap-3 mt-3">
+            <button onClick={() => setPhotoPage((p) => Math.max(0, p - 1))} disabled={safePage === 0} aria-label="이전 페이지" className="p-1.5 rounded-full" style={{ color: safePage === 0 ? LINE : MUTE }}><ChevronLeft size={16} /></button>
+            <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{safePage + 1} / {totalPhotoPages}</span>
+            <button onClick={() => setPhotoPage((p) => Math.min(totalPhotoPages - 1, p + 1))} disabled={safePage >= totalPhotoPages - 1} aria-label="다음 페이지" className="p-1.5 rounded-full" style={{ color: safePage >= totalPhotoPages - 1 ? LINE : MUTE }}><ChevronRight size={16} /></button>
+          </div>
+        )}
+      </Card>
 
       {/* ---------- 도서 공유함 ---------- */}
       <Card>
@@ -1101,14 +1153,12 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           {offers.map((s) => {
             const poster = members.find((m) => m.id === s.posted_by);
             return (
-              <button key={s.id} onClick={() => { setViewingShareId(s.id); setDueDateInput(''); }} className="w-full flex items-center justify-between rounded-xl px-3 py-2 text-left" style={{ background: NEUTRAL_BG }}>
+              <button key={s.id} onClick={() => { setViewingShareId(s.id); setDueDateInput(''); setEditingShare(false); }} className="w-full flex items-center justify-between rounded-xl px-3 py-2 text-left" style={{ background: NEUTRAL_BG }}>
                 <div className="min-w-0">
                   <div className="text-sm truncate" style={{ color: INK }}>{s.book_title}</div>
                   <div className="text-[10px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{dispName(poster?.name || '', isLoggedIn)}</div>
                 </div>
-                <span className="text-[10px] rounded-full px-2 py-0.5 font-semibold shrink-0 ml-2" style={
-                  s.status === 'open' ? { background: '#12302C', color: '#7FDCCF' } : s.status === 'matched' ? { background: '#3A2E10', color: '#EFC94C' } : { background: NEUTRAL_BG, color: MUTE, border: `1px solid ${LINE}` }
-                }>{s.status === 'open' ? '대여가능' : s.status === 'matched' ? '대여중' : '반납완료'}</span>
+                <span className="text-[10px] rounded-full px-2 py-0.5 font-semibold shrink-0 ml-2" style={shareStatusInfo(s).style}>{shareStatusInfo(s).label}</span>
               </button>
             );
           })}
@@ -1119,14 +1169,12 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           {requests.map((s) => {
             const poster = members.find((m) => m.id === s.posted_by);
             return (
-              <button key={s.id} onClick={() => { setViewingShareId(s.id); setDueDateInput(''); }} className="w-full flex items-center justify-between rounded-xl px-3 py-2 text-left" style={{ background: NEUTRAL_BG }}>
+              <button key={s.id} onClick={() => { setViewingShareId(s.id); setDueDateInput(''); setEditingShare(false); }} className="w-full flex items-center justify-between rounded-xl px-3 py-2 text-left" style={{ background: NEUTRAL_BG }}>
                 <div className="min-w-0">
                   <div className="text-sm truncate" style={{ color: INK }}>{s.book_title}</div>
                   <div className="text-[10px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{dispName(poster?.name || '', isLoggedIn)}</div>
                 </div>
-                <span className="text-[10px] rounded-full px-2 py-0.5 font-semibold shrink-0 ml-2" style={
-                  s.status === 'open' ? { background: '#12302C', color: '#7FDCCF' } : s.status === 'matched' ? { background: '#3A2E10', color: '#EFC94C' } : { background: NEUTRAL_BG, color: MUTE, border: `1px solid ${LINE}` }
-                }>{s.status === 'open' ? '요청중' : s.status === 'matched' ? '대여중' : '반납완료'}</span>
+                <span className="text-[10px] rounded-full px-2 py-0.5 font-semibold shrink-0 ml-2" style={shareStatusInfo(s).style}>{shareStatusInfo(s).label}</span>
               </button>
             );
           })}
@@ -1140,29 +1188,62 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         const ownerId = viewingShare.kind === 'offer' ? viewingShare.posted_by : viewingShare.matched_by;
         const borrowerId = viewingShare.kind === 'offer' ? viewingShare.matched_by : viewingShare.posted_by;
         const isOwner = currentMember?.id === ownerId;
+        const canEditPost = currentMember?.id === viewingShare.posted_by || canManage;
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setViewingShareId(null)}>
             <div className="w-full max-w-sm rounded-2xl border p-5" style={{ background: CARD_BG, borderColor: LINE }} onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: viewingShare.kind === 'offer' ? '#1E2A38' : '#332815', color: viewingShare.kind === 'offer' ? '#7FA8D9' : '#EFC94C' }}>{viewingShare.kind === 'offer' ? '제공' : '요청'}</span>
-                <button onClick={() => setViewingShareId(null)} aria-label="닫기"><X size={16} style={{ color: MUTE }} /></button>
+                <div className="flex items-center gap-2">
+                  {canEditPost && !editingShare && (
+                    <button onClick={() => { setEditingShare(true); setEditShareTitle(viewingShare.book_title); setEditShareAuthor(viewingShare.book_author || ''); setEditSharePublisher(viewingShare.book_publisher || ''); }} aria-label="글 수정"><Pencil size={14} style={{ color: MUTE }} /></button>
+                  )}
+                  <button onClick={() => setViewingShareId(null)} aria-label="닫기"><X size={16} style={{ color: MUTE }} /></button>
+                </div>
               </div>
-              <div className="text-base font-semibold mb-2" style={{ color: INK }}>{viewingShare.book_title}</div>
-              <div className="text-xs space-y-1 mb-3" style={{ color: NEUTRAL_TEXT }}>
-                {viewingShare.book_author && <div>저자: {viewingShare.book_author}</div>}
-                {viewingShare.book_publisher && <div>출판사: {viewingShare.book_publisher}</div>}
-                <div style={{ color: MUTE }}>글쓴이: {dispName(poster?.name || '', isLoggedIn)}</div>
-              </div>
-              {viewingShare.status === 'open' && (
+              {editingShare ? (
+                <div className="space-y-2 mb-3">
+                  <input value={editShareTitle} onChange={(e) => setEditShareTitle(e.target.value)} placeholder="책 제목" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                  <input value={editShareAuthor} onChange={(e) => setEditShareAuthor(e.target.value)} placeholder="저자 (선택)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                  <input value={editSharePublisher} onChange={(e) => setEditSharePublisher(e.target.value)} placeholder="출판사 (선택)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                  <div className="flex gap-2">
+                    <PrimaryBtn onClick={() => saveShareEdit(viewingShare)} icon={Check}>저장</PrimaryBtn>
+                    <GhostBtn onClick={() => setEditingShare(false)}>취소</GhostBtn>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="text-base font-semibold mb-2" style={{ color: INK }}>{viewingShare.book_title}</div>
+                  <div className="text-xs space-y-1 mb-3" style={{ color: NEUTRAL_TEXT }}>
+                    {viewingShare.book_author && <div>저자: {viewingShare.book_author}</div>}
+                    {viewingShare.book_publisher && <div>출판사: {viewingShare.book_publisher}</div>}
+                    <div style={{ color: MUTE }}>글쓴이: {dispName(poster?.name || '', isLoggedIn)}</div>
+                  </div>
+                </>
+              )}
+              {viewingShare.status === 'open' && !editingShare && (
                 <>
                   {currentMember && currentMember.id !== viewingShare.posted_by ? (
-                    <PrimaryBtn onClick={() => { respondToShare(viewingShare); setViewingShareId(null); }} icon={Check}>{viewingShare.kind === 'offer' ? '제가 빌릴게요' : '제가 빌려드릴게요'}</PrimaryBtn>
+                    <PrimaryBtn onClick={() => { requestShare(viewingShare); setViewingShareId(null); }} icon={Check}>{viewingShare.kind === 'offer' ? '제가 빌릴게요' : '제가 빌려드릴게요'}</PrimaryBtn>
                   ) : currentMember?.id === viewingShare.posted_by ? (
                     <p className="text-xs" style={{ color: MUTE }}>다른 회원의 응답을 기다리는 중이에요.</p>
                   ) : null}
                 </>
               )}
-              {viewingShare.status !== 'open' && (
+              {viewingShare.status === 'requested' && !editingShare && (
+                <div className="space-y-2 pt-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                  <div className="text-xs" style={{ color: NEUTRAL_TEXT }}>응답: {dispName(matcher?.name || '', isLoggedIn)}</div>
+                  {currentMember?.id === viewingShare.posted_by ? (
+                    <div className="flex gap-2">
+                      <PrimaryBtn onClick={() => { confirmMatch(viewingShare); setViewingShareId(null); }} icon={Check}>확정하기</PrimaryBtn>
+                      <GhostBtn onClick={() => cancelRequest(viewingShare)}>취소</GhostBtn>
+                    </div>
+                  ) : (
+                    <p className="text-xs" style={{ color: MUTE }}>글쓴이가 확인 후 확정하면 대여가 시작돼요.</p>
+                  )}
+                </div>
+              )}
+              {(viewingShare.status === 'matched' || viewingShare.status === 'returned') && !editingShare && (
                 <div className="space-y-2 pt-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
                   <div className="text-xs" style={{ color: NEUTRAL_TEXT }}>응답: {dispName(matcher?.name || '', isLoggedIn)}</div>
                   <div className="text-xs" style={{ color: MUTE }}>대여일: {fmtDate(viewingShare.borrowed_at)}</div>
@@ -1183,7 +1264,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                   )}
                 </div>
               )}
-              {(currentMember?.id === viewingShare.posted_by || canManage) && viewingShare.status === 'open' && (
+              {canEditPost && viewingShare.status === 'open' && !editingShare && (
                 <button onClick={() => deleteBookShare(viewingShare)} className="text-[11px] underline underline-offset-2 mt-3" style={{ color: MUTE }}>글 삭제</button>
               )}
             </div>
@@ -1199,8 +1280,12 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         </div>
         {showTowerAdd && (
           <div className="space-y-2 mb-3 pb-3" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
-            <input value={towerTitleInput} onChange={(e) => setTowerTitleInput(e.target.value)} placeholder="다 읽은 책 제목" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
-            <input type="date" value={towerDateInput} onChange={(e) => setTowerDateInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+            <input value={towerTitleInput} onChange={(e) => setTowerTitleInput(e.target.value)} placeholder="책 제목" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+            <div className="grid grid-cols-2 gap-2">
+              <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>읽기 시작일</div><input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+              <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>다 읽은 날 (선택)</div><input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+            </div>
+            <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지 (선택)</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} placeholder="예: 128" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
             <PrimaryBtn onClick={addManualTowerEntry} icon={Plus}>추가</PrimaryBtn>
           </div>
         )}
@@ -1215,14 +1300,39 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
             <div className="flex flex-col-reverse gap-1 max-h-96 overflow-y-auto pr-1">
               {list.map((t) => {
                 const owner = towerView === 'group' ? members.find((m) => m.id === t.member_id) : null;
+                const isMine = towerView === 'mine' && currentMember;
+                const isEditing = editingTowerId === t.id;
                 return (
-                  <div key={t.id} className="rounded-lg px-2.5 py-2 flex items-center justify-between" style={{ background: t.color, opacity: 0.92 }}>
-                    <div className="min-w-0">
-                      <div className="text-xs font-semibold truncate" style={{ color: '#1E1C16' }}>{t.book_title}{owner && ` · ${dispName(owner.name, isLoggedIn)}`}</div>
-                      <div className="text-[10px]" style={{ color: 'rgba(30,28,22,0.7)', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(t.finished_date)}</div>
-                    </div>
-                    {towerView === 'mine' && currentMember && (
-                      <button onClick={() => removeTowerEntry(t.id)} className="p-1" aria-label="책탑에서 제거"><X size={12} style={{ color: 'rgba(30,28,22,0.6)' }} /></button>
+                  <div key={t.id} className="rounded-lg px-2.5 py-2" style={{ background: t.color, opacity: 0.92 }}>
+                    {isEditing ? (
+                      <div className="space-y-1.5">
+                        <div className="text-xs font-semibold" style={{ color: '#1E1C16' }}>{t.book_title}</div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="rounded-lg px-2 py-1 text-[11px] outline-none" style={{ background: 'rgba(255,255,255,0.6)', color: '#1E1C16', border: 'none' }} aria-label="읽기 시작일" />
+                          <input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="rounded-lg px-2 py-1 text-[11px] outline-none" style={{ background: 'rgba(255,255,255,0.6)', color: '#1E1C16', border: 'none' }} aria-label="다 읽은 날" />
+                        </div>
+                        <input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} placeholder="현재 페이지" className="w-full rounded-lg px-2 py-1 text-[11px] outline-none" style={{ background: 'rgba(255,255,255,0.6)', color: '#1E1C16', border: 'none' }} />
+                        <div className="flex gap-1.5">
+                          <button onClick={() => saveTowerEdit(t)} className="text-[11px] rounded-full px-2 py-1 font-semibold" style={{ background: '#1E1C16', color: '#F2EEE3' }}>저장</button>
+                          <button onClick={() => setEditingTowerId(null)} className="text-[11px] rounded-full px-2 py-1 font-semibold" style={{ background: 'rgba(255,255,255,0.5)', color: '#1E1C16' }}>취소</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold truncate" style={{ color: '#1E1C16' }}>{t.book_title}{owner && ` · ${dispName(owner.name, isLoggedIn)}`}</div>
+                          <div className="text-[10px]" style={{ color: 'rgba(30,28,22,0.7)', fontFamily: "'IBM Plex Mono', monospace" }}>
+                            {t.finished_date ? `완독 ${fmtDate(t.finished_date)}` : t.current_page ? `읽는 중 · p.${t.current_page}` : '읽는 중'}
+                            {t.start_date && ` · 시작 ${fmtDate(t.start_date)}`}
+                          </div>
+                        </div>
+                        {isMine && (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button onClick={() => startTowerEdit(t)} className="p-1" aria-label="책탑 항목 수정"><Pencil size={12} style={{ color: 'rgba(30,28,22,0.6)' }} /></button>
+                            <button onClick={() => removeTowerEntry(t.id)} className="p-1" aria-label="책탑에서 제거"><X size={12} style={{ color: 'rgba(30,28,22,0.6)' }} /></button>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 );
@@ -1874,7 +1984,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                     <span>{day}</span>
                     {(hasBusinessTrip || hasVacation || hasWork || hasPersonal) && (
                       <span className="absolute bottom-0.5 flex items-center gap-0.5">
-                        {hasBusinessTrip && <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /><circle cx="7" cy="18.5" r="1.6" /><circle cx="16" cy="18.5" r="1.6" /></svg>}
+                        {hasBusinessTrip && <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>}
                         {hasVacation && <Plane size={8} style={{ color: INK }} />}
                         {hasWork && <Briefcase size={8} style={{ color: '#D9A93A' }} />}
                         {hasPersonal && <User size={8} style={{ color: '#7FDCCF' }} />}
@@ -1905,7 +2015,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 </svg>
                 생일
               </span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /><circle cx="7" cy="18.5" r="1.6" /><circle cx="16" cy="18.5" r="1.6" /></svg> 출장</span>
+              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg> 출장</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Plane size={11} /> 휴가</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Briefcase size={11} style={{ color: '#D9A93A' }} /> 업무</span>
               <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Coffee size={11} style={{ color: '#EFC94C' }} /> 내 벌칙 수행일</span>
@@ -2036,7 +2146,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FA8D9' }} />출석</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: 'linear-gradient(90deg, #7FA8D9 50%, transparent 50%)', border: `1px solid ${LINE}` }} />절반출석(15~29분)</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#E0958C' }} />휴무일</span>
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /><circle cx="7" cy="18.5" r="1.6" /><circle cx="16" cy="18.5" r="1.6" /></svg>출장</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>출장</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: INK }} />휴가</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
             </div>
@@ -2082,7 +2192,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                           {r.flags.slice(start, end).map((status, i) => {
                             const fromPrevMonth = !monthDayList[start + i].inCurrentMonth;
                             if (status === 'trip') {
-                              return <svg key={i} width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C', opacity: fromPrevMonth ? 0.6 : 1 }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /><circle cx="7" cy="18.5" r="1.6" /><circle cx="16" cy="18.5" r="1.6" /></svg>;
+                              return <svg key={i} width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C', opacity: fromPrevMonth ? 0.6 : 1 }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>;
                             }
                             if (status === 'vacation') {
                               return <Plane key={i} size={9} style={{ color: INK, opacity: fromPrevMonth ? 0.6 : 1 }} />;
