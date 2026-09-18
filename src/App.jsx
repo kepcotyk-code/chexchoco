@@ -446,10 +446,10 @@ export default function App() {
   const todayMdForConfetti = todayStr().slice(5, 10);
   const hasBirthdayToday = members.some((m) => m.birthday && mdOf(m.birthday) === todayMdForConfetti);
   const confettiColors = ['#F0A87C', '#7FA8D9', '#EFC94C', '#7FDCCF', '#E0958C', '#D9C24C'];
-  const confettiPieces = useMemo(() => Array.from({ length: 24 }).map((_, i) => ({
+  const confettiPieces = useMemo(() => Array.from({ length: 48 }).map((_, i) => ({
     left: Math.round(Math.random() * 100),
-    delay: (Math.random() * 6).toFixed(2),
-    duration: (7 + Math.random() * 5).toFixed(2),
+    delay: (Math.random() * 4).toFixed(2),
+    duration: (6 + Math.random() * 5).toFixed(2),
     color: confettiColors[i % confettiColors.length],
     size: 6 + Math.round(Math.random() * 6),
     rotate: Math.round(Math.random() * 360),
@@ -1356,10 +1356,23 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 const fg = dark ? '#F2EEE3' : '#2A2620';
                 const fgMute = dark ? 'rgba(242,238,227,0.65)' : 'rgba(42,38,32,0.6)';
                 const statusText = t.finished_date ? '완독' : t.current_page ? `p.${t.current_page}` : '읽는 중';
+                // id를 기반으로 한 안정적인 값으로 살짝 다른 두께를 줘서 실제 책처럼 자연스럽게
+                const hash = t.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
+                const py = ['py-2.5', 'py-3', 'py-3.5'][hash % 3];
+                const shade = dark ? 'rgba(0,0,0,0.35)' : 'rgba(0,0,0,0.08)';
+                const highlight = dark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.5)';
                 return (
-                  <div key={t.id} className="relative" style={{ background: t.color, borderRadius: 10, boxShadow: '0 2px 4px rgba(0,0,0,0.25)' }}>
+                  <div key={t.id} className="relative" style={{
+                    background: `linear-gradient(180deg, ${highlight} 0%, transparent 18%, transparent 82%, ${shade} 100%), ${t.color}`,
+                    borderRadius: 10, boxShadow: '0 2px 4px rgba(0,0,0,0.3)', border: `1px solid ${dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`,
+                  }}>
                     {/* 책갈피 리본 장식 */}
                     <div className="absolute pointer-events-none" style={{ top: 0, right: 16, width: 10, height: 20, background: dark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.14)', clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 75%, 0 100%)' }} />
+                    {/* 책 페이지 결(여러 겹 라인) */}
+                    <div className="absolute pointer-events-none" style={{ top: 2, bottom: 2, right: 2, width: 6, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                      {[0, 1, 2, 3, 4].map((n) => <div key={n} style={{ height: 1, background: dark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.1)' }} />)}
+                    </div>
+                    <div className="absolute pointer-events-none" style={{ top: 0, bottom: 0, right: 0, width: 3, background: dark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)', borderRadius: '0 10px 10px 0' }} />
                     {isEditing ? (
                       <div className="space-y-1.5 px-4 py-3">
                         <div className="text-sm font-bold" style={{ color: fg }}>{t.book_title}</div>
@@ -1374,7 +1387,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                         </div>
                       </div>
                     ) : (
-                      <div className="flex items-center justify-between px-4 py-3 gap-2">
+                      <div className={`flex items-center justify-between px-4 ${py} gap-2`}>
                         <div className="min-w-0">
                           <div className="text-sm font-bold truncate" style={{ color: fg }}>{t.book_title}</div>
                           <div className="text-[11px] truncate" style={{ color: fgMute }}>
