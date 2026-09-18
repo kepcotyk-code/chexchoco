@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { supabase } from './supabaseClient';
 import {
-  Crown, Shield, Wallet, User, Plus, Pencil, Trash2, Check, X, Lock, AlertCircle,
+  Crown, Shield, Wallet, User, Plus, Pencil, Trash2, Check, X, Lock, AlertCircle, Mail,
   Megaphone, QrCode, BarChart3, Users, Settings2, Settings, Download, Upload, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Briefcase, Coffee,
   LogIn, LogOut, Cake, PartyPopper, Archive, Paperclip, FileText, Eye, Pin, Gavel, BookOpen,
   Image as ImageIcon, Trophy, Plane,
@@ -237,7 +237,7 @@ const computeWeeklyPenalties = (sessions, checkins, calendarDays, members, absen
 };
 
 /* ---------- Supabase data layer ---------- */
-const TABLES = ['members', 'notices', 'notice_views', 'sessions', 'checkins', 'penalty_completions', 'calendar_days', 'settings', 'photos', 'absence_excuses', 'meeting_locations', 'dues_payments', 'expenses', 'dinner_collections'];
+const TABLES = ['members', 'notices', 'notice_views', 'sessions', 'checkins', 'penalty_completions', 'calendar_days', 'settings', 'photos', 'absence_excuses', 'meeting_locations', 'dues_payments', 'expenses', 'dinner_collections', 'book_shares', 'notifications', 'book_tower_entries'];
 
 async function fetchAll(tables = TABLES) {
   // members는 pin 컬럼이 빠진 members_public 뷰에서 조회 (일반 조회 시 PIN이 클라이언트로 전송되지 않도록)
@@ -292,6 +292,10 @@ export default function App() {
   const [duesPayments, setDuesPayments] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [dinnerCollections, setDinnerCollections] = useState([]);
+  const [bookShares, setBookShares] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [bookTowerEntries, setBookTowerEntries] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(() => localStorage.getItem('chexchoco-current-user') || null);
   // 기기 등록: null=조회중, false=미등록, 문자열=등록된 멤버 id (한번 정해지면 앱에서는 절대 못 바꿈 — DB에 update/delete 정책 자체가 없음)
   const [deviceRegMemberId, setDeviceRegMemberId] = useState(null);
@@ -338,6 +342,9 @@ export default function App() {
       if (data.dues_payments) setDuesPayments(data.dues_payments);
       if (data.expenses) setExpenses(data.expenses);
       if (data.dinner_collections) setDinnerCollections(data.dinner_collections);
+      if (data.book_shares) setBookShares(data.book_shares);
+      if (data.notifications) setNotifications(data.notifications);
+      if (data.book_tower_entries) setBookTowerEntries(data.book_tower_entries);
       setError('');
     } catch (e) { setError('데이터를 불러오지 못했어요. 새로고침해 주세요.'); }
     setLoaded(true);
@@ -390,6 +397,18 @@ export default function App() {
   };
 
   const currentMember = members.find((m) => m.id === currentUserId) || null;
+  const myNotifications = currentMember ? notifications.filter((n) => n.member_id === currentMember.id).sort((a, b) => b.created_at.localeCompare(a.created_at)) : [];
+  const openNotification = async (n) => {
+    if (!n.read_at) await updateRow('notifications', 'id', n.id, { read_at: new Date().toISOString() });
+    setShowNotifications(false);
+    setTab('gallery');
+    await reload();
+  };
+  const markAllNotificationsRead = async () => {
+    const unread = myNotifications.filter((n) => !n.read_at);
+    for (const n of unread) await updateRow('notifications', 'id', n.id, { read_at: new Date().toISOString() });
+    if (unread.length) await reload();
+  };
 
   // 삭제 시 실수 방지용 재확인(로그인 PIN) — PIN이 설정된 계정이면 PIN 입력, 아니면 한 번 더 확인만
   const requestDelete = (onConfirm, message = '정말 삭제할까요?') => { setPendingDelete({ onConfirm, message }); setDeletePinInput(''); setDeletePinError(''); };
@@ -419,7 +438,7 @@ export default function App() {
     { key: 'notice', label: '공지', icon: Megaphone },
     { key: 'qr', label: '출석', icon: QrCode },
     { key: 'dashboard', label: '현황', icon: BarChart3 },
-    { key: 'gallery', label: '포토', icon: ImageIcon },
+    { key: 'gallery', label: '서재', icon: ImageIcon },
     { key: 'users', label: '멤버', icon: Users },
   ];
 
@@ -447,6 +466,16 @@ export default function App() {
                 <button onClick={() => setTab('treasury')} aria-label="회계"
                   className="p-1.5 rounded-full" style={{ background: tab === 'treasury' ? BTN_BG : NEUTRAL_BG, color: tab === 'treasury' ? BTN_TEXT : MUTE }}>
                   <Wallet size={15} />
+                </button>
+              )}
+              {currentMember && (
+                <button onClick={() => setShowNotifications(true)} aria-label="알림함" className="relative p-1.5 rounded-full" style={{ background: NEUTRAL_BG, color: MUTE }}>
+                  <Mail size={15} />
+                  {notifications.filter((n) => n.member_id === currentMember.id && !n.read_at).length > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ width: 14, height: 14, background: '#E5484D', color: '#fff' }}>
+                      {notifications.filter((n) => n.member_id === currentMember.id && !n.read_at).length}
+                    </span>
+                  )}
                 </button>
               )}
               {canManageAttendance && (
@@ -542,6 +571,33 @@ export default function App() {
           </div>
         )}
 
+        {showNotifications && currentMember && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setShowNotifications(false)}>
+            <div className="w-full max-w-sm rounded-2xl border p-4" style={{ background: CARD_BG, borderColor: LINE, maxHeight: '75vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: INK }}><Mail size={15} /> 알림함</div>
+                <div className="flex items-center gap-2">
+                  {myNotifications.some((n) => !n.read_at) && (
+                    <button onClick={markAllNotificationsRead} className="text-[11px] underline underline-offset-2" style={{ color: MUTE }}>모두 읽음</button>
+                  )}
+                  <button onClick={() => setShowNotifications(false)} aria-label="닫기"><X size={16} style={{ color: MUTE }} /></button>
+                </div>
+              </div>
+              {myNotifications.length === 0 ? (
+                <p className="text-sm text-center py-6" style={{ color: MUTE }}>알림이 없어요.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {myNotifications.map((n) => (
+                    <button key={n.id} onClick={() => openNotification(n)} className="w-full text-left rounded-xl p-2.5" style={{ background: n.read_at ? 'transparent' : 'rgba(240,168,124,0.08)', border: `1px solid ${n.read_at ? LINE : 'rgba(240,168,124,0.3)'}` }}>
+                      <div className="text-xs" style={{ color: n.read_at ? MUTE : INK }}>{n.message}</div>
+                      <div className="text-[10px] mt-0.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(n.created_at.slice(0, 10))}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {pendingDelete && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={cancelDelete}>
             <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl border p-5" style={{ background: CARD_BG, borderColor: LINE }}>
@@ -591,7 +647,7 @@ export default function App() {
         </div>
 
         {tab === 'notice' && <NoticeScreen notices={notices} noticeViews={noticeViews} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} requestDelete={requestDelete} />}
-        {tab === 'gallery' && <GalleryScreen photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} requestDelete={requestDelete} showToast={showToast} />}
+        {tab === 'gallery' && <GalleryScreen photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} requestDelete={requestDelete} showToast={showToast} bookShares={bookShares} bookTowerEntries={bookTowerEntries} />}
         {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} meetingLocations={meetingLocations} />}
         {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} currentMember={currentMember} />}
         {tab === 'users' && <UsersScreen members={members} sortedMembers={sortedMembers} currentUserId={currentUserId} setIdentity={setIdentity} canManage={canManageUsers} notices={notices} sessions={sessions} checkins={checkins} reload={reload} requestDelete={requestDelete} />}
@@ -830,7 +886,7 @@ function compressImage(file) {
     reader.readAsDataURL(file);
   });
 }
-function GalleryScreen({ photos, currentMember, canManage, reload, members, sessions, checkins, requestDelete, showToast }) {
+function GalleryScreen({ photos, currentMember, canManage, reload, members, sessions, checkins, requestDelete, showToast, bookShares, bookTowerEntries }) {
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [viewingId, setViewingId] = useState(null);
@@ -838,6 +894,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [dateInput, setDateInput] = useState('');
   const [editingCaption, setEditingCaption] = useState(false);
   const [captionInput, setCaptionInput] = useState('');
+  const [photoPage, setPhotoPage] = useState(0);
+  const PHOTOS_PER_PAGE = 9;
   const isLoggedIn = !!currentMember;
   const sorted = [...photos].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
@@ -881,6 +939,9 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     if ((p.uploader_name || '').toLowerCase().includes(q)) return true;
     return participantsFor(p).some((m) => m.name.toLowerCase().includes(q));
   });
+  const totalPhotoPages = Math.max(1, Math.ceil(filtered.length / PHOTOS_PER_PAGE));
+  const safePage = Math.min(photoPage, totalPhotoPages - 1);
+  const pagedPhotos = filtered.slice(safePage * PHOTOS_PER_PAGE, safePage * PHOTOS_PER_PAGE + PHOTOS_PER_PAGE);
 
   const navList = q ? filtered : sorted;
   const viewingIdx = navList.findIndex((p) => p.id === viewingId);
@@ -900,6 +961,77 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     await reload();
     setEditingCaption(false);
   };
+
+  // ---------- 도서 공유함 ----------
+  const [showShareForm, setShowShareForm] = useState(false);
+  const [shareKind, setShareKind] = useState('offer');
+  const [shareTitle, setShareTitle] = useState('');
+  const [shareAuthor, setShareAuthor] = useState('');
+  const [sharePublisher, setSharePublisher] = useState('');
+  const [viewingShareId, setViewingShareId] = useState(null);
+  const [dueDateInput, setDueDateInput] = useState('');
+  const notify = async (memberId, message, linkId) => {
+    await insertRow('notifications', { id: uid('nt'), member_id: memberId, message, link_id: linkId, created_at: new Date().toISOString() });
+  };
+  const submitBookShare = async () => {
+    if (!currentMember || !shareTitle.trim()) return;
+    await insertRow('book_shares', {
+      id: uid('bs'), kind: shareKind, posted_by: currentMember.id,
+      book_title: shareTitle.trim(), book_author: shareAuthor.trim() || null, book_publisher: sharePublisher.trim() || null,
+      status: 'open', created_at: new Date().toISOString(),
+    });
+    setShareTitle(''); setShareAuthor(''); setSharePublisher(''); setShowShareForm(false);
+    await reload();
+  };
+  const respondToShare = async (share) => {
+    if (!currentMember) return;
+    const today = todayStr();
+    const due = new Date(); due.setDate(due.getDate() + 14);
+    const dueStr = `${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())}`;
+    await updateRow('book_shares', 'id', share.id, { status: 'matched', matched_by: currentMember.id, borrowed_at: today, due_date: dueStr });
+    await notify(share.posted_by, `${currentMember.name}님이 [${share.book_title}] ${share.kind === 'offer' ? '제공' : '요청'}에 응답했어요.`, share.id);
+    await reload();
+  };
+  const updateDueDate = async (share, newDate) => {
+    await updateRow('book_shares', 'id', share.id, { due_date: newDate });
+    await reload();
+  };
+  const randomPastel = () => {
+    const hues = [200, 150, 30, 340, 260, 100, 20, 280, 180];
+    const h = hues[Math.floor(Math.random() * hues.length)];
+    return `hsl(${h}, 55%, 68%)`;
+  };
+  const confirmReturn = async (share) => {
+    const borrowerId = share.kind === 'offer' ? share.matched_by : share.posted_by;
+    const today = todayStr();
+    await updateRow('book_shares', 'id', share.id, { status: 'returned', returned_at: today });
+    await insertRow('book_tower_entries', { id: uid('bt'), member_id: borrowerId, book_title: share.book_title, finished_date: today, color: randomPastel(), source_share_id: share.id, created_at: new Date().toISOString() });
+    await notify(borrowerId, `[${share.book_title}] 반납 완료 처리됐어요. 내 책탑에 추가됐어요.`, share.id);
+    await reload();
+  };
+  const deleteBookShare = async (share) => {
+    await deleteRow('book_shares', 'id', share.id);
+    setViewingShareId(null);
+    await reload();
+  };
+  const offers = bookShares.filter((s) => s.kind === 'offer').sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const requests = bookShares.filter((s) => s.kind === 'request').sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const viewingShare = bookShares.find((s) => s.id === viewingShareId) || null;
+
+  // ---------- 책탑 ----------
+  const [towerView, setTowerView] = useState('mine'); // 'mine' | 'group'
+  const [showTowerAdd, setShowTowerAdd] = useState(false);
+  const [towerTitleInput, setTowerTitleInput] = useState('');
+  const [towerDateInput, setTowerDateInput] = useState(todayStr());
+  const addManualTowerEntry = async () => {
+    if (!currentMember || !towerTitleInput.trim()) return;
+    await insertRow('book_tower_entries', { id: uid('bt'), member_id: currentMember.id, book_title: towerTitleInput.trim(), finished_date: towerDateInput || todayStr(), color: randomPastel(), source_share_id: null, created_at: new Date().toISOString() });
+    setTowerTitleInput(''); setTowerDateInput(todayStr()); setShowTowerAdd(false);
+    await reload();
+  };
+  const removeTowerEntry = async (entryId) => { await deleteRow('book_tower_entries', 'id', entryId); await reload(); };
+  const myTower = currentMember ? bookTowerEntries.filter((t) => t.member_id === currentMember.id).sort((a, b) => a.finished_date.localeCompare(b.finished_date)) : [];
+  const groupTower = [...bookTowerEntries].sort((a, b) => a.finished_date.localeCompare(b.finished_date));
 
   return (
     <div className="space-y-4">
@@ -922,7 +1054,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         <Card><p className="text-sm text-center py-6" style={{ color: MUTE }}>검색 결과가 없어요.</p></Card>
       ) : (
         <div className="grid grid-cols-3 gap-2">
-          {filtered.map((p) => (
+          {pagedPhotos.map((p) => (
             <button key={p.id} onClick={() => { setViewingId(p.id); setEditingDate(false); setEditingCaption(false); }} className="relative aspect-square rounded-lg overflow-hidden" style={{ background: NEUTRAL_BG }}>
               <img src={publicUrl('photos', p.file_path)} className="w-full h-full object-cover" alt="" loading="lazy" />
               {p.caption && <div className="absolute top-1 right-1.5" style={{ color: 'rgba(255,255,255,0.85)', textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}><FileText size={12} /></div>}
@@ -934,6 +1066,172 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           ))}
         </div>
       )}
+      {filtered.length > PHOTOS_PER_PAGE && (
+        <div className="flex items-center justify-center gap-3">
+          <button onClick={() => setPhotoPage((p) => Math.max(0, p - 1))} disabled={safePage === 0} aria-label="이전 페이지" className="p-1.5 rounded-full" style={{ color: safePage === 0 ? LINE : MUTE }}><ChevronLeft size={16} /></button>
+          <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{safePage + 1} / {totalPhotoPages}</span>
+          <button onClick={() => setPhotoPage((p) => Math.min(totalPhotoPages - 1, p + 1))} disabled={safePage >= totalPhotoPages - 1} aria-label="다음 페이지" className="p-1.5 rounded-full" style={{ color: safePage >= totalPhotoPages - 1 ? LINE : MUTE }}><ChevronRight size={16} /></button>
+        </div>
+      )}
+
+      {/* ---------- 도서 공유함 ---------- */}
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: INK }}><BookOpen size={16} style={{ color: '#7FA8D9' }} /> 도서 공유함</div>
+          {currentMember && <button onClick={() => setShowShareForm((v) => !v)} className="text-xs rounded-full px-3 py-1.5 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{showShareForm ? '취소' : '글쓰기'}</button>}
+        </div>
+        {showShareForm && (
+          <div className="space-y-2 mb-3 pb-3" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
+            <div className="flex gap-2">
+              <button onClick={() => setShareKind('offer')} className="flex-1 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'offer' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'offer' ? BTN_TEXT : NEUTRAL_TEXT }}>책 빌려줄까요?</button>
+              <button onClick={() => setShareKind('request')} className="flex-1 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'request' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'request' ? BTN_TEXT : NEUTRAL_TEXT }}>책 빌려주실 수 있나요?</button>
+            </div>
+            <input value={shareTitle} onChange={(e) => setShareTitle(e.target.value)} placeholder="책 제목 (필수)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+            <div className="grid grid-cols-2 gap-2">
+              <input value={shareAuthor} onChange={(e) => setShareAuthor(e.target.value)} placeholder="저자 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+              <input value={sharePublisher} onChange={(e) => setSharePublisher(e.target.value)} placeholder="출판사 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+            </div>
+            <PrimaryBtn onClick={submitBookShare} icon={Plus}>등록</PrimaryBtn>
+          </div>
+        )}
+        {!currentMember && !showShareForm && <p className="text-xs mb-2" style={{ color: MUTE }}>상단에서 본인을 먼저 선택해야 글을 올릴 수 있어요.</p>}
+        <div className="mb-1.5 text-xs font-semibold" style={{ color: MUTE }}>📚 책 빌려줄까요? ({offers.length})</div>
+        <div className="space-y-1.5 mb-3">
+          {offers.length === 0 && <p className="text-xs" style={{ color: MUTE }}>등록된 글이 없어요.</p>}
+          {offers.map((s) => {
+            const poster = members.find((m) => m.id === s.posted_by);
+            return (
+              <button key={s.id} onClick={() => { setViewingShareId(s.id); setDueDateInput(''); }} className="w-full flex items-center justify-between rounded-xl px-3 py-2 text-left" style={{ background: NEUTRAL_BG }}>
+                <div className="min-w-0">
+                  <div className="text-sm truncate" style={{ color: INK }}>{s.book_title}</div>
+                  <div className="text-[10px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{dispName(poster?.name || '', isLoggedIn)}</div>
+                </div>
+                <span className="text-[10px] rounded-full px-2 py-0.5 font-semibold shrink-0 ml-2" style={
+                  s.status === 'open' ? { background: '#12302C', color: '#7FDCCF' } : s.status === 'matched' ? { background: '#3A2E10', color: '#EFC94C' } : { background: NEUTRAL_BG, color: MUTE, border: `1px solid ${LINE}` }
+                }>{s.status === 'open' ? '대여가능' : s.status === 'matched' ? '대여중' : '반납완료'}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="mb-1.5 text-xs font-semibold" style={{ color: MUTE }}>🙋 책 빌려주실 수 있나요? ({requests.length})</div>
+        <div className="space-y-1.5">
+          {requests.length === 0 && <p className="text-xs" style={{ color: MUTE }}>등록된 글이 없어요.</p>}
+          {requests.map((s) => {
+            const poster = members.find((m) => m.id === s.posted_by);
+            return (
+              <button key={s.id} onClick={() => { setViewingShareId(s.id); setDueDateInput(''); }} className="w-full flex items-center justify-between rounded-xl px-3 py-2 text-left" style={{ background: NEUTRAL_BG }}>
+                <div className="min-w-0">
+                  <div className="text-sm truncate" style={{ color: INK }}>{s.book_title}</div>
+                  <div className="text-[10px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{dispName(poster?.name || '', isLoggedIn)}</div>
+                </div>
+                <span className="text-[10px] rounded-full px-2 py-0.5 font-semibold shrink-0 ml-2" style={
+                  s.status === 'open' ? { background: '#12302C', color: '#7FDCCF' } : s.status === 'matched' ? { background: '#3A2E10', color: '#EFC94C' } : { background: NEUTRAL_BG, color: MUTE, border: `1px solid ${LINE}` }
+                }>{s.status === 'open' ? '요청중' : s.status === 'matched' ? '대여중' : '반납완료'}</span>
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* ---------- 도서 공유함 상세보기 ---------- */}
+      {viewingShare && (() => {
+        const poster = members.find((m) => m.id === viewingShare.posted_by);
+        const matcher = members.find((m) => m.id === viewingShare.matched_by);
+        const ownerId = viewingShare.kind === 'offer' ? viewingShare.posted_by : viewingShare.matched_by;
+        const borrowerId = viewingShare.kind === 'offer' ? viewingShare.matched_by : viewingShare.posted_by;
+        const isOwner = currentMember?.id === ownerId;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setViewingShareId(null)}>
+            <div className="w-full max-w-sm rounded-2xl border p-5" style={{ background: CARD_BG, borderColor: LINE }} onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: viewingShare.kind === 'offer' ? '#1E2A38' : '#332815', color: viewingShare.kind === 'offer' ? '#7FA8D9' : '#EFC94C' }}>{viewingShare.kind === 'offer' ? '제공' : '요청'}</span>
+                <button onClick={() => setViewingShareId(null)} aria-label="닫기"><X size={16} style={{ color: MUTE }} /></button>
+              </div>
+              <div className="text-base font-semibold mb-2" style={{ color: INK }}>{viewingShare.book_title}</div>
+              <div className="text-xs space-y-1 mb-3" style={{ color: NEUTRAL_TEXT }}>
+                {viewingShare.book_author && <div>저자: {viewingShare.book_author}</div>}
+                {viewingShare.book_publisher && <div>출판사: {viewingShare.book_publisher}</div>}
+                <div style={{ color: MUTE }}>글쓴이: {dispName(poster?.name || '', isLoggedIn)}</div>
+              </div>
+              {viewingShare.status === 'open' && (
+                <>
+                  {currentMember && currentMember.id !== viewingShare.posted_by ? (
+                    <PrimaryBtn onClick={() => { respondToShare(viewingShare); setViewingShareId(null); }} icon={Check}>{viewingShare.kind === 'offer' ? '제가 빌릴게요' : '제가 빌려드릴게요'}</PrimaryBtn>
+                  ) : currentMember?.id === viewingShare.posted_by ? (
+                    <p className="text-xs" style={{ color: MUTE }}>다른 회원의 응답을 기다리는 중이에요.</p>
+                  ) : null}
+                </>
+              )}
+              {viewingShare.status !== 'open' && (
+                <div className="space-y-2 pt-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                  <div className="text-xs" style={{ color: NEUTRAL_TEXT }}>응답: {dispName(matcher?.name || '', isLoggedIn)}</div>
+                  <div className="text-xs" style={{ color: MUTE }}>대여일: {fmtDate(viewingShare.borrowed_at)}</div>
+                  {viewingShare.status === 'matched' && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs" style={{ color: MUTE }}>반납기한:</span>
+                      {isOwner || currentMember?.id === borrowerId ? (
+                        <input type="date" value={dueDateInput || viewingShare.due_date || ''} onChange={(e) => setDueDateInput(e.target.value)} onBlur={() => dueDateInput && updateDueDate(viewingShare, dueDateInput)}
+                          className="rounded-lg border px-1.5 py-1 text-[11px] outline-none" style={inputStyle} aria-label="반납기한" />
+                      ) : (
+                        <span className="text-xs" style={{ color: NEUTRAL_TEXT }}>{fmtDate(viewingShare.due_date)}</span>
+                      )}
+                    </div>
+                  )}
+                  {viewingShare.status === 'returned' && <div className="text-xs" style={{ color: '#7FDCCF' }}>✓ 반납완료 · {fmtDate(viewingShare.returned_at)}</div>}
+                  {viewingShare.status === 'matched' && isOwner && (
+                    <PrimaryBtn onClick={() => { confirmReturn(viewingShare); setViewingShareId(null); }} icon={Check}>반납 완료 처리</PrimaryBtn>
+                  )}
+                </div>
+              )}
+              {(currentMember?.id === viewingShare.posted_by || canManage) && viewingShare.status === 'open' && (
+                <button onClick={() => deleteBookShare(viewingShare)} className="text-[11px] underline underline-offset-2 mt-3" style={{ color: MUTE }}>글 삭제</button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ---------- 책탑 ---------- */}
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: INK }}>📚 책탑</div>
+          {currentMember && <button onClick={() => setShowTowerAdd((v) => !v)} className="text-xs rounded-full px-3 py-1.5 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{showTowerAdd ? '취소' : '+ 책 추가'}</button>}
+        </div>
+        {showTowerAdd && (
+          <div className="space-y-2 mb-3 pb-3" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
+            <input value={towerTitleInput} onChange={(e) => setTowerTitleInput(e.target.value)} placeholder="다 읽은 책 제목" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+            <input type="date" value={towerDateInput} onChange={(e) => setTowerDateInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+            <PrimaryBtn onClick={addManualTowerEntry} icon={Plus}>추가</PrimaryBtn>
+          </div>
+        )}
+        <div className="flex gap-2 mb-3">
+          <button onClick={() => setTowerView('mine')} className="flex-1 rounded-xl py-1.5 text-xs font-semibold" style={{ background: towerView === 'mine' ? BTN_BG : NEUTRAL_BG, color: towerView === 'mine' ? BTN_TEXT : NEUTRAL_TEXT }}>내 책탑 ({myTower.length})</button>
+          <button onClick={() => setTowerView('group')} className="flex-1 rounded-xl py-1.5 text-xs font-semibold" style={{ background: towerView === 'group' ? BTN_BG : NEUTRAL_BG, color: towerView === 'group' ? BTN_TEXT : NEUTRAL_TEXT }}>모임 전체 ({groupTower.length})</button>
+        </div>
+        {(() => {
+          const list = towerView === 'mine' ? myTower : groupTower;
+          if (list.length === 0) return <p className="text-xs text-center py-6" style={{ color: MUTE }}>아직 쌓인 책이 없어요.</p>;
+          return (
+            <div className="flex flex-col-reverse gap-1 max-h-96 overflow-y-auto pr-1">
+              {list.map((t) => {
+                const owner = towerView === 'group' ? members.find((m) => m.id === t.member_id) : null;
+                return (
+                  <div key={t.id} className="rounded-lg px-2.5 py-2 flex items-center justify-between" style={{ background: t.color, opacity: 0.92 }}>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold truncate" style={{ color: '#1E1C16' }}>{t.book_title}{owner && ` · ${dispName(owner.name, isLoggedIn)}`}</div>
+                      <div className="text-[10px]" style={{ color: 'rgba(30,28,22,0.7)', fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(t.finished_date)}</div>
+                    </div>
+                    {towerView === 'mine' && currentMember && (
+                      <button onClick={() => removeTowerEntry(t.id)} className="p-1" aria-label="책탑에서 제거"><X size={12} style={{ color: 'rgba(30,28,22,0.6)' }} /></button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+      </Card>
+
       {viewing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)' }} onClick={() => setViewingId(null)}>
           <div className="relative max-w-full max-h-full flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
