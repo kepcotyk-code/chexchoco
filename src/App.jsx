@@ -838,6 +838,11 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
   return (
     <div className="space-y-3">
       <style>{`
+        @keyframes balloonRiseIn {
+          0% { transform: translateY(90px) scale(0.5); opacity: 0; }
+          65% { transform: translateY(-8px) scale(1.06); opacity: 1; }
+          100% { transform: translateY(0) scale(1); opacity: 1; }
+        }
         @keyframes balloonBob {
           0%, 100% { transform: translateY(0) rotate(0deg); }
           50% { transform: translateY(-6px) rotate(2deg); }
@@ -864,7 +869,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                 const gradId = `balloon-grad-${b.id}`;
                 return (
                   <div key={b.id} className="absolute" style={{ left: `${slot.left + jx}%`, top: `${slot.top + jy}%`, transform: 'translate(-50%, -50%)' }}>
-                    <div className="relative flex flex-col items-center" style={{ width: 48, animation: `balloonBob ${2.6 + (i % 3) * 0.4}s ease-in-out ${(i % 4) * -0.5}s infinite` }}>
+                    <div className="relative flex flex-col items-center" style={{ width: 48, animation: `balloonRiseIn 0.7s ease-out forwards, balloonBob ${2.6 + (i % 3) * 0.4}s ease-in-out 0.7s infinite` }}>
                       <svg width="46" height="42" viewBox="0 0 24 24" style={{ filter: 'drop-shadow(0 3px 3px rgba(0,0,0,0.35))', overflow: 'visible' }}>
                         <defs>
                           <radialGradient id={gradId} cx="32%" cy="26%" r="80%">
