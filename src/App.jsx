@@ -935,7 +935,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                   <div key={b.id} className="absolute" style={{ left: `${posLeft}%`, top: `${posTop}%`, transform: 'translate(-50%, -50%)', transition: 'left 1.3s ease-in-out, top 1.3s ease-in-out' }}>
                     <div onClick={() => popBalloon(b.id)} className="relative flex flex-col items-center cursor-pointer" style={{ width: 41, transformOrigin: '50% 100%', animation: anim }}>
                       <div className="relative" style={{ width: 39, height: 36 }}>
-                        <svg width="39" height="36" viewBox="2.25 3 19.5 18" style={{ filter: 'drop-shadow(0 3px 3px rgba(0,0,0,0.35))', overflow: 'visible', display: 'block' }}>
+                        <svg width="39" height="36" viewBox="2.25 3 19.5 18" style={{ filter: 'drop-shadow(0 3px 3px rgba(0,0,0,0.35)) saturate(2.1)', overflow: 'visible', display: 'block' }}>
                           <defs>
                             <radialGradient id={gradId} cx="32%" cy="26%" r="80%">
                               <stop offset="0%" stopColor={shadeColor(b.color, 55)} />
@@ -952,16 +952,6 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                           <span className="text-[8px] font-bold leading-none whitespace-nowrap" style={{ color: '#FFFFFF', textShadow: '0 1px 2px rgba(0,0,0,0.45)' }}>{givenNameOnly(dispName(b.author_name, isLoggedIn))}</span>
                         </div>
                       </div>
-                      {/* 실 - 풍선 맨 아래에 바로 이어붙여서, 세로 길이의 2배, 아래로 갈수록 옅어짐 */}
-                      <svg width="16" height="72" viewBox="0 0 16 72" style={{ overflow: 'visible', display: 'block', marginTop: -1 }}>
-                        <defs>
-                          <linearGradient id={`string-grad-${b.id}`} x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="rgba(255,255,255,0.55)" />
-                            <stop offset="100%" stopColor="rgba(255,255,255,0)" />
-                          </linearGradient>
-                        </defs>
-                        <path d="M8 0 C 5 10, 11 20, 8 30 C 5 40, 11 50, 8 60 C 6 66, 9 68, 8 72" stroke={`url(#string-grad-${b.id})`} strokeWidth="1" fill="none" />
-                      </svg>
                       {currentMember?.id === b.author_id && (
                         <button onClick={(e) => { e.stopPropagation(); requestDelete(() => removeBalloon(b.id), '이 풍선을 없앨까요?'); }} className="absolute -top-1.5 -right-1.5 rounded-full p-0.5" style={{ background: CARD_BG }} aria-label="풍선 삭제"><X size={10} style={{ color: MUTE }} /></button>
                       )}
