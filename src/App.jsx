@@ -1018,7 +1018,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
             <PartyPopper size={18} style={{ color: '#EFC94C' }} />
           </div>
           {todaysBalloons.length > 0 && (
-            <div className="relative mx-auto mt-3" style={{ width: '100%', maxWidth: 360, height: 320 }}>
+            <div className="relative mx-auto mt-1" style={{ width: '100%', maxWidth: 360, height: 320 }}>
               {activeBalloons.map((b, i) => {
                 // 사진 등장 전: 큰 하트 모양 구역 안에 흩어진 자리 / 사진 등장 후: 사진을 피해 바깥 둘레에 자리
                 const posPool = showBalloonPhoto ? ringSlots : heartFillSlots;
@@ -1083,7 +1083,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
               })}
               {burstEffects.map((e) => <ConfettiBurst key={e.key} left={e.left} top={e.top} color={e.color} />)}
               {showBalloonPhoto && (
-                <div className="absolute" style={{ left: '50%', top: '50%', animation: 'photoRevealIn 0.7s ease-out both', pointerEvents: 'none' }}>
+                <div className="absolute" style={{ left: '50%', top: '45%', animation: 'photoRevealIn 0.7s ease-out both', pointerEvents: 'none' }}>
                   <div className="relative">
                     {/* 은은하게 숨쉬는 글로우 - 넓게 퍼지는 층 + 밝은 중심층, 두 겹 */}
                     <div style={{ position: 'absolute', inset: -34, borderRadius: 50, background: 'radial-gradient(circle, rgba(255,224,120,0.55) 0%, rgba(255,224,120,0) 75%)', animation: 'photoGlowPulse 2.6s ease-in-out infinite', zIndex: -1 }} />
@@ -1102,7 +1102,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
             </div>
           )}
           {showBalloonPhoto && (
-            <p className="text-sm mb-1" style={{ color: MUTE, marginTop: -34 }}>생일 축하해요! 행복한 하루 되세요 🎂</p>
+            <p className="text-sm mb-1" style={{ color: MUTE, marginTop: -6 }}>생일 축하해요! 행복한 하루 되세요 🎂</p>
           )}
           {currentMember && (
             <button onClick={sendBalloon} disabled={sendingBalloon} className="mt-3 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50" style={{ background: BTN_BG, color: BTN_TEXT }}>🎈 축하 풍선 띄우기</button>
