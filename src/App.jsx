@@ -727,8 +727,8 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
   const [flyingBalloonIds, setFlyingBalloonIds] = useState({});
   const [balloonsSettled, setBalloonsSettled] = useState(false);
   const [heartFormed, setHeartFormed] = useState(false); // 처음엔 흩어져 있다가, 한번 풍선을 띄우면 큰 하트로 모임
-  const FLY_UP_DURATION = 2.3;
-  const RETURN_DURATION = 2.1;
+  const FLY_UP_DURATION = 3.0;
+  const RETURN_DURATION = 2.8;
   const popBalloon = (id) => {
     setFlyingBalloonIds((prev) => ({ ...prev, [id]: true }));
     setTimeout(() => {
@@ -745,7 +745,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
     return `#${((1 << 24) | (r << 16) | (g << 8) | bl).toString(16).slice(1)}`;
   };
 
-  // 풍선이 쌓일 자리를 하트 모양으로 미리 계산해둠 — 바깥쪽 윤곽선부터 채워져서, 몇 개만 있어도 큰 하트 윤곽이 바로 보이고 늘어날수록 속이 채워짐
+  // 풍선이 쌓일 자리를 하트 모양으로 미리 계산해둠 — 바깥쪽 윤곽선부터, 그리고 각 레이어 안에서도 좌우 대칭 쌍으로 채워져서 몇 개만 있어도 하트 윤곽이 바로 보임
   const heartSlots = useMemo(() => {
     const layers = [
       { k: 1.00, n: 11 },
@@ -754,14 +754,23 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
       { k: 0.52, n: 5 },
       { k: 0.32, n: 3 },
     ];
+    // t=0(위 중앙 홈)을 시작으로, 좌우 대칭이 되는 인덱스 쌍을 번갈아 추가하는 순서
+    const symmetricOrder = (n) => {
+      const order = [0];
+      for (let k = 1; k <= Math.floor(n / 2); k++) {
+        order.push(k);
+        if (n - k !== k && n - k !== 0) order.push(n - k);
+      }
+      return order;
+    };
     const raw = [];
     layers.forEach(({ k, n }) => {
-      for (let i = 0; i < n; i++) {
+      symmetricOrder(n).forEach((i) => {
         const t = (i / n) * Math.PI * 2;
         const x = k * 16 * Math.pow(Math.sin(t), 3);
         const y = k * (13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
         raw.push({ x, y });
-      }
+      });
     });
     const xs = raw.map((p) => p.x); const ys = raw.map((p) => p.y);
     const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
@@ -872,16 +881,16 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
         }
         @keyframes balloonFlyUp {
           0% { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
-          20% { transform: translate(10px, -25vh) rotate(-6deg) scale(0.95); opacity: 1; }
-          45% { transform: translate(-14px, -55vh) rotate(6deg) scale(0.85); opacity: 1; }
-          70% { transform: translate(10px, -92vh) rotate(-5deg) scale(0.7); opacity: 0.9; }
+          25% { transform: translate(10px, -35vh) rotate(-6deg) scale(0.92); opacity: 1; }
+          50% { transform: translate(-12px, -70vh) rotate(5deg) scale(0.8); opacity: 1; }
+          75% { transform: translate(10px, -105vh) rotate(-5deg) scale(0.65); opacity: 0.9; }
           100% { transform: translate(-8px, -140vh) rotate(4deg) scale(0.5); opacity: 0; }
         }
         @keyframes balloonReturnFromBottom {
           0% { transform: translate(-8px, 140vh) scale(0.5); opacity: 0; }
-          30% { transform: translate(10px, 92vh) scale(0.7); opacity: 0.9; }
-          55% { transform: translate(-14px, 45vh) scale(0.9); opacity: 1; }
-          80% { transform: translate(8px, -8px) scale(1.05); opacity: 1; }
+          25% { transform: translate(10px, 105vh) scale(0.65); opacity: 0.9; }
+          50% { transform: translate(-12px, 70vh) scale(0.8); opacity: 1; }
+          75% { transform: translate(10px, 35vh) scale(0.92); opacity: 1; }
           100% { transform: translate(0, 0) scale(1); opacity: 1; }
         }
       `}</style>
@@ -913,7 +922,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                 const dur = 2.6 + (i % 3) * 0.4;
                 const isFlying = !!flyingBalloonIds[b.id];
                 const anim = isFlying
-                  ? `balloonFlyUp ${FLY_UP_DURATION}s ease-in-out forwards, balloonReturnFromBottom ${RETURN_DURATION}s ease-out ${FLY_UP_DURATION}s both`
+                  ? `balloonFlyUp ${FLY_UP_DURATION}s linear forwards, balloonReturnFromBottom ${RETURN_DURATION}s linear ${FLY_UP_DURATION}s both`
                   : balloonsSettled
                     ? `balloonBob ${dur}s ease-in-out infinite`
                     : `balloonRiseIn 0.7s ease-out ${riseDelay}s both, balloonBob ${dur}s ease-in-out ${riseDelay + 0.7}s infinite`;
@@ -932,8 +941,10 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                         {/* 하이라이트 - 유광 반사 느낌 (회전 없이 단순한 원으로) */}
                         <circle cx="8" cy="8.3" r="1.7" fill="rgba(255,255,255,0.7)" />
                       </svg>
-                      {/* 실 */}
-                      <div style={{ width: 1, height: 11, background: 'rgba(255,255,255,0.4)' }} />
+                      {/* 실 - 좌우로 한번 살짝 휘는 곡선, 길이는 기존의 2배 */}
+                      <svg width="12" height="22" viewBox="0 0 12 22" style={{ overflow: 'visible' }}>
+                        <path d="M6 0 C 10 6, 2 16, 6 22" stroke="rgba(255,255,255,0.4)" strokeWidth="1" fill="none" />
+                      </svg>
                       {/* 이름표 - 성 빼고 이름만, 풍선 밖 아래쪽에 별도 배지로 표시해 절대 잘리지 않게 함 */}
                       <div className="rounded-full px-1.5 py-0.5" style={{ marginTop: -1, background: 'rgba(20,18,14,0.72)', maxWidth: 70 }}>
                         <span className="text-[9px] font-bold leading-none whitespace-nowrap" style={{ color: '#F2EEE3' }}>{givenNameOnly(dispName(b.author_name, isLoggedIn))}</span>
