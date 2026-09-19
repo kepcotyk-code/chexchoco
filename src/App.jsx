@@ -826,7 +826,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
             <span className="font-semibold" style={{ color: INK, fontFamily: "'Fraunces', serif" }}>오늘은 {birthdayFolksToday.map((m) => dispName(m.name, isLoggedIn)).join(', ')}님 생일이에요!</span>
             <PartyPopper size={18} style={{ color: '#EFC94C' }} />
           </div>
-          <p className="text-sm mb-1" style={{ color: MUTE }}>생일 축하해요! 행복한 하루 되세요 🎂</p>
+          <p className="text-sm mb-1" style={{ color: MUTE }}>생일 축하드려요! 행복한 하루 되세요 🎂</p>
           <div className="flex justify-center mt-3">
             <div className="relative" style={{ width: 176, height: 'auto', animation: 'photoRevealIn 1.3s ease-out both' }}>
               {/* 은은하게 숨쉬는 글로우 - 넓게 퍼지는 층 + 밝은 중심층, 두 겹 */}
