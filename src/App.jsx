@@ -696,18 +696,18 @@ export default function App() {
 /* ---------------- 공지사항 ---------------- */
 const MAX_PDF_BYTES = 3 * 1024 * 1024;
 
-// 풍선이 터질 때 튀어오르는 폭죽 파편 이펙트 (컨테이너 대비 %좌표에 배치)
+// 풍선이 터질 때 튀어오르는 폭죽 파편 + 불빛 이펙트 (컨테이너 대비 %좌표에 배치)
 function ConfettiBurst({ left, top, color }) {
   const particles = useMemo(() => {
     const colors = ['#F5D400', '#3DBF54', '#2E86E0', '#F0479C', '#FFFFFF', '#F2871A', color];
-    return Array.from({ length: 12 }).map((_, k) => {
-      const angle = (k / 12) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
-      const dist = 24 + Math.random() * 28;
+    return Array.from({ length: 16 }).map((_, k) => {
+      const angle = (k / 16) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
+      const dist = 30 + Math.random() * 34;
       return {
         dx: Math.cos(angle) * dist,
-        dy: Math.sin(angle) * dist - 8,
+        dy: Math.sin(angle) * dist - 10,
         rot: Math.round(Math.random() * 360),
-        size: 4 + Math.random() * 3,
+        size: 4 + Math.random() * 4,
         delay: Math.round(Math.random() * 40) / 1000,
         rect: k % 2 === 0,
         color: colors[k % colors.length],
@@ -716,14 +716,18 @@ function ConfettiBurst({ left, top, color }) {
   }, [color]);
   return (
     <div className="absolute pointer-events-none" style={{ left: `${left}%`, top: `${top}%`, width: 0, height: 0, zIndex: 5 }}>
-      <span style={{ position: 'absolute', left: 0, top: 0, width: 30, height: 30, marginLeft: -15, marginTop: -15, borderRadius: '50%', border: `2px solid ${color}`, animation: 'popFlash 0.5s ease-out forwards' }} />
+      {/* 확 번쩍이는 불빛 */}
+      <span style={{ position: 'absolute', left: 0, top: 0, width: 74, height: 74, marginLeft: -37, marginTop: -37, borderRadius: '50%', background: `radial-gradient(circle, rgba(255,255,255,0.95) 0%, ${color} 38%, rgba(255,255,255,0) 72%)`, animation: 'popGlow 0.5s ease-out forwards' }} />
+      {/* 퍼져나가는 충격파 테두리 */}
+      <span style={{ position: 'absolute', left: 0, top: 0, width: 46, height: 46, marginLeft: -23, marginTop: -23, borderRadius: '50%', border: `2.5px solid ${color}`, animation: 'popFlash 0.55s ease-out forwards' }} />
       {particles.map((p, idx) => (
         <span key={idx} style={{
           position: 'absolute', left: 0, top: 0,
           width: p.rect ? p.size + 2 : p.size, height: p.rect ? p.size * 0.5 : p.size,
           background: p.color, borderRadius: p.rect ? 1 : '50%',
+          boxShadow: `0 0 4px ${p.color}`,
           '--dx': `${p.dx}px`, '--dy': `${p.dy}px`, '--rot': `${p.rot}deg`,
-          animation: `confettiBurst 0.6s ease-out ${p.delay}s forwards`,
+          animation: `confettiBurst 0.7s ease-out ${p.delay}s forwards`,
         }} />
       ))}
     </div>
@@ -766,6 +770,13 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
     const bl = clamp((num & 0xff) + Math.round(2.55 * percent));
     return `#${((1 << 24) | (r << 16) | (g << 8) | bl).toString(16).slice(1)}`;
   };
+  // 풍선 id 기반의 결정적 의사난수(-1~1) — 풍선이 영역 안에서 각자 다른 궤적으로 떠다니게 하는 데 사용
+  const floatOffset = (id, salt) => {
+    let h = 7;
+    const s = id + '_' + salt;
+    for (let k = 0; k < s.length; k++) h = (h * 31 + s.charCodeAt(k)) >>> 0;
+    return ((h % 1000) / 1000) * 2 - 1;
+  };
 
   // 풍선 터뜨리기: 누르면 그 자리에서 폭죽이 터지고 풍선은 사라짐.
   // 오늘 뜬 풍선을 모두 터뜨리면 그 자리에 사진이 등장하고, 이후 새로 뜨는 풍선은
@@ -775,6 +786,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
   const [burstEffects, setBurstEffects] = useState([]); // 터지는 순간의 폭죽 파편
   const [balloonsSettled, setBalloonsSettled] = useState(false);
   const [showBalloonPhoto, setShowBalloonPhoto] = useState(false);
+  const [photoBalloonIds, setPhotoBalloonIds] = useState({}); // 사진 등장 시점에 이미 있던 풍선 id 스냅샷 — 이후 새로 뜨는 풍선을 구분하기 위함
   const POP_ANIM_MS = 260;
   const activeBalloons = todaysBalloons.filter((b) => !hiddenIds[b.id]);
 
@@ -783,14 +795,19 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
     const key = `${b.id}-${Date.now()}`;
     setBurstEffects((prev) => [...prev, { key, left, top, color: b.color }]);
     setPoppedIds((prev) => ({ ...prev, [b.id]: true }));
-    setTimeout(() => setBurstEffects((prev) => prev.filter((e) => e.key !== key)), 700);
+    setTimeout(() => setBurstEffects((prev) => prev.filter((e) => e.key !== key)), 800);
     setTimeout(() => setHiddenIds((prev) => ({ ...prev, [b.id]: true })), POP_ANIM_MS);
   };
 
-  // 오늘 뜬 풍선을 모두 터뜨리면 사진 등장 (한 번 등장하면 계속 유지)
+  // 오늘 뜬 풍선을 모두 터뜨리면 사진 등장 (한 번 등장하면 계속 유지) — 등장 시점의 풍선 id를 스냅샷으로 남겨서
+  // 이후 새로 뜨는 풍선(화면 아래에서 날아 올라오는 연출 대상)을 구분함
   useEffect(() => {
     if (!showBalloonPhoto && todaysBalloons.length > 0 && activeBalloons.length === 0) {
-      const t = setTimeout(() => setShowBalloonPhoto(true), 350);
+      const idsAtReveal = todaysBalloons.reduce((acc, b) => ({ ...acc, [b.id]: true }), {});
+      const t = setTimeout(() => {
+        setPhotoBalloonIds(idsAtReveal);
+        setShowBalloonPhoto(true);
+      }, 350);
       return () => clearTimeout(t);
     }
   }, [activeBalloons.length, todaysBalloons.length, showBalloonPhoto]);
@@ -936,6 +953,13 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
           87.5% { transform: translateY(-1px) rotate(3deg); }
           100% { transform: translateY(0) rotate(0deg); }
         }
+        @keyframes balloonFloat {
+          0% { transform: translate(0, 0) rotate(0deg); }
+          25% { transform: translate(var(--fx1), var(--fy1)) rotate(var(--fr1)); }
+          50% { transform: translate(var(--fx2), var(--fy2)) rotate(var(--fr2)); }
+          75% { transform: translate(var(--fx3), var(--fy3)) rotate(var(--fr3)); }
+          100% { transform: translate(0, 0) rotate(0deg); }
+        }
         @keyframes balloonPopOut {
           0% { transform: scale(1); opacity: 1; }
           45% { transform: scale(1.3); opacity: 1; }
@@ -946,8 +970,20 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
           100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rot)) scale(0.5); opacity: 0; }
         }
         @keyframes popFlash {
-          0% { transform: scale(0.3); opacity: 0.9; }
-          100% { transform: scale(2.4); opacity: 0; }
+          0% { transform: scale(0.25); opacity: 0.9; }
+          100% { transform: scale(3); opacity: 0; }
+        }
+        @keyframes popGlow {
+          0% { transform: scale(0.2); opacity: 1; }
+          55% { transform: scale(1); opacity: 0.85; }
+          100% { transform: scale(1.5); opacity: 0; }
+        }
+        @keyframes balloonFlyInFromBottom {
+          0% { transform: translate(-8px, 120vh) scale(0.6); opacity: 0; }
+          30% { transform: translate(10px, 78vh) scale(0.75); opacity: 0.9; }
+          55% { transform: translate(-10px, 42vh) scale(0.88); opacity: 1; }
+          78% { transform: translate(8px, 14vh) scale(0.97); opacity: 1; }
+          100% { transform: translate(0, 0) scale(1); opacity: 1; }
         }
         @keyframes photoRevealIn {
           0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
@@ -962,7 +998,6 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
             <span className="font-semibold" style={{ color: INK, fontFamily: "'Fraunces', serif" }}>오늘은 {birthdayFolksToday.map((m) => dispName(m.name, isLoggedIn)).join(', ')}님 생일이에요!</span>
             <PartyPopper size={18} style={{ color: '#EFC94C' }} />
           </div>
-          <p className="text-sm" style={{ color: MUTE }}>생일 축하해요~ 행복한 하루 되세요 🎂</p>
           {todaysBalloons.length > 0 && (
             <div className="relative mx-auto mt-3" style={{ width: '100%', maxWidth: 360, height: 320 }}>
               {activeBalloons.map((b, i) => {
@@ -978,14 +1013,25 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                 const riseDelay = Math.min(i, 10) * 0.09; // 접속 시 하나씩 순차적으로 올라오는 느낌
                 const dur = 2.6 + (i % 3) * 0.4;
                 const isPopping = !!poppedIds[b.id];
+                const isPostPhotoNew = showBalloonPhoto && !photoBalloonIds[b.id]; // 사진 등장 이후 새로 뜬 풍선 — 화면 아래에서 날아 올라옴
+                // 사진 등장 전: 영역 안에서 서로 다른 궤적으로 느리게 떠다니는 움직임
+                const floatDur = 6.5 + (Math.abs(jHash) % 5) * 1.1;
+                const floatDelay = (i % 6) * 0.4;
+                const floatVars = {
+                  '--fx1': `${floatOffset(b.id, 'x1') * 30}px`, '--fy1': `${floatOffset(b.id, 'y1') * 24}px`, '--fr1': `${floatOffset(b.id, 'r1') * 7}deg`,
+                  '--fx2': `${floatOffset(b.id, 'x2') * 30}px`, '--fy2': `${floatOffset(b.id, 'y2') * 24}px`, '--fr2': `${floatOffset(b.id, 'r2') * 7}deg`,
+                  '--fx3': `${floatOffset(b.id, 'x3') * 30}px`, '--fy3': `${floatOffset(b.id, 'y3') * 24}px`, '--fr3': `${floatOffset(b.id, 'r3') * 7}deg`,
+                };
                 const anim = isPopping
                   ? 'balloonPopOut 0.26s ease-out forwards'
-                  : balloonsSettled
-                    ? `balloonBob ${dur}s linear infinite`
-                    : `balloonRiseIn 0.7s ease-out ${riseDelay}s both, balloonBob ${dur}s linear ${riseDelay + 0.7}s infinite`;
+                  : isPostPhotoNew
+                    ? `balloonFlyInFromBottom 1.3s cubic-bezier(0.22,0.9,0.32,1) both, balloonBob ${dur}s linear 1.3s infinite`
+                    : balloonsSettled
+                      ? `balloonFloat ${floatDur}s ease-in-out ${floatDelay}s infinite`
+                      : `balloonRiseIn 0.7s ease-out ${riseDelay}s both, balloonFloat ${floatDur}s ease-in-out ${riseDelay + 0.7 + floatDelay}s infinite`;
                 return (
                   <div key={b.id} className="absolute" style={{ left: `${posLeft}%`, top: `${posTop}%`, transform: 'translate(-50%, -50%)', transition: 'left 1.3s ease-in-out, top 1.3s ease-in-out' }}>
-                    <div onClick={() => popBalloon(b, posLeft, posTop)} className="relative flex flex-col items-center cursor-pointer" style={{ width: 41, transformOrigin: '50% 100%', animation: anim }}>
+                    <div onClick={() => popBalloon(b, posLeft, posTop)} className="relative flex flex-col items-center cursor-pointer" style={{ width: 41, transformOrigin: '50% 100%', animation: anim, ...floatVars }}>
                       <div className="relative" style={{ width: 39, height: 36 }}>
                         <svg width="39" height="36" viewBox="2.25 3 19.5 18" style={{ filter: 'drop-shadow(0 3px 3px rgba(0,0,0,0.35)) saturate(1.15)', overflow: 'visible', display: 'block' }}>
                           <defs>
@@ -1022,6 +1068,9 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                 </div>
               )}
             </div>
+          )}
+          {showBalloonPhoto && (
+            <p className="text-sm -mt-1 mb-1" style={{ color: MUTE }}>생일 축하해요! 행복한 하루 되세요 🎂</p>
           )}
           {currentMember && (
             <button onClick={sendBalloon} disabled={sendingBalloon} className="mt-3 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50" style={{ background: BTN_BG, color: BTN_TEXT }}>🎈 축하 풍선 띄우기</button>
