@@ -385,6 +385,9 @@ export default function App() {
 
   const penaltyRule = settings.find((s) => s.key === 'penaltyRule')?.value || '';
   const setPenaltyRule = async (v) => { await upsertRow('settings', { key: 'penaltyRule', value: v }, 'key'); reload(); };
+  // 화면 효과(꽃가루/비/눈) 수동 설정 — 'auto'면 날씨·생일에 따라 자동 결정, 그 외엔 간사가 고른 값을 그대로 씀
+  const weatherOverride = settings.find((s) => s.key === 'weatherOverride')?.value || 'auto';
+  const setWeatherOverride = async (v) => { await upsertRow('settings', { key: 'weatherOverride', value: v }, 'key'); reload(); };
 
   const setIdentity = (id) => {
     if (id) localStorage.setItem('chexchoco-current-user', id); else localStorage.removeItem('chexchoco-current-user');
@@ -472,6 +475,44 @@ export default function App() {
     };
   }), [hasBirthdayToday]);
 
+  // 나주 실시간 날씨 — 생일 꽃가루가 없고 수동 설정도 '자동'일 때만 날씨로 비/눈을 자동 판단
+  const [weatherCode, setWeatherCode] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    const fetchWeather = () => {
+      fetch('https://api.open-meteo.com/v1/forecast?latitude=35.0160&longitude=126.7108&current=weather_code&timezone=Asia%2FSeoul')
+        .then((r) => r.json())
+        .then((data) => { if (!cancelled) setWeatherCode(data?.current?.weather_code ?? null); })
+        .catch(() => {});
+    };
+    fetchWeather();
+    const interval = setInterval(fetchWeather, 30 * 60 * 1000); // 30분마다 갱신
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+  // 화면 효과 우선순위: ① 생일 꽃가루 ② 간사가 수동으로 고른 값 ③ 날씨 자동 판단
+  const effectMode = useMemo(() => {
+    if (hasBirthdayToday) return 'petal';
+    if (weatherOverride && weatherOverride !== 'auto') return weatherOverride === 'off' ? null : weatherOverride;
+    if (weatherCode == null) return null;
+    const rainCodes = [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99];
+    const snowCodes = [71, 73, 75, 77, 85, 86];
+    if (rainCodes.includes(weatherCode)) return 'rain';
+    if (snowCodes.includes(weatherCode)) return 'snow';
+    return null;
+  }, [hasBirthdayToday, weatherOverride, weatherCode]);
+  const weatherPieces = useMemo(() => {
+    if (effectMode !== 'rain' && effectMode !== 'snow') return [];
+    const count = effectMode === 'rain' ? 55 : 40;
+    return Array.from({ length: count }).map((_, i) => ({
+      id: i,
+      left: Math.random() * 100,
+      delay: -(Math.random() * 8).toFixed(2),
+      dur: effectMode === 'rain' ? (0.7 + Math.random() * 0.4).toFixed(2) : (7 + Math.random() * 6).toFixed(2),
+      size: effectMode === 'rain' ? 1.5 : 3 + Math.random() * 3,
+      drift: effectMode === 'rain' ? -30 : Math.round((Math.random() - 0.5) * 60),
+    }));
+  }, [effectMode]);
+
   if (!loaded) {
     return <div className="min-h-screen flex items-center justify-center" style={{ background: PAPER_BG }}>
       <div className="text-sm" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>불러오는 중…</div>
@@ -490,8 +531,16 @@ export default function App() {
           0% { transform: translateY(-5vh) rotate(0deg); opacity: 0.9; }
           100% { transform: translateY(105vh) rotate(720deg); opacity: 0.9; }
         }
+        @keyframes rainFall {
+          0% { transform: translate(0, -10vh); opacity: 0.7; }
+          100% { transform: translate(var(--drift), 110vh); opacity: 0.35; }
+        }
+        @keyframes snowFall {
+          0% { transform: translate(0, -10vh) rotate(0deg); opacity: 0.9; }
+          100% { transform: translate(var(--drift), 110vh) rotate(180deg); opacity: 0.7; }
+        }
       `}</style>
-      {hasBirthdayToday && (
+      {effectMode === 'petal' ? (
         <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 60 }} aria-hidden="true">
           {confettiPieces.map((p, i) => (
             <span key={i} style={{
@@ -500,6 +549,16 @@ export default function App() {
               animation: `confettiFall ${p.duration}s linear ${p.delay}s infinite`,
               transform: `rotate(${p.rotate}deg)`,
             }} />
+          ))}
+        </div>
+      ) : (effectMode === 'rain' || effectMode === 'snow') && (
+        <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 60 }} aria-hidden="true">
+          {weatherPieces.map((p) => (
+            effectMode === 'rain' ? (
+              <span key={p.id} style={{ position: 'absolute', top: 0, left: `${p.left}%`, width: p.size, height: 16, background: 'linear-gradient(to bottom, rgba(180,210,255,0), rgba(180,210,255,0.55))', '--drift': `${p.drift}px`, animation: `rainFall ${p.dur}s linear ${p.delay}s infinite` }} />
+            ) : (
+              <span key={p.id} style={{ position: 'absolute', top: 0, left: `${p.left}%`, width: p.size, height: p.size, borderRadius: '50%', background: 'rgba(255,255,255,0.85)', boxShadow: '0 0 4px rgba(255,255,255,0.6)', '--drift': `${p.drift}px`, animation: `snowFall ${p.dur}s linear ${p.delay}s infinite` }} />
+            )
           ))}
         </div>
       )}
@@ -698,7 +757,7 @@ export default function App() {
         {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} currentMember={currentMember} />}
         {tab === 'users' && <UsersScreen members={members} sortedMembers={sortedMembers} currentUserId={currentUserId} setIdentity={setIdentity} canManage={canManageUsers} notices={notices} sessions={sessions} checkins={checkins} reload={reload} requestDelete={requestDelete} />}
         {tab === 'treasury' && canManageUsers && <TreasuryScreen members={sortedMembers} duesPayments={duesPayments} expenses={expenses} dinnerCollections={dinnerCollections} currentMember={currentMember} reload={reload} requestDelete={requestDelete} showToast={showToast} />}
-        {tab === 'admin' && canManageAttendance && <AdminScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} setPenaltyRule={setPenaltyRule} penaltyCompletions={penaltyCompletions} reload={reload} calendarDays={calendarDays} absenceExcuses={absenceExcuses} requestDelete={requestDelete} currentMember={currentMember} />}
+        {tab === 'admin' && canManageAttendance && <AdminScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} setPenaltyRule={setPenaltyRule} penaltyCompletions={penaltyCompletions} reload={reload} calendarDays={calendarDays} absenceExcuses={absenceExcuses} requestDelete={requestDelete} currentMember={currentMember} weatherOverride={weatherOverride} setWeatherOverride={setWeatherOverride} />}
       </div>
     </div>
   );
@@ -3217,7 +3276,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
   );
 }
 
-function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule, penaltyCompletions, reload, calendarDays, absenceExcuses, requestDelete, currentMember }) {
+function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule, penaltyCompletions, reload, calendarDays, absenceExcuses, requestDelete, currentMember, weatherOverride, setWeatherOverride }) {
   const [date, setDate] = useState(todayStr());
   const session = sessions.find((s) => s.date === date);
   const dayCheckins = session ? checkins.filter((c) => c.session_id === session.id) : [];
@@ -3406,6 +3465,25 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
             })}
           </div>
           <PrimaryBtn onClick={addManualBulk} disabled={manualSelectedIds.length === 0 || !manualIn} icon={Check}>{manualSelectedIds.length}명 일괄 등록</PrimaryBtn>
+        </div>
+      </Card>
+      <Card>
+        <div className="flex items-center gap-1.5 text-sm font-semibold mb-2" style={{ color: INK }}><Settings2 size={16} style={{ color: '#7FA8D9' }} /> 화면 효과 설정</div>
+        <p className="text-xs mb-2" style={{ color: MUTE }}>기본은 자동(날씨 연동)이고, 생일자가 있는 날은 항상 꽃가루가 우선이에요. 수동으로 고르면 그 효과가 고정으로 나와요.</p>
+        <div className="flex flex-wrap gap-1.5">
+          {[
+            { key: 'auto', label: '자동(날씨 연동)' },
+            { key: 'petal', label: '🌸 꽃가루' },
+            { key: 'rain', label: '🌧️ 비' },
+            { key: 'snow', label: '❄️ 눈' },
+            { key: 'off', label: '끄기' },
+          ].map((opt) => (
+            <button key={opt.key} onClick={() => setWeatherOverride(opt.key)}
+              className="rounded-full border px-3 py-1.5 text-xs"
+              style={{ borderColor: weatherOverride === opt.key ? '#7FA8D9' : LINE, background: weatherOverride === opt.key ? '#1B3A5C' : 'transparent', color: weatherOverride === opt.key ? '#7FA8D9' : MUTE }}>
+              {opt.label}
+            </button>
+          ))}
         </div>
       </Card>
       <Card>
