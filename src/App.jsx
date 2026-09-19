@@ -731,9 +731,9 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
   const RETURN_DURATION = 2.8;
   const popBalloon = (id) => {
     setFlyingBalloonIds((prev) => ({ ...prev, [id]: true }));
+    setHeartFormed(true); // 뜨는 순간부터 모두 하트 자리를 향해 이동을 시작 - 돌아올 때 이미 하트 영역 안에 도착해있도록
     setTimeout(() => {
       setFlyingBalloonIds((prev) => ({ ...prev, [id]: false }));
-      setHeartFormed(true);
     }, (FLY_UP_DURATION + RETURN_DURATION) * 1000);
   };
   const shadeColor = (hex, percent) => {
@@ -929,7 +929,11 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                 return (
                   <div key={b.id} className="absolute" style={{ left: `${posLeft}%`, top: `${posTop}%`, transform: 'translate(-50%, -50%)', transition: 'left 1.3s ease-in-out, top 1.3s ease-in-out' }}>
                     <div onClick={() => popBalloon(b.id)} className="relative flex flex-col items-center cursor-pointer" style={{ width: 48, transformOrigin: '50% 100%', animation: anim }}>
-                      <svg width="46" height="42" viewBox="0 0 24 24" style={{ filter: 'drop-shadow(0 3px 3px rgba(0,0,0,0.35)) saturate(1.35)', overflow: 'visible' }}>
+                      {/* 이름표 - 성 빼고 이름만, 풍선 위쪽에 표시 */}
+                      <div className="rounded-full px-1.5 py-0.5 mb-1" style={{ background: 'rgba(20,18,14,0.72)', maxWidth: 70 }}>
+                        <span className="text-[9px] font-bold leading-none whitespace-nowrap" style={{ color: '#F2EEE3' }}>{givenNameOnly(dispName(b.author_name, isLoggedIn))}</span>
+                      </div>
+                      <svg width="46" height="42" viewBox="2.25 3 19.5 18" style={{ filter: 'drop-shadow(0 3px 3px rgba(0,0,0,0.35)) saturate(1.35)', overflow: 'visible', display: 'block' }}>
                         <defs>
                           <radialGradient id={gradId} cx="32%" cy="26%" r="80%">
                             <stop offset="0%" stopColor={shadeColor(b.color, 55)} />
@@ -941,16 +945,18 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                         {/* 하이라이트 - 유광 반사 느낌 (회전 없이 단순한 원으로) */}
                         <circle cx="8" cy="8.3" r="1.7" fill="rgba(255,255,255,0.7)" />
                       </svg>
-                      {/* 실 - 좌우로 한번 살짝 휘는 곡선, 길이는 기존의 2배 */}
-                      <svg width="12" height="22" viewBox="0 0 12 22" style={{ overflow: 'visible' }}>
-                        <path d="M6 0 C 10 6, 2 16, 6 22" stroke="rgba(255,255,255,0.4)" strokeWidth="1" fill="none" />
+                      {/* 실 - 풍선 맨 아래에 바로 이어붙여서, 더 크게 좌우로 휘고 아래로 갈수록 옅어짐 */}
+                      <svg width="16" height="26" viewBox="0 0 16 26" style={{ overflow: 'visible', display: 'block', marginTop: -1 }}>
+                        <defs>
+                          <linearGradient id={`string-grad-${b.id}`} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="rgba(255,255,255,0.55)" />
+                            <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+                          </linearGradient>
+                        </defs>
+                        <path d="M8 0 C 15 9, -1 18, 8 26" stroke={`url(#string-grad-${b.id})`} strokeWidth="1" fill="none" />
                       </svg>
-                      {/* 이름표 - 성 빼고 이름만, 풍선 밖 아래쪽에 별도 배지로 표시해 절대 잘리지 않게 함 */}
-                      <div className="rounded-full px-1.5 py-0.5" style={{ marginTop: -1, background: 'rgba(20,18,14,0.72)', maxWidth: 70 }}>
-                        <span className="text-[9px] font-bold leading-none whitespace-nowrap" style={{ color: '#F2EEE3' }}>{givenNameOnly(dispName(b.author_name, isLoggedIn))}</span>
-                      </div>
                       {currentMember?.id === b.author_id && (
-                        <button onClick={(e) => { e.stopPropagation(); requestDelete(() => removeBalloon(b.id), '이 풍선을 없앨까요?'); }} className="absolute -top-1.5 -right-1.5 rounded-full p-0.5" style={{ background: CARD_BG }} aria-label="풍선 삭제"><X size={10} style={{ color: MUTE }} /></button>
+                        <button onClick={(e) => { e.stopPropagation(); requestDelete(() => removeBalloon(b.id), '이 풍선을 없앨까요?'); }} className="absolute top-6 -right-1.5 rounded-full p-0.5" style={{ background: CARD_BG }} aria-label="풍선 삭제"><X size={10} style={{ color: MUTE }} /></button>
                       )}
                     </div>
                   </div>
