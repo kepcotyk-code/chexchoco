@@ -726,9 +726,15 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
   const givenNameOnly = (name) => (name && name.length > 1 ? name.slice(1) : name); // 성 빼고 이름만
   const [flyingBalloonIds, setFlyingBalloonIds] = useState({});
   const [balloonsSettled, setBalloonsSettled] = useState(false);
+  const [heartFormed, setHeartFormed] = useState(false); // 처음엔 흩어져 있다가, 한번 풍선을 띄우면 큰 하트로 모임
+  const FLY_UP_DURATION = 2.3;
+  const RETURN_DURATION = 2.1;
   const popBalloon = (id) => {
     setFlyingBalloonIds((prev) => ({ ...prev, [id]: true }));
-    setTimeout(() => setFlyingBalloonIds((prev) => ({ ...prev, [id]: false })), 1650);
+    setTimeout(() => {
+      setFlyingBalloonIds((prev) => ({ ...prev, [id]: false }));
+      setHeartFormed(true);
+    }, (FLY_UP_DURATION + RETURN_DURATION) * 1000);
   };
   const shadeColor = (hex, percent) => {
     const num = parseInt(hex.replace('#', ''), 16);
@@ -865,13 +871,18 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
           75% { transform: translateY(-2px) rotate(7deg); }
         }
         @keyframes balloonFlyUp {
-          0% { transform: translateY(0) rotate(0deg) scale(1); opacity: 1; }
-          100% { transform: translateY(-140vh) rotate(12deg) scale(0.5); opacity: 0; }
+          0% { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
+          20% { transform: translate(10px, -25vh) rotate(-6deg) scale(0.95); opacity: 1; }
+          45% { transform: translate(-14px, -55vh) rotate(6deg) scale(0.85); opacity: 1; }
+          70% { transform: translate(10px, -92vh) rotate(-5deg) scale(0.7); opacity: 0.9; }
+          100% { transform: translate(-8px, -140vh) rotate(4deg) scale(0.5); opacity: 0; }
         }
         @keyframes balloonReturnFromBottom {
-          0% { transform: translateY(140vh) scale(0.5); opacity: 0; }
-          70% { transform: translateY(-8px) scale(1.06); opacity: 1; }
-          100% { transform: translateY(0) scale(1); opacity: 1; }
+          0% { transform: translate(-8px, 140vh) scale(0.5); opacity: 0; }
+          30% { transform: translate(10px, 92vh) scale(0.7); opacity: 0.9; }
+          55% { transform: translate(-14px, 45vh) scale(0.9); opacity: 1; }
+          80% { transform: translate(8px, -8px) scale(1.05); opacity: 1; }
+          100% { transform: translate(0, 0) scale(1); opacity: 1; }
         }
       `}</style>
       {birthdayFolksToday.length > 0 && (
@@ -892,17 +903,22 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                 const jHash = b.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
                 const jx = wrapRound ? ((jHash % 7) - 3) * 1.2 : 0;
                 const jy = wrapRound ? (((jHash >> 3) % 7) - 3) * 1.2 : 0;
+                // 하트 형성 전에는 영역 안에 각자 흩어진 자리에 있음 (id 기반이라 매번 렌더링해도 위치 고정)
+                const scatterLeft = 12 + (jHash % 76);
+                const scatterTop = 12 + ((jHash >> 4) % 76);
+                const posLeft = heartFormed ? slot.left + jx : scatterLeft;
+                const posTop = heartFormed ? slot.top + jy : scatterTop;
                 const gradId = `balloon-grad-${b.id}`;
                 const riseDelay = Math.min(i, 10) * 0.09; // 접속 시 하나씩 순차적으로 올라오는 느낌
                 const dur = 2.6 + (i % 3) * 0.4;
                 const isFlying = !!flyingBalloonIds[b.id];
                 const anim = isFlying
-                  ? `balloonFlyUp 0.65s ease-in forwards, balloonReturnFromBottom 1s ease-out 0.65s both`
+                  ? `balloonFlyUp ${FLY_UP_DURATION}s ease-in-out forwards, balloonReturnFromBottom ${RETURN_DURATION}s ease-out ${FLY_UP_DURATION}s both`
                   : balloonsSettled
                     ? `balloonBob ${dur}s ease-in-out infinite`
                     : `balloonRiseIn 0.7s ease-out ${riseDelay}s both, balloonBob ${dur}s ease-in-out ${riseDelay + 0.7}s infinite`;
                 return (
-                  <div key={b.id} className="absolute" style={{ left: `${slot.left + jx}%`, top: `${slot.top + jy}%`, transform: 'translate(-50%, -50%)' }}>
+                  <div key={b.id} className="absolute" style={{ left: `${posLeft}%`, top: `${posTop}%`, transform: 'translate(-50%, -50%)', transition: 'left 1.3s ease-in-out, top 1.3s ease-in-out' }}>
                     <div onClick={() => popBalloon(b.id)} className="relative flex flex-col items-center cursor-pointer" style={{ width: 48, transformOrigin: '50% 100%', animation: anim }}>
                       <svg width="46" height="42" viewBox="0 0 24 24" style={{ filter: 'drop-shadow(0 3px 3px rgba(0,0,0,0.35)) saturate(1.35)', overflow: 'visible' }}>
                         <defs>
@@ -916,8 +932,10 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                         {/* 하이라이트 - 유광 반사 느낌 (회전 없이 단순한 원으로) */}
                         <circle cx="8" cy="8.3" r="1.7" fill="rgba(255,255,255,0.7)" />
                       </svg>
+                      {/* 실 */}
+                      <div style={{ width: 1, height: 11, background: 'rgba(255,255,255,0.4)' }} />
                       {/* 이름표 - 성 빼고 이름만, 풍선 밖 아래쪽에 별도 배지로 표시해 절대 잘리지 않게 함 */}
-                      <div className="rounded-full px-1.5 py-0.5" style={{ marginTop: -4, background: 'rgba(20,18,14,0.72)', maxWidth: 70 }}>
+                      <div className="rounded-full px-1.5 py-0.5" style={{ marginTop: -1, background: 'rgba(20,18,14,0.72)', maxWidth: 70 }}>
                         <span className="text-[9px] font-bold leading-none whitespace-nowrap" style={{ color: '#F2EEE3' }}>{givenNameOnly(dispName(b.author_name, isLoggedIn))}</span>
                       </div>
                       {currentMember?.id === b.author_id && (
