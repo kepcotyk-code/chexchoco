@@ -831,8 +831,8 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
     <div className="space-y-3">
       <style>{`
         @keyframes balloonBob {
-          0%, 100% { transform: translateY(0) rotate(-2deg); }
-          50% { transform: translateY(-7px) rotate(2deg); }
+          0%, 100% { transform: translateY(0) rotate(0deg); }
+          50% { transform: translateY(-6px) rotate(2deg); }
         }
       `}</style>
       {birthdayFolksToday.length > 0 && (
@@ -859,7 +859,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                       <svg width="76" height="67" viewBox="0 0 24 24" style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.3))' }}>
                         <path d="M12 21s-6.716-4.35-9.428-8.552C.28 9.02 1.343 5 5 5c2.042 0 3.326 1.088 4 2.09C9.674 6.088 10.958 5 13 5c3.657 0 4.72 4.02 2.428 7.448C18.716 16.65 12 21 12 21z" fill={b.color} />
                       </svg>
-                      <span className="absolute text-xs font-bold leading-none px-1 rounded truncate" style={{ top: 26, maxWidth: 60, color: '#2A2620' }}>{dispName(b.author_name, isLoggedIn).slice(0, 4)}</span>
+                      <span className="absolute text-xs font-bold leading-none px-1 rounded whitespace-nowrap" style={{ top: 27, left: '50%', transform: 'translateX(-50%)', color: '#2A2620' }}>{dispName(b.author_name, isLoggedIn)}</span>
                       {currentMember?.id === b.author_id && (
                         <button onClick={() => requestDelete(() => removeBalloon(b.id), '이 풍선을 없앨까요?')} className="absolute -top-1.5 -right-1.5 rounded-full p-0.5" style={{ background: CARD_BG }} aria-label="풍선 삭제"><X size={11} style={{ color: MUTE }} /></button>
                       )}
