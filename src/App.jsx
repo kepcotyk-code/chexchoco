@@ -724,6 +724,29 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
   };
   const removeBalloon = async (id) => { await deleteRow('birthday_balloons', 'id', id); await reload(); };
 
+  // 풍선이 쌓일 자리를 하트 모양으로 미리 계산해둠 — 안쪽 레이어부터 채워져서, 풍선이 늘어날수록 큰 하트가 완성되는 것처럼 보임
+  const heartSlots = useMemo(() => {
+    const layers = [
+      { k: 0.30, n: 4 },
+      { k: 0.48, n: 7 },
+      { k: 0.65, n: 10 },
+      { k: 0.82, n: 13 },
+      { k: 1.00, n: 16 },
+    ];
+    const raw = [];
+    layers.forEach(({ k, n }) => {
+      for (let i = 0; i < n; i++) {
+        const t = (i / n) * Math.PI * 2;
+        const x = k * 16 * Math.pow(Math.sin(t), 3);
+        const y = k * (13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
+        raw.push({ x, y });
+      }
+    });
+    const xs = raw.map((p) => p.x); const ys = raw.map((p) => p.y);
+    const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+    return raw.map((p) => ({ left: ((p.x - minX) / (maxX - minX)) * 100, top: ((p.y - minY) / (maxY - minY)) * 100 }));
+  }, []);
+
   const sorted = [...notices].sort((a, b) => {
     if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
     const aOrder = a.sort_order ?? new Date(a.created_at).getTime();
@@ -821,19 +844,29 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
           </div>
           <p className="text-sm" style={{ color: MUTE }}>생일 축하해요~ 행복한 하루 되세요 🎂</p>
           {todaysBalloons.length > 0 && (
-            <div className="mt-3 pt-1 flex flex-wrap items-end justify-center gap-x-1 gap-y-4" style={{ minHeight: 70 }}>
-              {todaysBalloons.map((b, i) => (
-                <div key={b.id} className="relative flex flex-col items-center" style={{ animation: `balloonBob ${2.6 + (i % 3) * 0.4}s ease-in-out ${(i % 4) * -0.5}s infinite` }}>
-                  <svg width="34" height="30" viewBox="0 0 24 24" style={{ filter: 'drop-shadow(0 2px 2px rgba(0,0,0,0.25))' }}>
-                    <path d="M12 21s-6.716-4.35-9.428-8.552C.28 9.02 1.343 5 5 5c2.042 0 3.326 1.088 4 2.09C9.674 6.088 10.958 5 13 5c3.657 0 4.72 4.02 2.428 7.448C18.716 16.65 12 21 12 21z" fill={b.color} />
-                  </svg>
-                  <span className="absolute text-[8px] font-bold leading-none px-0.5 rounded truncate" style={{ top: 11, maxWidth: 30, color: '#2A2620' }}>{dispName(b.author_name, isLoggedIn).slice(0, 3)}</span>
-                  <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.35)' }} />
-                  {currentMember?.id === b.author_id && (
-                    <button onClick={() => requestDelete(() => removeBalloon(b.id), '이 풍선을 없앨까요?')} className="absolute -top-1.5 -right-1.5 rounded-full p-0.5" style={{ background: CARD_BG }} aria-label="풍선 삭제"><X size={9} style={{ color: MUTE }} /></button>
-                  )}
-                </div>
-              ))}
+            <div className="relative mx-auto mt-3" style={{ width: '100%', maxWidth: 300, height: 210 }}>
+              {todaysBalloons.map((b, i) => {
+                const wrapIdx = i % heartSlots.length;
+                const wrapRound = Math.floor(i / heartSlots.length);
+                const slot = heartSlots[wrapIdx];
+                // 슬롯을 다 채우고 넘치면, id 기반 미세한 오프셋을 줘서 겹치지 않게
+                const jHash = b.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
+                const jx = wrapRound ? ((jHash % 7) - 3) * 1.6 : 0;
+                const jy = wrapRound ? (((jHash >> 3) % 7) - 3) * 1.6 : 0;
+                return (
+                  <div key={b.id} className="absolute" style={{ left: `${slot.left + jx}%`, top: `${slot.top + jy}%`, transform: 'translate(-50%, -50%)' }}>
+                    <div className="relative flex flex-col items-center" style={{ animation: `balloonBob ${2.6 + (i % 3) * 0.4}s ease-in-out ${(i % 4) * -0.5}s infinite` }}>
+                      <svg width="52" height="46" viewBox="0 0 24 24" style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.3))' }}>
+                        <path d="M12 21s-6.716-4.35-9.428-8.552C.28 9.02 1.343 5 5 5c2.042 0 3.326 1.088 4 2.09C9.674 6.088 10.958 5 13 5c3.657 0 4.72 4.02 2.428 7.448C18.716 16.65 12 21 12 21z" fill={b.color} />
+                      </svg>
+                      <span className="absolute text-[10px] font-bold leading-none px-0.5 rounded truncate" style={{ top: 18, maxWidth: 44, color: '#2A2620' }}>{dispName(b.author_name, isLoggedIn).slice(0, 4)}</span>
+                      {currentMember?.id === b.author_id && (
+                        <button onClick={() => requestDelete(() => removeBalloon(b.id), '이 풍선을 없앨까요?')} className="absolute -top-1.5 -right-1.5 rounded-full p-0.5" style={{ background: CARD_BG }} aria-label="풍선 삭제"><X size={10} style={{ color: MUTE }} /></button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
           {currentMember && (
@@ -1420,38 +1453,35 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         {(() => {
           const list = towerView === 'mine' ? myTower : groupTower;
           if (list.length === 0) return <p className="text-xs text-center py-6" style={{ color: MUTE }}>아직 쌓인 책이 없어요.</p>;
-          const PAGE_BG = '#EDE6D5'; // 종이 단면(책배) 색
-          const PAGE_LINE = 'rgba(90,78,54,0.16)'; // 페이지 결 라인
           return (
-            <div className="flex flex-col-reverse gap-1 max-h-[28rem] overflow-y-auto pr-1">
+            <div className="flex flex-col-reverse gap-1.5 max-h-[28rem] overflow-y-auto pr-1">
               {list.map((t) => {
                 const owner = towerView === 'group' ? members.find((m) => m.id === t.member_id) : null;
                 const isMine = towerView === 'mine' && currentMember;
                 const isEditing = editingTowerId === t.id;
                 const dark = isDarkColor(t.color);
                 const fg = dark ? '#F2EEE3' : '#2A2620';
-                const fgMute = dark ? 'rgba(242,238,227,0.65)' : 'rgba(42,38,32,0.6)';
+                const fgMute = dark ? 'rgba(242,238,227,0.68)' : 'rgba(42,38,32,0.62)';
                 const statusText = t.finished_date ? '완독' : t.current_page ? `p.${t.current_page}` : '읽는 중';
                 // id를 기반으로 한 안정적인 값으로 살짝 다른 두께를 줘서 실제 책처럼 자연스럽게
                 const hash = t.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
-                const containerH = [64, 76, 88][hash % 3];
-                const coverT = 6; // 표지 두께(위/아래 얇은 띠)
-                const obiH = Math.round(containerH * 0.46); // 띠지(오비) 높이
-                const obiTop = Math.round((containerH - obiH) / 2);
+                const containerH = [64, 70, 76][hash % 3];
+                const lineShade = dark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.12)';
+                const highlight = dark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.35)';
+                const shade = dark ? 'rgba(0,0,0,0.22)' : 'rgba(0,0,0,0.06)';
                 return (
                   <div key={t.id} className="relative overflow-hidden" style={{
-                    height: containerH, borderRadius: 5,
-                    background: `repeating-linear-gradient(180deg, ${PAGE_LINE} 0px, ${PAGE_LINE} 1px, transparent 1px, transparent 4px), ${PAGE_BG}`,
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(0,0,0,0.06)',
+                    height: containerH, borderRadius: 14,
+                    background: `linear-gradient(180deg, ${highlight} 0%, transparent 25%, transparent 75%, ${shade} 100%), ${t.color}`,
+                    boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
                   }}>
-                    {/* 위쪽 표지 단면 */}
-                    <div className="absolute pointer-events-none" style={{ top: 0, left: 0, right: 0, height: coverT, background: t.color }} />
-                    {/* 아래쪽 표지 단면 */}
-                    <div className="absolute pointer-events-none" style={{ bottom: 0, left: 0, right: 0, height: coverT, background: t.color }} />
-                    {/* 오른쪽 책배(페이지 단면) 그림자로 두께감 표현 */}
-                    <div className="absolute pointer-events-none" style={{ top: 0, bottom: 0, right: 0, width: 10, background: 'linear-gradient(90deg, transparent, rgba(0,0,0,0.08))' }} />
+                    {/* 왼쪽 페이지 결 — 책이 옆으로 누워 여러 장 겹친 느낌 */}
+                    <div className="absolute pointer-events-none" style={{ top: 6, bottom: 6, left: 12, width: 2, background: lineShade, borderRadius: 1 }} />
+                    <div className="absolute pointer-events-none" style={{ top: 6, bottom: 6, left: 17, width: 2, background: lineShade, borderRadius: 1 }} />
+                    {/* 우상단 책갈피 리본 */}
+                    <div className="absolute pointer-events-none" style={{ top: 0, right: 20, width: 11, height: 22, background: dark ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.2)', clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%)' }} />
                     {isEditing ? (
-                      <div className="absolute inset-0 flex flex-col justify-center gap-1.5 px-4" style={{ background: CARD_BG }}>
+                      <div className="absolute inset-0 flex flex-col justify-center gap-1.5 px-6" style={{ background: CARD_BG }}>
                         <div className="text-sm font-bold truncate" style={{ color: INK }}>{t.book_title}</div>
                         <div className="grid grid-cols-2 gap-1.5">
                           <input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="rounded-lg px-2 py-1 text-[11px] outline-none" style={inputStyle} aria-label="읽기 시작일" />
@@ -1464,28 +1494,23 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                         </div>
                       </div>
                     ) : (
-                      <>
-                        {/* 책갈피 리본 장식 — 위쪽 표지에서 페이지 사이로 꽂혀있는 느낌 */}
-                        <div className="absolute pointer-events-none z-10" style={{ top: 0, right: 18, width: 9, height: obiTop + 10, background: dark ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.16)', clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%)' }} />
-                        {/* 띠지(오비) — 표지 색이 감싸는 라벨 영역, 여기에 제목/정보 표시 */}
-                        <div className="absolute left-0 right-0 flex items-center justify-between px-4" style={{ top: obiTop, height: obiH, background: t.color, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.1)' }}>
-                          <div className="min-w-0">
-                            <div className="text-sm font-bold truncate" style={{ color: fg }}>{t.book_title}</div>
-                            <div className="text-[11px] truncate" style={{ color: fgMute }}>
-                              {owner ? dispName(owner.name, isLoggedIn) : (t.start_date ? `시작 ${fmtDate(t.start_date)}` : '')}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <span className="text-xs font-medium" style={{ color: fgMute }}>{statusText}</span>
-                            {isMine && (
-                              <>
-                                <button onClick={() => startTowerEdit(t)} className="p-1" aria-label="책탑 항목 수정"><Pencil size={12} style={{ color: fgMute }} /></button>
-                                <button onClick={() => removeTowerEntry(t.id)} className="p-1" aria-label="책탑에서 제거"><X size={12} style={{ color: fgMute }} /></button>
-                              </>
-                            )}
+                      <div className="relative flex items-center justify-between h-full pl-7 pr-4 gap-2">
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold truncate" style={{ color: fg }}>{t.book_title}</div>
+                          <div className="text-[11px] truncate" style={{ color: fgMute }}>
+                            {owner ? dispName(owner.name, isLoggedIn) : (t.start_date ? `시작 ${fmtDate(t.start_date)}` : '')}
                           </div>
                         </div>
-                      </>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-xs font-medium" style={{ color: fgMute }}>{statusText}</span>
+                          {isMine && (
+                            <>
+                              <button onClick={() => startTowerEdit(t)} className="p-1" aria-label="책탑 항목 수정"><Pencil size={12} style={{ color: fgMute }} /></button>
+                              <button onClick={() => removeTowerEntry(t.id)} className="p-1" aria-label="책탑에서 제거"><X size={12} style={{ color: fgMute }} /></button>
+                            </>
+                          )}
+                        </div>
+                      </div>
                     )}
                   </div>
                 );
