@@ -1074,7 +1074,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                       <svg width="8" height="16" viewBox="0 0 8 16" style={{ overflow: 'visible', display: 'block', marginTop: -1 }}>
                         <path d="M4 0 C 6 4.5, 2 11.5, 4 16" stroke="rgba(255,255,255,0.45)" strokeWidth="1" fill="none" />
                       </svg>
-                      {currentMember?.id === b.author_id && (
+                      {(currentMember?.id === b.author_id || canManage) && (
                         <button onClick={(e) => { e.stopPropagation(); requestDelete(() => removeBalloon(b.id), '이 풍선을 없앨까요?'); }} className="absolute -top-1.5 -right-1.5 rounded-full p-0.5" style={{ background: CARD_BG }} aria-label="풍선 삭제"><X size={10} style={{ color: MUTE }} /></button>
                       )}
                     </div>
