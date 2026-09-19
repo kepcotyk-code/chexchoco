@@ -446,14 +446,17 @@ export default function App() {
   const todayMdForConfetti = todayStr().slice(5, 10);
   const hasBirthdayToday = members.some((m) => m.birthday && mdOf(m.birthday) === todayMdForConfetti);
   const confettiColors = ['#F0A87C', '#7FA8D9', '#EFC94C', '#7FDCCF', '#E0958C', '#D9C24C'];
-  const confettiPieces = useMemo(() => Array.from({ length: 48 }).map((_, i) => ({
-    left: Math.round(Math.random() * 100),
-    delay: (Math.random() * 4).toFixed(2),
-    duration: (6 + Math.random() * 5).toFixed(2),
-    color: confettiColors[i % confettiColors.length],
-    size: 6 + Math.round(Math.random() * 6),
-    rotate: Math.round(Math.random() * 360),
-  })), [hasBirthdayToday]);
+  const confettiPieces = useMemo(() => Array.from({ length: 70 }).map((_, i) => {
+    const duration = 4.5 + Math.random() * 3.5; // 기존보다 약 1.2배 빠르게
+    return {
+      left: Math.round(Math.random() * 100),
+      delay: -(Math.random() * duration).toFixed(2), // 음수 딜레이 - 처음부터 낙하 중간 지점에서 시작해 최상단에 쌓여 보이는 현상 방지
+      duration: duration.toFixed(2),
+      color: confettiColors[i % confettiColors.length],
+      size: 6 + Math.round(Math.random() * 6),
+      rotate: Math.round(Math.random() * 360),
+    };
+  }), [hasBirthdayToday]);
 
   if (!loaded) {
     return <div className="min-h-screen flex items-center justify-center" style={{ background: PAPER_BG }}>
@@ -795,7 +798,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
             <span className="font-semibold" style={{ color: INK, fontFamily: "'Fraunces', serif" }}>오늘은 {birthdayFolksToday.map((m) => dispName(m.name, isLoggedIn)).join(', ')}님 생일이에요!</span>
             <PartyPopper size={18} style={{ color: '#EFC94C' }} />
           </div>
-          <p className="text-sm" style={{ color: MUTE }}>축하 인사 한마디 건네보는 건 어떨까요 🎂</p>
+          <p className="text-sm" style={{ color: MUTE }}>생일을 축하해요! 행복한 하루 되세요 🎂</p>
         </Card>
       )}
       {canManage && (
@@ -1178,7 +1181,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           <div className="space-y-2 mb-3 pb-3" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
             <div className="flex gap-2">
               <button onClick={() => setShareKind('offer')} className="flex-1 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'offer' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'offer' ? BTN_TEXT : NEUTRAL_TEXT }}>책 빌려줄까요?</button>
-              <button onClick={() => setShareKind('request')} className="flex-1 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'request' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'request' ? BTN_TEXT : NEUTRAL_TEXT }}>책 빌려주실 수 있나요?</button>
+              <button onClick={() => setShareKind('request')} className="flex-1 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'request' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'request' ? BTN_TEXT : NEUTRAL_TEXT }}>책 빌려주실래요?</button>
             </div>
             <input value={shareTitle} onChange={(e) => setShareTitle(e.target.value)} placeholder="책 제목 (필수)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
             <div className="grid grid-cols-2 gap-2">
@@ -1205,7 +1208,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
             );
           })}
         </div>
-        <div className="mb-1.5 text-xs font-semibold" style={{ color: MUTE }}>🙋 책 빌려주실 수 있나요? ({requests.length})</div>
+        <div className="mb-1.5 text-xs font-semibold" style={{ color: MUTE }}>🙋 책 빌려주실래요? ({requests.length})</div>
         <div className="space-y-1.5">
           {requests.length === 0 && <p className="text-xs" style={{ color: MUTE }}>등록된 글이 없어요.</p>}
           {requests.map((s) => {
