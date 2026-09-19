@@ -728,7 +728,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
   const [balloonsSettled, setBalloonsSettled] = useState(false);
   const popBalloon = (id) => {
     setFlyingBalloonIds((prev) => ({ ...prev, [id]: true }));
-    setTimeout(() => setFlyingBalloonIds((prev) => ({ ...prev, [id]: false })), 1300);
+    setTimeout(() => setFlyingBalloonIds((prev) => ({ ...prev, [id]: false })), 1650);
   };
   const shadeColor = (hex, percent) => {
     const num = parseInt(hex.replace('#', ''), 16);
@@ -866,7 +866,12 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
         }
         @keyframes balloonFlyUp {
           0% { transform: translateY(0) rotate(0deg) scale(1); opacity: 1; }
-          100% { transform: translateY(-240px) rotate(10deg) scale(0.55); opacity: 0; }
+          100% { transform: translateY(-140vh) rotate(12deg) scale(0.5); opacity: 0; }
+        }
+        @keyframes balloonReturnFromBottom {
+          0% { transform: translateY(140vh) scale(0.5); opacity: 0; }
+          70% { transform: translateY(-8px) scale(1.06); opacity: 1; }
+          100% { transform: translateY(0) scale(1); opacity: 1; }
         }
       `}</style>
       {birthdayFolksToday.length > 0 && (
@@ -892,7 +897,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                 const dur = 2.6 + (i % 3) * 0.4;
                 const isFlying = !!flyingBalloonIds[b.id];
                 const anim = isFlying
-                  ? `balloonFlyUp 0.55s ease-in forwards, balloonRiseIn 0.7s ease-out 0.55s both`
+                  ? `balloonFlyUp 0.65s ease-in forwards, balloonReturnFromBottom 1s ease-out 0.65s both`
                   : balloonsSettled
                     ? `balloonBob ${dur}s ease-in-out infinite`
                     : `balloonRiseIn 0.7s ease-out ${riseDelay}s both, balloonBob ${dur}s ease-in-out ${riseDelay + 0.7}s infinite`;
