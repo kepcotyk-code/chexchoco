@@ -446,7 +446,7 @@ export default function App() {
   const todayMdForConfetti = todayStr().slice(5, 10);
   const hasBirthdayToday = members.some((m) => m.birthday && mdOf(m.birthday) === todayMdForConfetti);
   const confettiColors = ['#F0A87C', '#7FA8D9', '#EFC94C', '#7FDCCF', '#E0958C', '#D9C24C'];
-  const confettiPieces = useMemo(() => Array.from({ length: 70 }).map((_, i) => {
+  const confettiPieces = useMemo(() => Array.from({ length: 50 }).map((_, i) => {
     const duration = 4.5 + Math.random() * 3.5; // 기존보다 약 1.2배 빠르게
     return {
       left: Math.round(Math.random() * 100),
@@ -1180,8 +1180,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         {showShareForm && (
           <div className="space-y-2 mb-3 pb-3" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
             <div className="flex gap-2">
-              <button onClick={() => setShareKind('offer')} className="flex-1 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'offer' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'offer' ? BTN_TEXT : NEUTRAL_TEXT }}>책 빌려줄까요?</button>
-              <button onClick={() => setShareKind('request')} className="flex-1 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'request' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'request' ? BTN_TEXT : NEUTRAL_TEXT }}>책 빌려주실래요?</button>
+              <button onClick={() => setShareKind('offer')} className="flex-1 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'offer' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'offer' ? BTN_TEXT : NEUTRAL_TEXT }}>빌려줄까요?</button>
+              <button onClick={() => setShareKind('request')} className="flex-1 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'request' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'request' ? BTN_TEXT : NEUTRAL_TEXT }}>빌려주실래요?</button>
             </div>
             <input value={shareTitle} onChange={(e) => setShareTitle(e.target.value)} placeholder="책 제목 (필수)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
             <div className="grid grid-cols-2 gap-2">
@@ -1192,7 +1192,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           </div>
         )}
         {!currentMember && !showShareForm && <p className="text-xs mb-2" style={{ color: MUTE }}>상단에서 본인을 먼저 선택해야 글을 올릴 수 있어요.</p>}
-        <div className="mb-1.5 text-xs font-semibold" style={{ color: MUTE }}>📚 책 빌려줄까요? ({offers.length})</div>
+        <div className="mb-1.5 text-xs font-semibold" style={{ color: MUTE }}>📚 빌려줄까요? ({offers.length})</div>
         <div className="space-y-1.5 mb-3">
           {offers.length === 0 && <p className="text-xs" style={{ color: MUTE }}>등록된 글이 없어요.</p>}
           {offers.map((s) => {
@@ -1208,7 +1208,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
             );
           })}
         </div>
-        <div className="mb-1.5 text-xs font-semibold" style={{ color: MUTE }}>🙋 책 빌려주실래요? ({requests.length})</div>
+        <div className="mb-1.5 text-xs font-semibold" style={{ color: MUTE }}>🙋 빌려주실래요? ({requests.length})</div>
         <div className="space-y-1.5">
           {requests.length === 0 && <p className="text-xs" style={{ color: MUTE }}>등록된 글이 없어요.</p>}
           {requests.map((s) => {
@@ -1293,7 +1293,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                   <div className="text-xs" style={{ color: NEUTRAL_TEXT }}>응답: {dispName(matcher?.name || '', isLoggedIn)}</div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs" style={{ color: MUTE }}>대여일:</span>
-                    {viewingShare.status === 'matched' && (isOwner || currentMember?.id === borrowerId) ? (
+                    {viewingShare.status === 'matched' && (isOwner || currentMember?.id === borrowerId || canManage) ? (
                       <input type="date" value={borrowedDateInput || viewingShare.borrowed_at || ''} onChange={(e) => setBorrowedDateInput(e.target.value)} onBlur={() => borrowedDateInput && updateBorrowedDate(viewingShare, borrowedDateInput)}
                         className="rounded-lg border px-1.5 py-1 text-[11px] outline-none" style={inputStyle} aria-label="대여일" />
                     ) : (
@@ -1303,7 +1303,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                   {viewingShare.status === 'matched' && (
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs" style={{ color: MUTE }}>반납기한:</span>
-                      {isOwner || currentMember?.id === borrowerId ? (
+                      {isOwner || currentMember?.id === borrowerId || canManage ? (
                         <input type="date" value={dueDateInput || viewingShare.due_date || ''} onChange={(e) => setDueDateInput(e.target.value)} onBlur={() => dueDateInput && updateDueDate(viewingShare, dueDateInput)}
                           className="rounded-lg border px-1.5 py-1 text-[11px] outline-none" style={inputStyle} aria-label="반납기한" />
                       ) : (
@@ -1312,7 +1312,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                     </div>
                   )}
                   {viewingShare.status === 'returned' && <div className="text-xs" style={{ color: '#7FDCCF' }}>✓ 반납완료 · {fmtDate(viewingShare.returned_at)}</div>}
-                  {viewingShare.status === 'matched' && isOwner && (
+                  {viewingShare.status === 'matched' && (isOwner || canManage) && (
                     <PrimaryBtn onClick={() => { confirmReturn(viewingShare); setViewingShareId(null); }} icon={Check}>반납 완료 처리</PrimaryBtn>
                   )}
                 </div>
@@ -1364,18 +1364,20 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 const py = ['py-2.5', 'py-3', 'py-3.5'][hash % 3];
                 const shade = dark ? 'rgba(0,0,0,0.35)' : 'rgba(0,0,0,0.08)';
                 const highlight = dark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.5)';
+                // 위/아래 끝에 표지처럼 보이는 진한 띠를 둬서, 책이 옆으로 누워 쌓인 모습을 표현
+                const coverShade = dark ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.22)';
                 return (
                   <div key={t.id} className="relative" style={{
-                    background: `linear-gradient(180deg, ${highlight} 0%, transparent 18%, transparent 82%, ${shade} 100%), ${t.color}`,
-                    borderRadius: 10, boxShadow: '0 2px 4px rgba(0,0,0,0.3)', border: `1px solid ${dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`,
+                    background: `linear-gradient(180deg, ${coverShade} 0%, ${coverShade} 12%, transparent 12%, transparent 88%, ${coverShade} 88%, ${coverShade} 100%), linear-gradient(180deg, ${highlight} 0%, transparent 22%, transparent 78%, ${shade} 100%), ${t.color}`,
+                    borderRadius: 6, boxShadow: '0 2px 4px rgba(0,0,0,0.3)', border: `1px solid ${dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
                   }}>
                     {/* 책갈피 리본 장식 */}
                     <div className="absolute pointer-events-none" style={{ top: 0, right: 16, width: 10, height: 20, background: dark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.14)', clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 75%, 0 100%)' }} />
-                    {/* 책 페이지 결(여러 겹 라인) */}
-                    <div className="absolute pointer-events-none" style={{ top: 2, bottom: 2, right: 2, width: 6, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                    {/* 책 페이지 결(여러 겹 라인) — 책등이 옆으로 누운 것처럼 오른쪽 단면 표현 */}
+                    <div className="absolute pointer-events-none" style={{ top: '14%', bottom: '14%', right: 2, width: 6, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                       {[0, 1, 2, 3, 4].map((n) => <div key={n} style={{ height: 1, background: dark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.1)' }} />)}
                     </div>
-                    <div className="absolute pointer-events-none" style={{ top: 0, bottom: 0, right: 0, width: 3, background: dark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)', borderRadius: '0 10px 10px 0' }} />
+                    <div className="absolute pointer-events-none" style={{ top: 0, bottom: 0, right: 0, width: 3, background: dark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)', borderRadius: '0 6px 6px 0' }} />
                     {isEditing ? (
                       <div className="space-y-1.5 px-4 py-3">
                         <div className="text-sm font-bold" style={{ color: fg }}>{t.book_title}</div>
