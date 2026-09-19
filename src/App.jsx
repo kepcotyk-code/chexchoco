@@ -707,6 +707,43 @@ export default function App() {
 /* ---------------- 공지사항 ---------------- */
 const MAX_PDF_BYTES = 3 * 1024 * 1024;
 
+// 하트 풍선이 터질 때 튀어오르는 폭죽 파편 + 불빛 이펙트
+function ConfettiBurst({ color }) {
+  const particles = useMemo(() => {
+    const colors = ['#F5D400', '#3DBF54', '#2E86E0', '#F0479C', '#FFFFFF', '#F2871A', color];
+    return Array.from({ length: 18 }).map((_, k) => {
+      const angle = (k / 18) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
+      const dist = 34 + Math.random() * 40;
+      return {
+        dx: Math.cos(angle) * dist,
+        dy: Math.sin(angle) * dist - 10,
+        rot: Math.round(Math.random() * 360),
+        size: 4 + Math.random() * 4,
+        delay: Math.round(Math.random() * 50) / 1000,
+        rect: k % 2 === 0,
+        color: colors[k % colors.length],
+      };
+    });
+  }, [color]);
+  return (
+    <div className="absolute pointer-events-none" style={{ left: '50%', top: '50%', width: 0, height: 0, zIndex: 5 }}>
+      {/* 확 번쩍이는 불빛 */}
+      <span style={{ position: 'absolute', left: 0, top: 0, width: 90, height: 90, marginLeft: -45, marginTop: -45, borderRadius: '50%', background: `radial-gradient(circle, rgba(255,255,255,0.95) 0%, ${color} 38%, rgba(255,255,255,0) 72%)`, animation: 'popGlow 0.5s ease-out forwards' }} />
+      {/* 퍼져나가는 충격파 테두리 */}
+      <span style={{ position: 'absolute', left: 0, top: 0, width: 56, height: 56, marginLeft: -28, marginTop: -28, borderRadius: '50%', border: `2.5px solid ${color}`, animation: 'popFlash 0.55s ease-out forwards' }} />
+      {particles.map((p, idx) => (
+        <span key={idx} style={{
+          position: 'absolute', left: 0, top: 0,
+          width: p.rect ? p.size + 2 : p.size, height: p.rect ? p.size * 0.5 : p.size,
+          background: p.color, borderRadius: p.rect ? 1 : '50%',
+          boxShadow: `0 0 4px ${p.color}`,
+          '--dx': `${p.dx}px`, '--dy': `${p.dy}px`, '--rot': `${p.rot}deg`,
+          animation: `confettiBurst 0.7s ease-out ${p.delay}s forwards`,
+        }} />
+      ))}
+    </div>
+  );
+}
 function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, members, requestDelete, birthdayBalloons }) {
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState('');
@@ -718,6 +755,17 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
   const [submitting, setSubmitting] = useState(false);
   const [expandedViewsId, setExpandedViewsId] = useState(null);
   const isLoggedIn = !!currentMember;
+  // 생일 하트 풍선 — 누르면 터지면서 폭죽이 터지고 그 자리에 사진이 등장
+  const [heartPopped, setHeartPopped] = useState(false);
+  const [heartPopping, setHeartPopping] = useState(false);
+  const [heartBurst, setHeartBurst] = useState(false);
+  const popHeart = () => {
+    if (heartPopped || heartPopping) return;
+    setHeartPopping(true);
+    setHeartBurst(true);
+    setTimeout(() => setHeartPopped(true), 320);
+    setTimeout(() => setHeartBurst(false), 950);
+  };
   const isSecretary = currentMember?.role === '간사'; // 공지 조회수는 간사에게만 노출
 
   const todayMd = todayStr().slice(5, 10);
@@ -818,6 +866,29 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
           0%, 100% { opacity: 0.15; transform: scale(0.6) rotate(0deg); }
           50% { opacity: 1; transform: scale(1.15) rotate(15deg); }
         }
+        @keyframes heartBob {
+          0% { transform: translateY(0) scale(1); }
+          50% { transform: translateY(-7px) scale(1.03); }
+          100% { transform: translateY(0) scale(1); }
+        }
+        @keyframes heartPopOut {
+          0% { transform: scale(1); opacity: 1; }
+          45% { transform: scale(1.35); opacity: 1; }
+          100% { transform: scale(0.1); opacity: 0; }
+        }
+        @keyframes confettiBurst {
+          0% { transform: translate(-50%, -50%) rotate(0deg) scale(1); opacity: 1; }
+          100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rot)) scale(0.5); opacity: 0; }
+        }
+        @keyframes popFlash {
+          0% { transform: scale(0.25); opacity: 0.9; }
+          100% { transform: scale(3); opacity: 0; }
+        }
+        @keyframes popGlow {
+          0% { transform: scale(0.2); opacity: 1; }
+          55% { transform: scale(1); opacity: 0.85; }
+          100% { transform: scale(1.5); opacity: 0; }
+        }
       `}</style>
       {birthdayFolksToday.length > 0 && (
         <Card className="text-center">
@@ -827,20 +898,43 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
             <PartyPopper size={18} style={{ color: '#EFC94C' }} />
           </div>
           <p className="text-sm mb-1" style={{ color: MUTE }}>생일 축하드려요! 행복한 하루 되세요 🎂</p>
-          <div className="flex justify-center mt-3">
-            <div className="relative" style={{ width: 176, height: 'auto', animation: 'photoRevealIn 1.3s ease-out both' }}>
-              {/* 은은하게 숨쉬는 글로우 - 넓게 퍼지는 층 + 밝은 중심층, 두 겹 */}
-              <div style={{ position: 'absolute', inset: -34, borderRadius: 50, background: 'radial-gradient(circle, rgba(255,224,120,0.55) 0%, rgba(255,224,120,0) 75%)', animation: 'photoGlowPulse 2.6s ease-in-out infinite', zIndex: -1 }} />
-              <div style={{ position: 'absolute', inset: -14, borderRadius: 30, background: 'radial-gradient(circle, rgba(255,244,200,0.85) 0%, rgba(255,213,74,0.4) 45%, rgba(255,213,74,0) 75%)', animation: 'photoGlowPulse 2.6s ease-in-out 0.1s infinite', zIndex: -1 }} />
-              <img src={BALLOON_REVEAL_PHOTOS[birthdayFolksToday[0]?.name] || BALLOON_REVEAL_PHOTO_DEFAULT} alt="" style={{ width: 176, height: 'auto', borderRadius: 20, display: 'block', border: '3px solid rgba(255,255,255,0.85)', boxShadow: '0 4px 14px rgba(0,0,0,0.45)' }} />
-              {/* 주변을 도는 작은 반짝임 */}
-              {[
-                { x: -14, y: -8, d: 0 }, { x: 190, y: 4, d: 0.4 }, { x: 200, y: 130, d: 0.9 },
-                { x: 176, y: 250, d: 0.2 }, { x: -10, y: 240, d: 0.7 }, { x: -18, y: 120, d: 1.2 },
-              ].map((s, i) => (
-                <span key={i} style={{ position: 'absolute', left: s.x, top: s.y, fontSize: 16, color: '#FFF4C8', textShadow: '0 0 10px rgba(255,224,120,1), 0 0 18px rgba(255,213,74,0.7)', animation: `sparkleTwinkle 1.8s ease-in-out ${s.d}s infinite` }}>✦</span>
-              ))}
-            </div>
+          <div className="relative flex justify-center mt-3" style={{ minHeight: 176 }}>
+            {!heartPopped && (
+              <div
+                onClick={popHeart}
+                className="relative cursor-pointer flex flex-col items-center"
+                style={{ width: 140, animation: heartPopping ? 'heartPopOut 0.3s ease-out forwards' : 'heartBob 2.4s ease-in-out infinite' }}
+              >
+                <svg width="140" height="127" viewBox="0 0 32 29" style={{ filter: 'drop-shadow(0 6px 10px rgba(0,0,0,0.35))', overflow: 'visible' }}>
+                  <defs>
+                    <radialGradient id="heartGrad" cx="32%" cy="26%" r="80%">
+                      <stop offset="0%" stopColor="#FF9EC4" />
+                      <stop offset="55%" stopColor="#F0479C" />
+                      <stop offset="100%" stopColor="#C42B70" />
+                    </radialGradient>
+                  </defs>
+                  <path d="M16 28.5c-.4 0-.8-.1-1.1-.4C9 23.8 1 17 1 9.6 1 4.8 4.7 1 9.4 1c2.8 0 5.3 1.4 6.6 3.6C17.3 2.4 19.8 1 22.6 1 27.3 1 31 4.8 31 9.6c0 7.4-8 14.2-13.9 18.5-.3.3-.7.4-1.1.4z" fill="url(#heartGrad)" stroke="#B02060" strokeWidth="0.5" strokeLinejoin="round" />
+                  <ellipse cx="10.5" cy="8.5" rx="3.4" ry="2.2" fill="rgba(255,255,255,0.55)" transform="rotate(-25 10.5 8.5)" />
+                </svg>
+                <span className="text-xs mt-1" style={{ color: MUTE }}>눌러서 열어보기 💌</span>
+              </div>
+            )}
+            {heartBurst && <ConfettiBurst color="#F0479C" />}
+            {heartPopped && (
+              <div className="relative" style={{ width: 176, height: 'auto', animation: 'photoRevealIn 1.3s ease-out both' }}>
+                {/* 은은하게 숨쉬는 글로우 - 넓게 퍼지는 층 + 밝은 중심층, 두 겹 */}
+                <div style={{ position: 'absolute', inset: -34, borderRadius: 50, background: 'radial-gradient(circle, rgba(255,224,120,0.55) 0%, rgba(255,224,120,0) 75%)', animation: 'photoGlowPulse 2.6s ease-in-out infinite', zIndex: -1 }} />
+                <div style={{ position: 'absolute', inset: -14, borderRadius: 30, background: 'radial-gradient(circle, rgba(255,244,200,0.85) 0%, rgba(255,213,74,0.4) 45%, rgba(255,213,74,0) 75%)', animation: 'photoGlowPulse 2.6s ease-in-out 0.1s infinite', zIndex: -1 }} />
+                <img src={BALLOON_REVEAL_PHOTOS[birthdayFolksToday[0]?.name] || BALLOON_REVEAL_PHOTO_DEFAULT} alt="" style={{ width: 176, height: 'auto', borderRadius: 20, display: 'block', border: '3px solid rgba(255,255,255,0.85)', boxShadow: '0 4px 14px rgba(0,0,0,0.45)' }} />
+                {/* 주변을 도는 작은 반짝임 */}
+                {[
+                  { x: -14, y: -8, d: 0 }, { x: 190, y: 4, d: 0.4 }, { x: 200, y: 130, d: 0.9 },
+                  { x: 176, y: 250, d: 0.2 }, { x: -10, y: 240, d: 0.7 }, { x: -18, y: 120, d: 1.2 },
+                ].map((s, i) => (
+                  <span key={i} style={{ position: 'absolute', left: s.x, top: s.y, fontSize: 16, color: '#FFF4C8', textShadow: '0 0 10px rgba(255,224,120,1), 0 0 18px rgba(255,213,74,0.7)', animation: `sparkleTwinkle 1.8s ease-in-out ${s.d}s infinite` }}>✦</span>
+                ))}
+              </div>
+            )}
           </div>
         </Card>
       )}
