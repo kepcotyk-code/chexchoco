@@ -712,7 +712,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
   const birthdayFolksToday = members.filter((m) => m.birthday && mdOf(m.birthday) === todayMd);
   const todayFull = todayStr();
   const [sendingBalloon, setSendingBalloon] = useState(false);
-  const BALLOON_COLORS = ['#F2543F', '#F0479C', '#F2841A', '#F5C400', '#2E86E0', '#12C7A5', '#C7CC1A'];
+  const BALLOON_COLORS = ['#F5A9A0', '#F3A8D0', '#F7C48F', '#F5DE8C', '#A2C8EC', '#A2E2D2', '#DCE28F'];
   const todaysBalloons = (birthdayBalloons || []).filter((b) => b.for_date === todayFull).sort((a, b) => a.created_at.localeCompare(b.created_at));
   const sendBalloon = async () => {
     if (!currentMember || sendingBalloon) return;
@@ -874,10 +874,15 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
           100% { transform: translateY(0) scale(1); opacity: 1; }
         }
         @keyframes balloonBob {
-          0%, 100% { transform: translateY(0) rotate(0deg); }
-          25% { transform: translateY(-2px) rotate(-7deg); }
+          0% { transform: translateY(0) rotate(0deg); }
+          12.5% { transform: translateY(-1px) rotate(-3deg); }
+          25% { transform: translateY(-2.5px) rotate(-6deg); }
+          37.5% { transform: translateY(-4px) rotate(-3deg); }
           50% { transform: translateY(-5px) rotate(0deg); }
-          75% { transform: translateY(-2px) rotate(7deg); }
+          62.5% { transform: translateY(-4px) rotate(3deg); }
+          75% { transform: translateY(-2.5px) rotate(6deg); }
+          87.5% { transform: translateY(-1px) rotate(3deg); }
+          100% { transform: translateY(0) rotate(0deg); }
         }
         @keyframes balloonFlyUp {
           0% { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
@@ -924,13 +929,13 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                 const anim = isFlying
                   ? `balloonFlyUp ${FLY_UP_DURATION}s linear forwards, balloonReturnFromBottom ${RETURN_DURATION}s linear ${FLY_UP_DURATION}s both`
                   : balloonsSettled
-                    ? `balloonBob ${dur}s ease-in-out infinite`
-                    : `balloonRiseIn 0.7s ease-out ${riseDelay}s both, balloonBob ${dur}s ease-in-out ${riseDelay + 0.7}s infinite`;
+                    ? `balloonBob ${dur}s linear infinite`
+                    : `balloonRiseIn 0.7s ease-out ${riseDelay}s both, balloonBob ${dur}s linear ${riseDelay + 0.7}s infinite`;
                 return (
                   <div key={b.id} className="absolute" style={{ left: `${posLeft}%`, top: `${posTop}%`, transform: 'translate(-50%, -50%)', transition: 'left 1.3s ease-in-out, top 1.3s ease-in-out' }}>
                     <div onClick={() => popBalloon(b.id)} className="relative flex flex-col items-center cursor-pointer" style={{ width: 41, transformOrigin: '50% 100%', animation: anim }}>
                       <div className="relative" style={{ width: 39, height: 36 }}>
-                        <svg width="39" height="36" viewBox="2.25 3 19.5 18" style={{ filter: 'drop-shadow(0 3px 3px rgba(0,0,0,0.35)) saturate(0.85)', overflow: 'visible', display: 'block' }}>
+                        <svg width="39" height="36" viewBox="2.25 3 19.5 18" style={{ filter: 'drop-shadow(0 3px 3px rgba(0,0,0,0.35))', overflow: 'visible', display: 'block' }}>
                           <defs>
                             <radialGradient id={gradId} cx="32%" cy="26%" r="80%">
                               <stop offset="0%" stopColor={shadeColor(b.color, 55)} />
@@ -955,7 +960,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                             <stop offset="100%" stopColor="rgba(255,255,255,0)" />
                           </linearGradient>
                         </defs>
-                        <path d="M8 0 C 8 18, 2 38, -6 72" stroke={`url(#string-grad-${b.id})`} strokeWidth="1" fill="none" />
+                        <path d="M8 0 C 5 10, 11 20, 8 30 C 5 40, 11 50, 8 60 C 6 66, 9 68, 8 72" stroke={`url(#string-grad-${b.id})`} strokeWidth="1" fill="none" />
                       </svg>
                       {currentMember?.id === b.author_id && (
                         <button onClick={(e) => { e.stopPropagation(); requestDelete(() => removeBalloon(b.id), '이 풍선을 없앨까요?'); }} className="absolute -top-1.5 -right-1.5 rounded-full p-0.5" style={{ background: CARD_BG }} aria-label="풍선 삭제"><X size={10} style={{ color: MUTE }} /></button>
