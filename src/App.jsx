@@ -723,6 +723,13 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
     setSendingBalloon(false);
   };
   const removeBalloon = async (id) => { await deleteRow('birthday_balloons', 'id', id); await reload(); };
+  const givenNameOnly = (name) => (name && name.length > 1 ? name.slice(1) : name); // 성 빼고 이름만
+  const [flyingBalloonIds, setFlyingBalloonIds] = useState({});
+  const [balloonsSettled, setBalloonsSettled] = useState(false);
+  const popBalloon = (id) => {
+    setFlyingBalloonIds((prev) => ({ ...prev, [id]: true }));
+    setTimeout(() => setFlyingBalloonIds((prev) => ({ ...prev, [id]: false })), 1300);
+  };
   const shadeColor = (hex, percent) => {
     const num = parseInt(hex.replace('#', ''), 16);
     const clamp = (v) => Math.max(0, Math.min(255, v));
@@ -754,6 +761,14 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
     const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
     return raw.map((p) => ({ left: ((p.x - minX) / (maxX - minX)) * 100, top: ((p.y - minY) / (maxY - minY)) * 100 }));
   }, []);
+
+  // 접속 시 순차 등장 애니메이션이 끝나면, 이후로는 일반 흔들림만 반복하도록 전환
+  useEffect(() => {
+    setBalloonsSettled(false);
+    const maxDelay = Math.min(Math.max(todaysBalloons.length - 1, 0), 10) * 0.09 + 0.7;
+    const t = setTimeout(() => setBalloonsSettled(true), (maxDelay + 0.15) * 1000);
+    return () => clearTimeout(t);
+  }, [todaysBalloons.length]);
 
   const sorted = [...notices].sort((a, b) => {
     if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
@@ -844,10 +859,14 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
           100% { transform: translateY(0) scale(1); opacity: 1; }
         }
         @keyframes balloonBob {
-          0%, 100% { transform: translate(0, 0) rotate(0deg); }
-          25% { transform: translate(3px, -3px) rotate(-2deg); }
-          50% { transform: translate(0, -6px) rotate(0deg); }
-          75% { transform: translate(-3px, -3px) rotate(2deg); }
+          0%, 100% { transform: translateY(0) rotate(0deg); }
+          25% { transform: translateY(-2px) rotate(-7deg); }
+          50% { transform: translateY(-5px) rotate(0deg); }
+          75% { transform: translateY(-2px) rotate(7deg); }
+        }
+        @keyframes balloonFlyUp {
+          0% { transform: translateY(0) rotate(0deg) scale(1); opacity: 1; }
+          100% { transform: translateY(-240px) rotate(10deg) scale(0.55); opacity: 0; }
         }
       `}</style>
       {birthdayFolksToday.length > 0 && (
@@ -870,9 +889,16 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                 const jy = wrapRound ? (((jHash >> 3) % 7) - 3) * 1.2 : 0;
                 const gradId = `balloon-grad-${b.id}`;
                 const riseDelay = Math.min(i, 10) * 0.09; // 접속 시 하나씩 순차적으로 올라오는 느낌
+                const dur = 2.6 + (i % 3) * 0.4;
+                const isFlying = !!flyingBalloonIds[b.id];
+                const anim = isFlying
+                  ? `balloonFlyUp 0.55s ease-in forwards, balloonRiseIn 0.7s ease-out 0.55s both`
+                  : balloonsSettled
+                    ? `balloonBob ${dur}s ease-in-out infinite`
+                    : `balloonRiseIn 0.7s ease-out ${riseDelay}s both, balloonBob ${dur}s ease-in-out ${riseDelay + 0.7}s infinite`;
                 return (
                   <div key={b.id} className="absolute" style={{ left: `${slot.left + jx}%`, top: `${slot.top + jy}%`, transform: 'translate(-50%, -50%)' }}>
-                    <div className="relative flex flex-col items-center" style={{ width: 48, animation: `balloonRiseIn 0.7s ease-out ${riseDelay}s both, balloonBob ${2.6 + (i % 3) * 0.4}s ease-in-out ${riseDelay + 0.7}s infinite` }}>
+                    <div onClick={() => popBalloon(b.id)} className="relative flex flex-col items-center cursor-pointer" style={{ width: 48, transformOrigin: '50% 100%', animation: anim }}>
                       <svg width="46" height="42" viewBox="0 0 24 24" style={{ filter: 'drop-shadow(0 3px 3px rgba(0,0,0,0.35)) saturate(1.35)', overflow: 'visible' }}>
                         <defs>
                           <radialGradient id={gradId} cx="32%" cy="26%" r="80%">
@@ -885,12 +911,12 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                         {/* 하이라이트 - 유광 반사 느낌 (회전 없이 단순한 원으로) */}
                         <circle cx="8" cy="8.3" r="1.7" fill="rgba(255,255,255,0.7)" />
                       </svg>
-                      {/* 이름표 - 풍선 밖 아래쪽에 별도 배지로 표시해 절대 잘리지 않게 함 */}
+                      {/* 이름표 - 성 빼고 이름만, 풍선 밖 아래쪽에 별도 배지로 표시해 절대 잘리지 않게 함 */}
                       <div className="rounded-full px-1.5 py-0.5" style={{ marginTop: -4, background: 'rgba(20,18,14,0.72)', maxWidth: 70 }}>
-                        <span className="text-[9px] font-bold leading-none whitespace-nowrap" style={{ color: '#F2EEE3' }}>{dispName(b.author_name, isLoggedIn)}</span>
+                        <span className="text-[9px] font-bold leading-none whitespace-nowrap" style={{ color: '#F2EEE3' }}>{givenNameOnly(dispName(b.author_name, isLoggedIn))}</span>
                       </div>
                       {currentMember?.id === b.author_id && (
-                        <button onClick={() => requestDelete(() => removeBalloon(b.id), '이 풍선을 없앨까요?')} className="absolute -top-1.5 -right-1.5 rounded-full p-0.5" style={{ background: CARD_BG }} aria-label="풍선 삭제"><X size={10} style={{ color: MUTE }} /></button>
+                        <button onClick={(e) => { e.stopPropagation(); requestDelete(() => removeBalloon(b.id), '이 풍선을 없앨까요?'); }} className="absolute -top-1.5 -right-1.5 rounded-full p-0.5" style={{ background: CARD_BG }} aria-label="풍선 삭제"><X size={10} style={{ color: MUTE }} /></button>
                       )}
                     </div>
                   </div>
