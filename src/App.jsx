@@ -237,7 +237,7 @@ const computeWeeklyPenalties = (sessions, checkins, calendarDays, members, absen
 };
 
 /* ---------- Supabase data layer ---------- */
-const TABLES = ['members', 'notices', 'notice_views', 'sessions', 'checkins', 'penalty_completions', 'calendar_days', 'settings', 'photos', 'absence_excuses', 'meeting_locations', 'dues_payments', 'expenses', 'dinner_collections', 'book_shares', 'notifications', 'book_tower_entries'];
+const TABLES = ['members', 'notices', 'notice_views', 'sessions', 'checkins', 'penalty_completions', 'calendar_days', 'settings', 'photos', 'absence_excuses', 'meeting_locations', 'dues_payments', 'expenses', 'dinner_collections', 'book_shares', 'notifications', 'book_tower_entries', 'birthday_balloons'];
 
 async function fetchAll(tables = TABLES) {
   // members는 pin 컬럼이 빠진 members_public 뷰에서 조회 (일반 조회 시 PIN이 클라이언트로 전송되지 않도록)
@@ -295,6 +295,7 @@ export default function App() {
   const [bookShares, setBookShares] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [bookTowerEntries, setBookTowerEntries] = useState([]);
+  const [birthdayBalloons, setBirthdayBalloons] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(() => localStorage.getItem('chexchoco-current-user') || null);
   // 기기 등록: null=조회중, false=미등록, 문자열=등록된 멤버 id (한번 정해지면 앱에서는 절대 못 바꿈 — DB에 update/delete 정책 자체가 없음)
@@ -345,6 +346,7 @@ export default function App() {
       if (data.book_shares) setBookShares(data.book_shares);
       if (data.notifications) setNotifications(data.notifications);
       if (data.book_tower_entries) setBookTowerEntries(data.book_tower_entries);
+      if (data.birthday_balloons) setBirthdayBalloons(data.birthday_balloons);
       setError('');
     } catch (e) { setError('데이터를 불러오지 못했어요. 새로고침해 주세요.'); }
     setLoaded(true);
@@ -678,7 +680,7 @@ export default function App() {
           })}
         </div>
 
-        {tab === 'notice' && <NoticeScreen notices={notices} noticeViews={noticeViews} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} requestDelete={requestDelete} />}
+        {tab === 'notice' && <NoticeScreen notices={notices} noticeViews={noticeViews} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} requestDelete={requestDelete} birthdayBalloons={birthdayBalloons} />}
         {tab === 'gallery' && <GalleryScreen photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} requestDelete={requestDelete} showToast={showToast} bookShares={bookShares} bookTowerEntries={bookTowerEntries} />}
         {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} meetingLocations={meetingLocations} />}
         {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} currentMember={currentMember} />}
@@ -693,7 +695,7 @@ export default function App() {
 /* ---------------- 공지사항 ---------------- */
 const MAX_PDF_BYTES = 3 * 1024 * 1024;
 
-function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, members, requestDelete }) {
+function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, members, requestDelete, birthdayBalloons }) {
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -708,6 +710,19 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
 
   const todayMd = todayStr().slice(5, 10);
   const birthdayFolksToday = members.filter((m) => m.birthday && mdOf(m.birthday) === todayMd);
+  const todayFull = todayStr();
+  const [sendingBalloon, setSendingBalloon] = useState(false);
+  const BALLOON_COLORS = ['#E0958C', '#D9A9C4', '#F0A87C', '#EFC94C', '#7FA8D9', '#7FDCCF', '#D9C24C'];
+  const todaysBalloons = (birthdayBalloons || []).filter((b) => b.for_date === todayFull).sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const sendBalloon = async () => {
+    if (!currentMember || sendingBalloon) return;
+    setSendingBalloon(true);
+    const color = BALLOON_COLORS[Math.floor(Math.random() * BALLOON_COLORS.length)];
+    await insertRow('birthday_balloons', { id: uid('bl'), for_date: todayFull, author_id: currentMember.id, author_name: currentMember.name, color, created_at: new Date().toISOString() });
+    await reload();
+    setSendingBalloon(false);
+  };
+  const removeBalloon = async (id) => { await deleteRow('birthday_balloons', 'id', id); await reload(); };
 
   const sorted = [...notices].sort((a, b) => {
     if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
@@ -791,6 +806,12 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
 
   return (
     <div className="space-y-3">
+      <style>{`
+        @keyframes balloonBob {
+          0%, 100% { transform: translateY(0) rotate(-2deg); }
+          50% { transform: translateY(-7px) rotate(2deg); }
+        }
+      `}</style>
       {birthdayFolksToday.length > 0 && (
         <Card className="text-center">
           <div className="flex items-center justify-center gap-2 mb-1">
@@ -798,7 +819,26 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
             <span className="font-semibold" style={{ color: INK, fontFamily: "'Fraunces', serif" }}>오늘은 {birthdayFolksToday.map((m) => dispName(m.name, isLoggedIn)).join(', ')}님 생일이에요!</span>
             <PartyPopper size={18} style={{ color: '#EFC94C' }} />
           </div>
-          <p className="text-sm" style={{ color: MUTE }}>생일을 축하해요! 행복한 하루 되세요 🎂</p>
+          <p className="text-sm" style={{ color: MUTE }}>생일 축하해요~ 행복한 하루 되세요 🎂</p>
+          {todaysBalloons.length > 0 && (
+            <div className="mt-3 pt-1 flex flex-wrap items-end justify-center gap-x-1 gap-y-4" style={{ minHeight: 70 }}>
+              {todaysBalloons.map((b, i) => (
+                <div key={b.id} className="relative flex flex-col items-center" style={{ animation: `balloonBob ${2.6 + (i % 3) * 0.4}s ease-in-out ${(i % 4) * -0.5}s infinite` }}>
+                  <svg width="34" height="30" viewBox="0 0 24 24" style={{ filter: 'drop-shadow(0 2px 2px rgba(0,0,0,0.25))' }}>
+                    <path d="M12 21s-6.716-4.35-9.428-8.552C.28 9.02 1.343 5 5 5c2.042 0 3.326 1.088 4 2.09C9.674 6.088 10.958 5 13 5c3.657 0 4.72 4.02 2.428 7.448C18.716 16.65 12 21 12 21z" fill={b.color} />
+                  </svg>
+                  <span className="absolute text-[8px] font-bold leading-none px-0.5 rounded truncate" style={{ top: 11, maxWidth: 30, color: '#2A2620' }}>{dispName(b.author_name, isLoggedIn).slice(0, 3)}</span>
+                  <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.35)' }} />
+                  {currentMember?.id === b.author_id && (
+                    <button onClick={() => requestDelete(() => removeBalloon(b.id), '이 풍선을 없앨까요?')} className="absolute -top-1.5 -right-1.5 rounded-full p-0.5" style={{ background: CARD_BG }} aria-label="풍선 삭제"><X size={9} style={{ color: MUTE }} /></button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {currentMember && (
+            <button onClick={sendBalloon} disabled={sendingBalloon} className="mt-3 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50" style={{ background: BTN_BG, color: BTN_TEXT }}>🎈 축하 풍선 띄우기</button>
+          )}
         </Card>
       )}
       {canManage && (
@@ -1380,8 +1420,10 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         {(() => {
           const list = towerView === 'mine' ? myTower : groupTower;
           if (list.length === 0) return <p className="text-xs text-center py-6" style={{ color: MUTE }}>아직 쌓인 책이 없어요.</p>;
+          const PAGE_BG = '#EDE6D5'; // 종이 단면(책배) 색
+          const PAGE_LINE = 'rgba(90,78,54,0.16)'; // 페이지 결 라인
           return (
-            <div className="flex flex-col-reverse gap-1.5 max-h-[28rem] overflow-y-auto pr-1">
+            <div className="flex flex-col-reverse gap-1 max-h-[28rem] overflow-y-auto pr-1">
               {list.map((t) => {
                 const owner = towerView === 'group' ? members.find((m) => m.id === t.member_id) : null;
                 const isMine = towerView === 'mine' && currentMember;
@@ -1392,54 +1434,58 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 const statusText = t.finished_date ? '완독' : t.current_page ? `p.${t.current_page}` : '읽는 중';
                 // id를 기반으로 한 안정적인 값으로 살짝 다른 두께를 줘서 실제 책처럼 자연스럽게
                 const hash = t.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
-                const py = ['py-2.5', 'py-3', 'py-3.5'][hash % 3];
-                const shade = dark ? 'rgba(0,0,0,0.35)' : 'rgba(0,0,0,0.08)';
-                const highlight = dark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.5)';
-                // 위/아래 끝에 표지처럼 보이는 진한 띠를 둬서, 책이 옆으로 누워 쌓인 모습을 표현
-                const coverShade = dark ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.22)';
+                const containerH = [64, 76, 88][hash % 3];
+                const coverT = 6; // 표지 두께(위/아래 얇은 띠)
+                const obiH = Math.round(containerH * 0.46); // 띠지(오비) 높이
+                const obiTop = Math.round((containerH - obiH) / 2);
                 return (
-                  <div key={t.id} className="relative" style={{
-                    background: `linear-gradient(180deg, ${coverShade} 0%, ${coverShade} 12%, transparent 12%, transparent 88%, ${coverShade} 88%, ${coverShade} 100%), linear-gradient(180deg, ${highlight} 0%, transparent 22%, transparent 78%, ${shade} 100%), ${t.color}`,
-                    borderRadius: 6, boxShadow: '0 2px 4px rgba(0,0,0,0.3)', border: `1px solid ${dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
+                  <div key={t.id} className="relative overflow-hidden" style={{
+                    height: containerH, borderRadius: 5,
+                    background: `repeating-linear-gradient(180deg, ${PAGE_LINE} 0px, ${PAGE_LINE} 1px, transparent 1px, transparent 4px), ${PAGE_BG}`,
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(0,0,0,0.06)',
                   }}>
-                    {/* 책갈피 리본 장식 */}
-                    <div className="absolute pointer-events-none" style={{ top: 0, right: 16, width: 10, height: 20, background: dark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.14)', clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 75%, 0 100%)' }} />
-                    {/* 책 페이지 결(여러 겹 라인) — 책등이 옆으로 누운 것처럼 오른쪽 단면 표현 */}
-                    <div className="absolute pointer-events-none" style={{ top: '14%', bottom: '14%', right: 2, width: 6, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                      {[0, 1, 2, 3, 4].map((n) => <div key={n} style={{ height: 1, background: dark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.1)' }} />)}
-                    </div>
-                    <div className="absolute pointer-events-none" style={{ top: 0, bottom: 0, right: 0, width: 3, background: dark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)', borderRadius: '0 6px 6px 0' }} />
+                    {/* 위쪽 표지 단면 */}
+                    <div className="absolute pointer-events-none" style={{ top: 0, left: 0, right: 0, height: coverT, background: t.color }} />
+                    {/* 아래쪽 표지 단면 */}
+                    <div className="absolute pointer-events-none" style={{ bottom: 0, left: 0, right: 0, height: coverT, background: t.color }} />
+                    {/* 오른쪽 책배(페이지 단면) 그림자로 두께감 표현 */}
+                    <div className="absolute pointer-events-none" style={{ top: 0, bottom: 0, right: 0, width: 10, background: 'linear-gradient(90deg, transparent, rgba(0,0,0,0.08))' }} />
                     {isEditing ? (
-                      <div className="space-y-1.5 px-4 py-3">
-                        <div className="text-sm font-bold" style={{ color: fg }}>{t.book_title}</div>
+                      <div className="absolute inset-0 flex flex-col justify-center gap-1.5 px-4" style={{ background: CARD_BG }}>
+                        <div className="text-sm font-bold truncate" style={{ color: INK }}>{t.book_title}</div>
                         <div className="grid grid-cols-2 gap-1.5">
-                          <input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="rounded-lg px-2 py-1 text-[11px] outline-none" style={{ background: 'rgba(255,255,255,0.6)', color: '#1E1C16', border: 'none' }} aria-label="읽기 시작일" />
-                          <input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="rounded-lg px-2 py-1 text-[11px] outline-none" style={{ background: 'rgba(255,255,255,0.6)', color: '#1E1C16', border: 'none' }} aria-label="다 읽은 날" />
+                          <input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="rounded-lg px-2 py-1 text-[11px] outline-none" style={inputStyle} aria-label="읽기 시작일" />
+                          <input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="rounded-lg px-2 py-1 text-[11px] outline-none" style={inputStyle} aria-label="다 읽은 날" />
                         </div>
-                        <input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} placeholder="현재 페이지" className="w-full rounded-lg px-2 py-1 text-[11px] outline-none" style={{ background: 'rgba(255,255,255,0.6)', color: '#1E1C16', border: 'none' }} />
-                        <div className="flex gap-1.5">
-                          <button onClick={() => saveTowerEdit(t)} className="text-[11px] rounded-full px-2 py-1 font-semibold" style={{ background: '#1E1C16', color: '#F2EEE3' }}>저장</button>
-                          <button onClick={() => setEditingTowerId(null)} className="text-[11px] rounded-full px-2 py-1 font-semibold" style={{ background: 'rgba(255,255,255,0.5)', color: '#1E1C16' }}>취소</button>
+                        <div className="flex gap-1.5 items-center">
+                          <input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} placeholder="현재 페이지" className="flex-1 rounded-lg px-2 py-1 text-[11px] outline-none" style={inputStyle} />
+                          <button onClick={() => saveTowerEdit(t)} className="text-[11px] rounded-full px-2.5 py-1 font-semibold shrink-0" style={{ background: '#1E1C16', color: '#F2EEE3' }}>저장</button>
+                          <button onClick={() => setEditingTowerId(null)} className="text-[11px] rounded-full px-2.5 py-1 font-semibold shrink-0" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>취소</button>
                         </div>
                       </div>
                     ) : (
-                      <div className={`flex items-center justify-between px-4 ${py} gap-2`}>
-                        <div className="min-w-0">
-                          <div className="text-sm font-bold truncate" style={{ color: fg }}>{t.book_title}</div>
-                          <div className="text-[11px] truncate" style={{ color: fgMute }}>
-                            {owner ? dispName(owner.name, isLoggedIn) : (t.start_date ? `시작 ${fmtDate(t.start_date)}` : '')}
+                      <>
+                        {/* 책갈피 리본 장식 — 위쪽 표지에서 페이지 사이로 꽂혀있는 느낌 */}
+                        <div className="absolute pointer-events-none z-10" style={{ top: 0, right: 18, width: 9, height: obiTop + 10, background: dark ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.16)', clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%)' }} />
+                        {/* 띠지(오비) — 표지 색이 감싸는 라벨 영역, 여기에 제목/정보 표시 */}
+                        <div className="absolute left-0 right-0 flex items-center justify-between px-4" style={{ top: obiTop, height: obiH, background: t.color, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.1)' }}>
+                          <div className="min-w-0">
+                            <div className="text-sm font-bold truncate" style={{ color: fg }}>{t.book_title}</div>
+                            <div className="text-[11px] truncate" style={{ color: fgMute }}>
+                              {owner ? dispName(owner.name, isLoggedIn) : (t.start_date ? `시작 ${fmtDate(t.start_date)}` : '')}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-xs font-medium" style={{ color: fgMute }}>{statusText}</span>
+                            {isMine && (
+                              <>
+                                <button onClick={() => startTowerEdit(t)} className="p-1" aria-label="책탑 항목 수정"><Pencil size={12} style={{ color: fgMute }} /></button>
+                                <button onClick={() => removeTowerEntry(t.id)} className="p-1" aria-label="책탑에서 제거"><X size={12} style={{ color: fgMute }} /></button>
+                              </>
+                            )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <span className="text-xs font-medium" style={{ color: fgMute }}>{statusText}</span>
-                          {isMine && (
-                            <>
-                              <button onClick={() => startTowerEdit(t)} className="p-1" aria-label="책탑 항목 수정"><Pencil size={12} style={{ color: fgMute }} /></button>
-                              <button onClick={() => removeTowerEntry(t.id)} className="p-1" aria-label="책탑에서 제거"><X size={12} style={{ color: fgMute }} /></button>
-                            </>
-                          )}
-                        </div>
-                      </div>
+                      </>
                     )}
                   </div>
                 );
