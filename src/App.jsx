@@ -1007,6 +1007,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [editShareTitle, setEditShareTitle] = useState('');
   const [editShareAuthor, setEditShareAuthor] = useState('');
   const [editSharePublisher, setEditSharePublisher] = useState('');
+  const [coverCache, setCoverCache] = useState({}); // { [shareId]: 'loading' | url | 'none' }
   const notify = async (memberId, message, linkId) => {
     await insertRow('notifications', { id: uid('nt'), member_id: memberId, message, link_id: linkId, created_at: new Date().toISOString() });
   };
@@ -1090,6 +1091,26 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const offers = bookShares.filter((s) => s.kind === 'offer').sort((a, b) => b.created_at.localeCompare(a.created_at));
   const requests = bookShares.filter((s) => s.kind === 'request').sort((a, b) => b.created_at.localeCompare(a.created_at));
   const viewingShare = bookShares.find((s) => s.id === viewingShareId) || null;
+
+  useEffect(() => {
+    if (!viewingShare) return;
+    if (coverCache[viewingShare.id]) return; // 이미 조회했으면 재요청 안 함
+    let cancelled = false;
+    const key = viewingShare.id;
+    setCoverCache((prev) => ({ ...prev, [key]: 'loading' }));
+    const q = [viewingShare.book_title, viewingShare.book_author].filter(Boolean).map((v) => v.trim()).filter(Boolean);
+    const query = encodeURIComponent(`intitle:${q[0] || ''}${q[1] ? ` inauthor:${q[1]}` : ''}`);
+    fetch(`https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=1&country=KR`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        const thumb = data?.items?.[0]?.volumeInfo?.imageLinks?.thumbnail || data?.items?.[0]?.volumeInfo?.imageLinks?.smallThumbnail || null;
+        const url = thumb ? thumb.replace(/^http:/, 'https:') : 'none';
+        setCoverCache((prev) => ({ ...prev, [key]: url }));
+      })
+      .catch(() => { if (!cancelled) setCoverCache((prev) => ({ ...prev, [key]: 'none' })); });
+    return () => { cancelled = true; };
+  }, [viewingShare?.id]);
 
   // ---------- 책탑 ----------
   const [towerView, setTowerView] = useState('mine'); // 'mine' | 'group'
@@ -1181,7 +1202,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           <div className="space-y-2 mb-3 pb-3" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
             <div className="flex gap-2">
               <button onClick={() => setShareKind('offer')} className="flex-1 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'offer' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'offer' ? BTN_TEXT : NEUTRAL_TEXT }}>빌려줄까요?</button>
-              <button onClick={() => setShareKind('request')} className="flex-1 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'request' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'request' ? BTN_TEXT : NEUTRAL_TEXT }}>빌려주실래요?</button>
+              <button onClick={() => setShareKind('request')} className="flex-1 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'request' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'request' ? BTN_TEXT : NEUTRAL_TEXT }}>빌려주실수있나요?</button>
             </div>
             <input value={shareTitle} onChange={(e) => setShareTitle(e.target.value)} placeholder="책 제목 (필수)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
             <div className="grid grid-cols-2 gap-2">
@@ -1208,7 +1229,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
             );
           })}
         </div>
-        <div className="mb-1.5 text-xs font-semibold" style={{ color: MUTE }}>🙋 빌려주실래요? ({requests.length})</div>
+        <div className="mb-1.5 text-xs font-semibold" style={{ color: MUTE }}>🙋 빌려주실수있나요? ({requests.length})</div>
         <div className="space-y-1.5">
           {requests.length === 0 && <p className="text-xs" style={{ color: MUTE }}>등록된 글이 없어요.</p>}
           {requests.map((s) => {
@@ -1258,6 +1279,16 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 </div>
               ) : (
                 <>
+                  {coverCache[viewingShare.id] && coverCache[viewingShare.id] !== 'none' && coverCache[viewingShare.id] !== 'loading' && (
+                    <div className="flex justify-center mb-3">
+                      <img src={coverCache[viewingShare.id]} alt="" className="rounded-lg shadow-md" style={{ height: 128, width: 'auto' }} />
+                    </div>
+                  )}
+                  {coverCache[viewingShare.id] === 'loading' && (
+                    <div className="flex justify-center mb-3">
+                      <div className="rounded-lg animate-pulse" style={{ height: 128, width: 88, background: NEUTRAL_BG }} />
+                    </div>
+                  )}
                   <div className="text-base font-semibold mb-2" style={{ color: INK }}>{viewingShare.book_title}</div>
                   <div className="text-xs space-y-1 mb-3" style={{ color: NEUTRAL_TEXT }}>
                     {viewingShare.book_author && <div>저자: {viewingShare.book_author}</div>}
@@ -1317,8 +1348,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                   )}
                 </div>
               )}
-              {canEditPost && viewingShare.status === 'open' && !editingShare && (
-                <button onClick={() => deleteBookShare(viewingShare)} className="text-[11px] underline underline-offset-2 mt-3" style={{ color: MUTE }}>글 삭제</button>
+              {canEditPost && !editingShare && (
+                <button onClick={() => requestDelete(() => deleteBookShare(viewingShare), '이 게시글을 삭제할까요? 대여 기록도 함께 사라져요.')} className="text-[11px] underline underline-offset-2 mt-3" style={{ color: '#F0A87C' }}>글 삭제</button>
               )}
             </div>
           </div>
