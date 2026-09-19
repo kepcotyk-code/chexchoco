@@ -723,6 +723,14 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
     setSendingBalloon(false);
   };
   const removeBalloon = async (id) => { await deleteRow('birthday_balloons', 'id', id); await reload(); };
+  const shadeColor = (hex, percent) => {
+    const num = parseInt(hex.replace('#', ''), 16);
+    const clamp = (v) => Math.max(0, Math.min(255, v));
+    const r = clamp((num >> 16) + Math.round(2.55 * percent));
+    const g = clamp(((num >> 8) & 0xff) + Math.round(2.55 * percent));
+    const bl = clamp((num & 0xff) + Math.round(2.55 * percent));
+    return `#${((1 << 24) | (r << 16) | (g << 8) | bl).toString(16).slice(1)}`;
+  };
 
   // 풍선이 쌓일 자리를 하트 모양으로 미리 계산해둠 — 안쪽 레이어부터 채워져서, 풍선이 늘어날수록 큰 하트가 완성되는 것처럼 보임
   const heartSlots = useMemo(() => {
@@ -844,7 +852,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
           </div>
           <p className="text-sm" style={{ color: MUTE }}>생일 축하해요~ 행복한 하루 되세요 🎂</p>
           {todaysBalloons.length > 0 && (
-            <div className="relative mx-auto mt-3" style={{ width: '100%', maxWidth: 240, height: 160 }}>
+            <div className="relative mx-auto mt-3" style={{ width: '100%', maxWidth: 260, height: 190 }}>
               {todaysBalloons.map((b, i) => {
                 const wrapIdx = i % heartSlots.length;
                 const wrapRound = Math.floor(i / heartSlots.length);
@@ -853,14 +861,25 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                 const jHash = b.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
                 const jx = wrapRound ? ((jHash % 7) - 3) * 1.2 : 0;
                 const jy = wrapRound ? (((jHash >> 3) % 7) - 3) * 1.2 : 0;
+                const gradId = `balloon-grad-${b.id}`;
                 return (
                   <div key={b.id} className="absolute" style={{ left: `${slot.left + jx}%`, top: `${slot.top + jy}%`, transform: 'translate(-50%, -50%)' }}>
-                    <div className="relative" style={{ width: 42, height: 37, animation: `balloonBob ${2.6 + (i % 3) * 0.4}s ease-in-out ${(i % 4) * -0.5}s infinite` }}>
-                      <svg width="42" height="37" viewBox="0 0 24 24" style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.3))' }}>
-                        <path d="M12 21s-6.716-4.35-9.428-8.552C.28 9.02 1.343 5 5 5c2.042 0 3.326 1.088 4 2.09C9.674 6.088 10.958 5 13 5c3.657 0 4.72 4.02 2.428 7.448C18.716 16.65 12 21 12 21z" fill={b.color} />
+                    <div className="relative flex flex-col items-center" style={{ width: 48, animation: `balloonBob ${2.6 + (i % 3) * 0.4}s ease-in-out ${(i % 4) * -0.5}s infinite` }}>
+                      <svg width="48" height="42" viewBox="0 0 24 24" style={{ filter: 'drop-shadow(0 3px 3px rgba(0,0,0,0.35))', overflow: 'visible' }}>
+                        <defs>
+                          <radialGradient id={gradId} cx="32%" cy="26%" r="80%">
+                            <stop offset="0%" stopColor={shadeColor(b.color, 55)} />
+                            <stop offset="55%" stopColor={b.color} />
+                            <stop offset="100%" stopColor={shadeColor(b.color, -28)} />
+                          </radialGradient>
+                        </defs>
+                        <path d="M12 21s-6.716-4.35-9.428-8.552C.28 9.02 1.343 5 5 5c2.042 0 3.326 1.088 4 2.09C9.674 6.088 10.958 5 13 5c3.657 0 4.72 4.02 2.428 7.448C18.716 16.65 12 21 12 21z" fill={`url(#${gradId})`} stroke={shadeColor(b.color, -35)} strokeWidth="0.4" />
+                        {/* 하이라이트 - 유광 반사 느낌 */}
+                        <ellipse cx="7.2" cy="7.5" rx="2.1" ry="1.3" fill="rgba(255,255,255,0.75)" transform="rotate(-35 7.2 7.5)" />
                       </svg>
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <span className="text-[9px] font-bold leading-none whitespace-nowrap" style={{ color: '#2A2620' }}>{dispName(b.author_name, isLoggedIn)}</span>
+                      {/* 이름표 - 풍선 밖 아래쪽에 별도 배지로 표시해 절대 잘리지 않게 함 */}
+                      <div className="rounded-full px-1.5 py-0.5" style={{ marginTop: -4, background: 'rgba(20,18,14,0.72)', maxWidth: 70 }}>
+                        <span className="text-[9px] font-bold leading-none whitespace-nowrap" style={{ color: '#F2EEE3' }}>{dispName(b.author_name, isLoggedIn)}</span>
                       </div>
                       {currentMember?.id === b.author_id && (
                         <button onClick={() => requestDelete(() => removeBalloon(b.id), '이 풍선을 없앨까요?')} className="absolute -top-1.5 -right-1.5 rounded-full p-0.5" style={{ background: CARD_BG }} aria-label="풍선 삭제"><X size={10} style={{ color: MUTE }} /></button>
