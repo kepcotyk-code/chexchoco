@@ -865,7 +865,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                 return (
                   <div key={b.id} className="absolute" style={{ left: `${slot.left + jx}%`, top: `${slot.top + jy}%`, transform: 'translate(-50%, -50%)' }}>
                     <div className="relative flex flex-col items-center" style={{ width: 48, animation: `balloonBob ${2.6 + (i % 3) * 0.4}s ease-in-out ${(i % 4) * -0.5}s infinite` }}>
-                      <svg width="48" height="42" viewBox="0 0 24 24" style={{ filter: 'drop-shadow(0 3px 3px rgba(0,0,0,0.35))', overflow: 'visible' }}>
+                      <svg width="46" height="42" viewBox="0 0 24 24" style={{ filter: 'drop-shadow(0 3px 3px rgba(0,0,0,0.35))', overflow: 'visible' }}>
                         <defs>
                           <radialGradient id={gradId} cx="32%" cy="26%" r="80%">
                             <stop offset="0%" stopColor={shadeColor(b.color, 55)} />
@@ -873,9 +873,9 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                             <stop offset="100%" stopColor={shadeColor(b.color, -28)} />
                           </radialGradient>
                         </defs>
-                        <path d="M12 21s-6.716-4.35-9.428-8.552C.28 9.02 1.343 5 5 5c2.042 0 3.326 1.088 4 2.09C9.674 6.088 10.958 5 13 5c3.657 0 4.72 4.02 2.428 7.448C18.716 16.65 12 21 12 21z" fill={`url(#${gradId})`} stroke={shadeColor(b.color, -35)} strokeWidth="0.4" />
-                        {/* 하이라이트 - 유광 반사 느낌 */}
-                        <ellipse cx="7.2" cy="7.5" rx="2.1" ry="1.3" fill="rgba(255,255,255,0.75)" transform="rotate(-35 7.2 7.5)" />
+                        <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" fill={`url(#${gradId})`} stroke={shadeColor(b.color, -35)} strokeWidth="0.3" strokeLinejoin="round" />
+                        {/* 하이라이트 - 유광 반사 느낌 (회전 없이 단순한 원으로) */}
+                        <circle cx="8" cy="8.3" r="1.7" fill="rgba(255,255,255,0.7)" />
                       </svg>
                       {/* 이름표 - 풍선 밖 아래쪽에 별도 배지로 표시해 절대 잘리지 않게 함 */}
                       <div className="rounded-full px-1.5 py-0.5" style={{ marginTop: -4, background: 'rgba(20,18,14,0.72)', maxWidth: 70 }}>
