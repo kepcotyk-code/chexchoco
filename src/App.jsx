@@ -1105,7 +1105,10 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
             <p className="text-sm mb-1" style={{ color: MUTE, marginTop: -6 }}>생일 축하해요! 행복한 하루 되세요 🎂</p>
           )}
           {currentMember && (
-            <button onClick={sendBalloon} disabled={sendingBalloon} className="mt-3 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50" style={{ background: BTN_BG, color: BTN_TEXT }}>🎈 축하 풍선 띄우기</button>
+            <>
+              <button onClick={sendBalloon} disabled={sendingBalloon} className="mt-3 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50" style={{ background: BTN_BG, color: BTN_TEXT }}>🎈 축하 풍선 띄우기</button>
+              <p className="text-[11px] mt-1.5" style={{ color: MUTE }}>✨ 터뜨릴수록 행운이 함께하길 ✨</p>
+            </>
           )}
         </Card>
       )}
