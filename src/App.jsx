@@ -699,67 +699,45 @@ const MAX_PDF_BYTES = 3 * 1024 * 1024;
 // 풍선이 터질 때 튀어오르는 폭죽 파편 + 불빛 이펙트 (컨테이너 대비 %좌표에 배치)
 function ConfettiBurst({ left, top, color }) {
   const particles = useMemo(() => {
-    const colors = ['#FFD54A', '#FF6B4A', '#4AD9E8', '#FF4AA8', '#FFFFFF', '#8B5CF6', '#4AE87A', color];
-    return Array.from({ length: 34 }).map((_, k) => {
-      const angle = (k / 34) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
-      const dist = 46 + Math.random() * 74;
-      const isSpark = k % 3 !== 0;
+    const colors = ['#4CE0C0', '#FF6F6F', '#FFD93B', '#8E7CF0', '#4A90E2', '#FFA552', color];
+    const shapes = ['rect', 'rect', 'rect', 'streamer', 'streamer', 'triangle'];
+    return Array.from({ length: 46 }).map((_, k) => {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 55 + Math.random() * 125;
+      const spin = (Math.random() < 0.5 ? -1 : 1) * (360 + Math.random() * 720);
       return {
         dx: Math.cos(angle) * dist,
-        dy: Math.sin(angle) * dist,
-        gx: (Math.random() - 0.5) * 18,
-        gy: 26 + Math.random() * 30, // 중력에 의해 아래로 떨어지는 궤적
-        rot: Math.round((angle * 180) / Math.PI),
-        len: isSpark ? 10 + Math.random() * 10 : 0,
-        size: isSpark ? 2 : 3.5 + Math.random() * 3,
-        delay: Math.round(Math.random() * 130) / 1000,
-        dur: 0.85 + Math.random() * 0.35,
-        isSpark,
+        dy: Math.sin(angle) * dist * 0.85 - 12,
+        gx: (Math.random() - 0.5) * 22,
+        gy: 34 + Math.random() * 42, // 종이가 살랑거리며 아래로 떨어지는 중력 궤적
+        spin: Math.round(spin),
+        shape: shapes[k % shapes.length],
+        size: 5 + Math.random() * 4,
+        len: 12 + Math.random() * 8,
+        delay: Math.round(Math.random() * 180) / 1000,
+        dur: 1.05 + Math.random() * 0.5,
         color: colors[k % colors.length],
       };
     });
   }, [color]);
-  const crackle = useMemo(() => {
-    return Array.from({ length: 12 }).map((_, k) => {
-      const angle = Math.random() * Math.PI * 2;
-      const dist = 18 + Math.random() * 40;
-      return {
-        dx: Math.cos(angle) * dist,
-        dy: Math.sin(angle) * dist,
-        delay: 0.16 + Math.round(Math.random() * 140) / 1000,
-        size: 2.5 + Math.random() * 2,
-      };
-    });
-  }, []);
   return (
     <div className="absolute pointer-events-none" style={{ left: `${left}%`, top: `${top}%`, width: 0, height: 0, zIndex: 5 }}>
-      {/* 확 번쩍이는 불빛 - 더 크고 밝게 */}
-      <span style={{ position: 'absolute', left: 0, top: 0, width: 110, height: 110, marginLeft: -55, marginTop: -55, borderRadius: '50%', background: `radial-gradient(circle, rgba(255,255,255,1) 0%, ${color} 32%, rgba(255,255,255,0) 70%)`, animation: 'popGlow 0.6s ease-out forwards' }} />
-      {/* 빠르게 퍼지는 밝은 충격파 */}
-      <span style={{ position: 'absolute', left: 0, top: 0, width: 50, height: 50, marginLeft: -25, marginTop: -25, borderRadius: '50%', border: `3px solid ${color}`, animation: 'popFlash 0.6s ease-out forwards' }} />
-      {/* 느리고 크게 퍼지는 은은한 2차 충격파 */}
-      <span style={{ position: 'absolute', left: 0, top: 0, width: 40, height: 40, marginLeft: -20, marginTop: -20, borderRadius: '50%', border: `1.5px solid rgba(255,255,255,0.7)`, animation: 'popFlashWide 0.9s ease-out 0.05s forwards' }} />
-      {particles.map((p, idx) => (
-        <span key={idx} style={{
+      {/* 터지는 순간의 옅은 퍼프(공기가 확 밀려나가는 느낌), 폭죽 불빛이 아니라 색종이 대포 느낌 */}
+      <span style={{ position: 'absolute', left: 0, top: 0, width: 36, height: 36, marginLeft: -18, marginTop: -18, borderRadius: '50%', background: 'rgba(255,255,255,0.55)', animation: 'popGlow 0.35s ease-out forwards' }} />
+      {particles.map((p, idx) => {
+        const common = {
           position: 'absolute', left: 0, top: 0,
-          width: p.isSpark ? p.len : p.size, height: p.isSpark ? Math.max(1.6, p.size * 0.55) : p.size,
-          background: p.isSpark ? `linear-gradient(90deg, ${p.color}, rgba(255,255,255,0.9))` : p.color,
-          borderRadius: p.isSpark ? 2 : '50%',
-          boxShadow: `0 0 ${p.isSpark ? 5 : 7}px ${p.color}`,
-          '--dx': `${p.dx}px`, '--dy': `${p.dy}px`, '--gx': `${p.gx}px`, '--gy': `${p.gy}px`, '--rot': `${p.rot}deg`,
-          transform: `rotate(${p.rot}deg)`,
+          '--dx': `${p.dx}px`, '--dy': `${p.dy}px`, '--gx': `${p.gx}px`, '--gy': `${p.gy}px`, '--spin': `${p.spin}deg`,
           animation: `confettiBurst ${p.dur}s cubic-bezier(0.16,0.84,0.44,1) ${p.delay}s forwards`,
-        }} />
-      ))}
-      {/* 2차 크랙클 - 잔불처럼 톡톡 튀는 작은 반짝임 */}
-      {crackle.map((p, idx) => (
-        <span key={`c${idx}`} style={{
-          position: 'absolute', left: 0, top: 0, width: p.size, height: p.size,
-          background: '#FFFFFF', borderRadius: '50%', boxShadow: '0 0 6px #FFD54A',
-          '--dx': `${p.dx}px`, '--dy': `${p.dy}px`,
-          animation: `crackleSparkle 0.4s ease-out ${p.delay}s forwards`,
-        }} />
-      ))}
+        };
+        if (p.shape === 'triangle') {
+          return <span key={idx} style={{ ...common, width: 0, height: 0, borderLeft: `${p.size * 0.55}px solid transparent`, borderRight: `${p.size * 0.55}px solid transparent`, borderBottom: `${p.size}px solid ${p.color}` }} />;
+        }
+        if (p.shape === 'streamer') {
+          return <span key={idx} style={{ ...common, width: 3, height: p.len, background: p.color, borderRadius: 1 }} />;
+        }
+        return <span key={idx} style={{ ...common, width: p.size, height: p.size * 0.7, background: p.color, borderRadius: 1 }} />;
+      })}
     </div>
   );
 }
@@ -825,7 +803,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
     const key = `${b.id}-${Date.now()}`;
     setBurstEffects((prev) => [...prev, { key, left, top, color: b.color }]);
     setPoppedIds((prev) => ({ ...prev, [b.id]: true }));
-    setTimeout(() => setBurstEffects((prev) => prev.filter((e) => e.key !== key)), 1400);
+    setTimeout(() => setBurstEffects((prev) => prev.filter((e) => e.key !== key)), 1900);
     setTimeout(() => setHiddenIds((prev) => ({ ...prev, [b.id]: true })), POP_ANIM_MS);
   };
 
@@ -996,27 +974,17 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
           100% { transform: scale(0.1); opacity: 0; }
         }
         @keyframes confettiBurst {
-          0% { transform: translate(-50%, -50%) rotate(var(--rot)) scale(1); opacity: 1; }
-          55% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rot)) scale(1); opacity: 1; }
-          100% { transform: translate(calc(-50% + var(--dx) + var(--gx)), calc(-50% + var(--dy) + var(--gy))) rotate(var(--rot)) scale(0.3); opacity: 0; }
-        }
-        @keyframes crackleSparkle {
-          0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
-          40% { transform: translate(calc(-50% + var(--dx) * 0.6), calc(-50% + var(--dy) * 0.6)) scale(1.4); opacity: 1; }
-          100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0); opacity: 0; }
+          0% { transform: translate(-50%, -50%) rotate(0deg) scale(1); opacity: 1; }
+          60% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(calc(var(--spin) * 0.65)) scale(1); opacity: 1; }
+          100% { transform: translate(calc(-50% + var(--dx) + var(--gx)), calc(-50% + var(--dy) + var(--gy))) rotate(var(--spin)) scale(0.9); opacity: 0; }
         }
         @keyframes popFlash {
           0% { transform: scale(0.25); opacity: 0.95; }
           100% { transform: scale(3.4); opacity: 0; }
         }
-        @keyframes popFlashWide {
-          0% { transform: scale(0.3); opacity: 0.8; }
-          100% { transform: scale(5.5); opacity: 0; }
-        }
         @keyframes popGlow {
           0% { transform: scale(0.15); opacity: 1; }
-          50% { transform: scale(1.2); opacity: 0.9; }
-          100% { transform: scale(1.8); opacity: 0; }
+          100% { transform: scale(2.2); opacity: 0; }
         }
         @keyframes balloonFlyInFromBottom {
           0% { transform: translate(-8px, 120vh) scale(0.6); opacity: 0; }
