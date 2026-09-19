@@ -844,24 +844,26 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
           </div>
           <p className="text-sm" style={{ color: MUTE }}>생일 축하해요~ 행복한 하루 되세요 🎂</p>
           {todaysBalloons.length > 0 && (
-            <div className="relative mx-auto mt-3" style={{ width: '100%', maxWidth: 340, height: 260 }}>
+            <div className="relative mx-auto mt-3" style={{ width: '100%', maxWidth: 240, height: 160 }}>
               {todaysBalloons.map((b, i) => {
                 const wrapIdx = i % heartSlots.length;
                 const wrapRound = Math.floor(i / heartSlots.length);
                 const slot = heartSlots[wrapIdx];
                 // 슬롯을 다 채우고 넘치면, id 기반 미세한 오프셋을 줘서 겹치지 않게
                 const jHash = b.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
-                const jx = wrapRound ? ((jHash % 7) - 3) * 1.8 : 0;
-                const jy = wrapRound ? (((jHash >> 3) % 7) - 3) * 1.8 : 0;
+                const jx = wrapRound ? ((jHash % 7) - 3) * 1.2 : 0;
+                const jy = wrapRound ? (((jHash >> 3) % 7) - 3) * 1.2 : 0;
                 return (
                   <div key={b.id} className="absolute" style={{ left: `${slot.left + jx}%`, top: `${slot.top + jy}%`, transform: 'translate(-50%, -50%)' }}>
-                    <div className="relative flex flex-col items-center" style={{ animation: `balloonBob ${2.6 + (i % 3) * 0.4}s ease-in-out ${(i % 4) * -0.5}s infinite` }}>
-                      <svg width="76" height="67" viewBox="0 0 24 24" style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.3))' }}>
+                    <div className="relative" style={{ width: 42, height: 37, animation: `balloonBob ${2.6 + (i % 3) * 0.4}s ease-in-out ${(i % 4) * -0.5}s infinite` }}>
+                      <svg width="42" height="37" viewBox="0 0 24 24" style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.3))' }}>
                         <path d="M12 21s-6.716-4.35-9.428-8.552C.28 9.02 1.343 5 5 5c2.042 0 3.326 1.088 4 2.09C9.674 6.088 10.958 5 13 5c3.657 0 4.72 4.02 2.428 7.448C18.716 16.65 12 21 12 21z" fill={b.color} />
                       </svg>
-                      <span className="absolute text-xs font-bold leading-none px-1 rounded whitespace-nowrap" style={{ top: 27, left: '50%', transform: 'translateX(-50%)', color: '#2A2620' }}>{dispName(b.author_name, isLoggedIn)}</span>
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <span className="text-[9px] font-bold leading-none whitespace-nowrap" style={{ color: '#2A2620' }}>{dispName(b.author_name, isLoggedIn)}</span>
+                      </div>
                       {currentMember?.id === b.author_id && (
-                        <button onClick={() => requestDelete(() => removeBalloon(b.id), '이 풍선을 없앨까요?')} className="absolute -top-1.5 -right-1.5 rounded-full p-0.5" style={{ background: CARD_BG }} aria-label="풍선 삭제"><X size={11} style={{ color: MUTE }} /></button>
+                        <button onClick={() => requestDelete(() => removeBalloon(b.id), '이 풍선을 없앨까요?')} className="absolute -top-1.5 -right-1.5 rounded-full p-0.5" style={{ background: CARD_BG }} aria-label="풍선 삭제"><X size={10} style={{ color: MUTE }} /></button>
                       )}
                     </div>
                   </div>
