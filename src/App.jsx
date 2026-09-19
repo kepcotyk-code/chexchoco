@@ -707,51 +707,6 @@ export default function App() {
 /* ---------------- 공지사항 ---------------- */
 const MAX_PDF_BYTES = 3 * 1024 * 1024;
 
-// 풍선이 터질 때 튀어오르는 폭죽 파편 + 불빛 이펙트 (컨테이너 대비 %좌표에 배치)
-function ConfettiBurst({ left, top, color }) {
-  const particles = useMemo(() => {
-    const colors = ['#4CE0C0', '#FF6F6F', '#FFD93B', '#8E7CF0', '#4A90E2', '#FFA552', color];
-    const shapes = ['rect', 'rect', 'rect', 'streamer', 'streamer', 'triangle'];
-    return Array.from({ length: 46 }).map((_, k) => {
-      const angle = Math.random() * Math.PI * 2;
-      const dist = 55 + Math.random() * 125;
-      const spin = (Math.random() < 0.5 ? -1 : 1) * (360 + Math.random() * 720);
-      return {
-        dx: Math.cos(angle) * dist,
-        dy: Math.sin(angle) * dist * 0.85 - 12,
-        gx: (Math.random() - 0.5) * 70,
-        gy: 70 + Math.random() * 100, // 멈추지 않고 끝까지 날아가며 떨어지는 궤적
-        spin: Math.round(spin),
-        shape: shapes[k % shapes.length],
-        size: 5 + Math.random() * 4,
-        len: 12 + Math.random() * 8,
-        delay: Math.round(Math.random() * 180) / 1000,
-        dur: 1.05 + Math.random() * 0.5,
-        color: colors[k % colors.length],
-      };
-    });
-  }, [color]);
-  return (
-    <div className="absolute pointer-events-none" style={{ left: `${left}%`, top: `${top}%`, width: 0, height: 0, zIndex: 5 }}>
-      {/* 터지는 순간의 옅은 퍼프(공기가 확 밀려나가는 느낌), 폭죽 불빛이 아니라 색종이 대포 느낌 */}
-      <span style={{ position: 'absolute', left: 0, top: 0, width: 36, height: 36, marginLeft: -18, marginTop: -18, borderRadius: '50%', background: 'rgba(255,255,255,0.55)', animation: 'popGlow 0.35s ease-out forwards' }} />
-      {particles.map((p, idx) => {
-        const common = {
-          position: 'absolute', left: 0, top: 0,
-          '--dx': `${p.dx}px`, '--dy': `${p.dy}px`, '--gx': `${p.gx}px`, '--gy': `${p.gy}px`, '--spin': `${p.spin}deg`,
-          animation: `confettiBurst ${p.dur}s cubic-bezier(0.16,0.84,0.44,1) ${p.delay}s forwards`,
-        };
-        if (p.shape === 'triangle') {
-          return <span key={idx} style={{ ...common, width: 0, height: 0, borderLeft: `${p.size * 0.55}px solid transparent`, borderRight: `${p.size * 0.55}px solid transparent`, borderBottom: `${p.size}px solid ${p.color}` }} />;
-        }
-        if (p.shape === 'streamer') {
-          return <span key={idx} style={{ ...common, width: 3, height: p.len, background: p.color, borderRadius: 1 }} />;
-        }
-        return <span key={idx} style={{ ...common, width: p.size, height: p.size * 0.7, background: p.color, borderRadius: 1 }} />;
-      })}
-    </div>
-  );
-}
 function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, members, requestDelete, birthdayBalloons }) {
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState('');
@@ -767,114 +722,6 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
 
   const todayMd = todayStr().slice(5, 10);
   const birthdayFolksToday = members.filter((m) => m.birthday && mdOf(m.birthday) === todayMd && m.name !== '김태영');
-  const todayFull = todayStr();
-  const [sendingBalloon, setSendingBalloon] = useState(false);
-  const BALLOON_COLORS = ['#F23B3B', '#F2871A', '#F5D400', '#3DBF54', '#2E86E0', '#8A4FE0', '#F0479C'];
-  const todaysBalloons = (birthdayBalloons || []).filter((b) => b.for_date === todayFull).sort((a, b) => a.created_at.localeCompare(b.created_at));
-  const sendBalloon = async () => {
-    if (!currentMember || sendingBalloon) return;
-    setSendingBalloon(true);
-    const color = BALLOON_COLORS[Math.floor(Math.random() * BALLOON_COLORS.length)];
-    await insertRow('birthday_balloons', { id: uid('bl'), for_date: todayFull, author_id: currentMember.id, author_name: currentMember.name, color, created_at: new Date().toISOString() });
-    await reload();
-    setSendingBalloon(false);
-  };
-  const removeBalloon = async (id) => { await deleteRow('birthday_balloons', 'id', id); await reload(); };
-  const givenNameOnly = (name) => (name && name.length > 1 ? name.slice(1) : name); // 성 빼고 이름만
-  const shadeColor = (hex, percent) => {
-    const num = parseInt(hex.replace('#', ''), 16);
-    const clamp = (v) => Math.max(0, Math.min(255, v));
-    const r = clamp((num >> 16) + Math.round(2.55 * percent));
-    const g = clamp(((num >> 8) & 0xff) + Math.round(2.55 * percent));
-    const bl = clamp((num & 0xff) + Math.round(2.55 * percent));
-    return `#${((1 << 24) | (r << 16) | (g << 8) | bl).toString(16).slice(1)}`;
-  };
-  // 풍선 id 기반의 결정적 의사난수(-1~1) — 풍선이 영역 안에서 각자 다른 궤적으로 떠다니게 하는 데 사용
-  const floatOffset = (id, salt) => {
-    let h = 7;
-    const s = id + '_' + salt;
-    for (let k = 0; k < s.length; k++) h = (h * 31 + s.charCodeAt(k)) >>> 0;
-    return ((h % 1000) / 1000) * 2 - 1;
-  };
-
-  // 풍선 터뜨리기: 누르면 그 자리에서 폭죽이 터지고 풍선은 사라짐.
-  // 오늘 뜬 풍선을 모두 터뜨리면 그 자리에 사진이 등장하고, 이후 새로 뜨는 풍선은
-  // 사진 영역을 피해 사진 바깥 둘레(ringSlots)에서 다시 생겨남.
-  const [poppedIds, setPoppedIds] = useState({}); // 터짐 애니메이션 재생 중
-  const [hiddenIds, setHiddenIds] = useState({}); // 애니메이션이 끝나 완전히 사라짐
-  const [burstEffects, setBurstEffects] = useState([]); // 터지는 순간의 폭죽 파편
-  const [balloonsSettled, setBalloonsSettled] = useState(false);
-  const [showBalloonPhoto, setShowBalloonPhoto] = useState(false);
-  const [photoBalloonIds, setPhotoBalloonIds] = useState({}); // 사진 등장 시점에 이미 있던 풍선 id 스냅샷 — 이후 새로 뜨는 풍선을 구분하기 위함
-  const POP_ANIM_MS = 260;
-  const activeBalloons = todaysBalloons.filter((b) => !hiddenIds[b.id]);
-
-  const popBalloon = (b, left, top) => {
-    if (poppedIds[b.id]) return;
-    const key = `${b.id}-${Date.now()}`;
-    setBurstEffects((prev) => [...prev, { key, left, top, color: b.color }]);
-    setPoppedIds((prev) => ({ ...prev, [b.id]: true }));
-    setTimeout(() => setBurstEffects((prev) => prev.filter((e) => e.key !== key)), 1900);
-    setTimeout(() => setHiddenIds((prev) => ({ ...prev, [b.id]: true })), POP_ANIM_MS);
-  };
-
-  // 오늘 뜬 풍선을 모두 터뜨리면 사진 등장 (한 번 등장하면 계속 유지) — 등장 시점의 풍선 id를 스냅샷으로 남겨서
-  // 이후 새로 뜨는 풍선(화면 아래에서 날아 올라오는 연출 대상)을 구분함
-  useEffect(() => {
-    if (!showBalloonPhoto && todaysBalloons.length > 0 && activeBalloons.length === 0) {
-      const idsAtReveal = todaysBalloons.reduce((acc, b) => ({ ...acc, [b.id]: true }), {});
-      const t = setTimeout(() => {
-        setPhotoBalloonIds(idsAtReveal);
-        setShowBalloonPhoto(true);
-      }, 350);
-      return () => clearTimeout(t);
-    }
-  }, [activeBalloons.length, todaysBalloons.length, showBalloonPhoto]);
-
-  // 풍선이 사진 주변을 둘러싸는 자리 (동심원 형태, 사진이 들어갈 가운데는 비워둠) — 사진 등장 후 새 풍선이 자리잡는 곳
-  const ringSlots = useMemo(() => {
-    const rings = [
-      { r: 36, n: 8 },
-      { r: 45, n: 12 },
-      { r: 53, n: 16 },
-    ];
-    const positions = [];
-    rings.forEach(({ r, n }, ringIdx) => {
-      for (let i = 0; i < n; i++) {
-        const angle = (i / n) * Math.PI * 2 + ringIdx * 0.35;
-        positions.push({ left: 50 + r * Math.cos(angle), top: 50 + r * 0.82 * Math.sin(angle) });
-      }
-    });
-    return positions;
-  }, []);
-
-  // 풍선이 터지기 전, 큰 하트 모양 구역 안에만 흩어져 있도록 하트 내부를 채우는 좌표를 미리 계산 (rejection sampling)
-  const heartFillSlots = useMemo(() => {
-    const inside = (x, y) => Math.pow(x * x + y * y - 1, 3) - x * x * Math.pow(y, 3) <= 0;
-    const raw = [];
-    let guard = 0;
-    while (raw.length < 70 && guard < 8000) {
-      guard++;
-      const x = (Math.random() * 2 - 1) * 1.2;
-      const y = (Math.random() * 2 - 1) * 1.3;
-      if (inside(x, y)) raw.push({ x, y: -y }); // y 부호를 뒤집어야 화면에서 뾰족한 부분이 아래로 옴
-    }
-    const xs = raw.map((p) => p.x); const ys = raw.map((p) => p.y);
-    const minX = Math.min(...xs), maxX = Math.max(...xs);
-    const minY = Math.min(...ys), maxY = Math.max(...ys);
-    return raw.map((p) => ({
-      left: 10 + ((p.x - minX) / (maxX - minX)) * 80,
-      top: 8 + ((p.y - minY) / (maxY - minY)) * 84,
-    }));
-  }, []);
-
-  // 접속 시 순차 등장 애니메이션이 끝나면, 이후로는 일반 흔들림만 반복하도록 전환
-  useEffect(() => {
-    setBalloonsSettled(false);
-    const maxDelay = Math.min(Math.max(todaysBalloons.length - 1, 0), 10) * 0.09 + 0.7;
-    const t = setTimeout(() => setBalloonsSettled(true), (maxDelay + 0.15) * 1000);
-    return () => clearTimeout(t);
-  }, [todaysBalloons.length]);
 
   const sorted = [...notices].sort((a, b) => {
     if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
@@ -959,57 +806,8 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
   return (
     <div className="space-y-3">
       <style>{`
-        @keyframes balloonRiseIn {
-          0% { transform: translateY(90px) scale(0.5); opacity: 0; }
-          65% { transform: translateY(-8px) scale(1.06); opacity: 1; }
-          100% { transform: translateY(0) scale(1); opacity: 1; }
-        }
-        @keyframes balloonBob {
-          0% { transform: translateY(0) rotate(0deg); }
-          12.5% { transform: translateY(-1px) rotate(-3deg); }
-          25% { transform: translateY(-2.5px) rotate(-6deg); }
-          37.5% { transform: translateY(-4px) rotate(-3deg); }
-          50% { transform: translateY(-5px) rotate(0deg); }
-          62.5% { transform: translateY(-4px) rotate(3deg); }
-          75% { transform: translateY(-2.5px) rotate(6deg); }
-          87.5% { transform: translateY(-1px) rotate(3deg); }
-          100% { transform: translateY(0) rotate(0deg); }
-        }
-        @keyframes balloonFloat {
-          0% { transform: translate(0, 0) rotate(0deg); }
-          25% { transform: translate(var(--fx1), var(--fy1)) rotate(var(--fr1)); }
-          50% { transform: translate(var(--fx2), var(--fy2)) rotate(var(--fr2)); }
-          75% { transform: translate(var(--fx3), var(--fy3)) rotate(var(--fr3)); }
-          100% { transform: translate(0, 0) rotate(0deg); }
-        }
-        @keyframes balloonPopOut {
-          0% { transform: scale(1); opacity: 1; }
-          45% { transform: scale(1.3); opacity: 1; }
-          100% { transform: scale(0.1); opacity: 0; }
-        }
-        @keyframes confettiBurst {
-          0% { transform: translate(-50%, -50%) rotate(0deg) scale(1); opacity: 1; }
-          70% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(calc(var(--spin) * 0.75)) scale(1); opacity: 1; }
-          100% { transform: translate(calc(-50% + var(--dx) + var(--gx)), calc(-50% + var(--dy) + var(--gy))) rotate(var(--spin)) scale(0.85); opacity: 0; }
-        }
-        @keyframes popFlash {
-          0% { transform: scale(0.25); opacity: 0.95; }
-          100% { transform: scale(3.4); opacity: 0; }
-        }
-        @keyframes popGlow {
-          0% { transform: scale(0.15); opacity: 1; }
-          100% { transform: scale(2.2); opacity: 0; }
-        }
-        @keyframes balloonFlyInFromBottom {
-          0% { transform: translate(-8px, 120vh) scale(0.6); opacity: 0; }
-          30% { transform: translate(10px, 78vh) scale(0.75); opacity: 0.9; }
-          55% { transform: translate(-10px, 42vh) scale(0.88); opacity: 1; }
-          78% { transform: translate(8px, 14vh) scale(0.97); opacity: 1; }
-          100% { transform: translate(0, 0) scale(1); opacity: 1; }
-        }
         @keyframes photoRevealIn {
-          0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
-          70% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+          0% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
           100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
         }
         @keyframes photoGlowPulse {
@@ -1028,99 +826,22 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
             <span className="font-semibold" style={{ color: INK, fontFamily: "'Fraunces', serif" }}>오늘은 {birthdayFolksToday.map((m) => dispName(m.name, isLoggedIn)).join(', ')}님 생일이에요!</span>
             <PartyPopper size={18} style={{ color: '#EFC94C' }} />
           </div>
-          {todaysBalloons.length > 0 && (
-            <div className="relative mx-auto mt-1" style={{ width: '100%', maxWidth: 360, height: 320 }}>
-              {activeBalloons.map((b, i) => {
-                // 사진 등장 전: 큰 하트 모양 구역 안에 흩어진 자리 / 사진 등장 후: 사진을 피해 바깥 둘레에 자리
-                const posPool = showBalloonPhoto ? ringSlots : heartFillSlots;
-                const slot = posPool[i % posPool.length];
-                const wrapRound = Math.floor(i / posPool.length);
-                const jHash = b.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
-                const jx = wrapRound ? ((jHash % 7) - 3) * 1.2 : 0;
-                const jy = wrapRound ? (((jHash >> 3) % 7) - 3) * 1.2 : 0;
-                const posLeft = slot.left + jx;
-                const posTop = slot.top + jy;
-                const gradId = `balloon-grad-${b.id}`;
-                const riseDelay = Math.min(i, 10) * 0.09; // 접속 시 하나씩 순차적으로 올라오는 느낌
-                const dur = 2.6 + (i % 3) * 0.4;
-                const isPopping = !!poppedIds[b.id];
-                const isPostPhotoNew = showBalloonPhoto && !photoBalloonIds[b.id]; // 사진 등장 이후 새로 뜬 풍선 — 화면 아래에서 날아 올라옴
-                // 사진 등장 전: 영역 안에서 서로 다른 궤적으로 느리게 떠다니는 움직임
-                const floatDur = 6.5 + (Math.abs(jHash) % 5) * 1.1;
-                const floatDelay = (i % 6) * 0.4;
-                const floatVars = {
-                  '--fx1': `${floatOffset(b.id, 'x1') * 30}px`, '--fy1': `${floatOffset(b.id, 'y1') * 24}px`, '--fr1': `${floatOffset(b.id, 'r1') * 7}deg`,
-                  '--fx2': `${floatOffset(b.id, 'x2') * 30}px`, '--fy2': `${floatOffset(b.id, 'y2') * 24}px`, '--fr2': `${floatOffset(b.id, 'r2') * 7}deg`,
-                  '--fx3': `${floatOffset(b.id, 'x3') * 30}px`, '--fy3': `${floatOffset(b.id, 'y3') * 24}px`, '--fr3': `${floatOffset(b.id, 'r3') * 7}deg`,
-                };
-                const anim = isPopping
-                  ? 'balloonPopOut 0.26s ease-out forwards'
-                  : isPostPhotoNew
-                    ? `balloonFlyInFromBottom 1.3s cubic-bezier(0.22,0.9,0.32,1) both, balloonBob ${dur}s linear 1.3s infinite`
-                    : balloonsSettled
-                      ? `balloonFloat ${floatDur}s ease-in-out ${floatDelay}s infinite`
-                      : `balloonRiseIn 0.7s ease-out ${riseDelay}s both, balloonFloat ${floatDur}s ease-in-out ${riseDelay + 0.7 + floatDelay}s infinite`;
-                return (
-                  <div key={b.id} className="absolute" style={{ left: `${posLeft}%`, top: `${posTop}%`, transform: 'translate(-50%, -50%)', transition: 'left 1.3s ease-in-out, top 1.3s ease-in-out' }}>
-                    <div onClick={() => popBalloon(b, posLeft, posTop)} className="relative flex flex-col items-center cursor-pointer" style={{ width: 41, transformOrigin: '50% 100%', animation: anim, ...floatVars }}>
-                      <div className="relative" style={{ width: 39, height: 36 }}>
-                        <svg width="39" height="36" viewBox="2.25 3 19.5 18" style={{ filter: 'drop-shadow(0 3px 3px rgba(0,0,0,0.35)) saturate(1.15)', overflow: 'visible', display: 'block' }}>
-                          <defs>
-                            <radialGradient id={gradId} cx="32%" cy="26%" r="80%">
-                              <stop offset="0%" stopColor={shadeColor(b.color, 55)} />
-                              <stop offset="55%" stopColor={b.color} />
-                              <stop offset="100%" stopColor={shadeColor(b.color, -28)} />
-                            </radialGradient>
-                          </defs>
-                          <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" fill={`url(#${gradId})`} stroke={shadeColor(b.color, -35)} strokeWidth="0.3" strokeLinejoin="round" />
-                          {/* 하이라이트 - 유광 반사 느낌 (회전 없이 단순한 원으로) */}
-                          <circle cx="8" cy="8.3" r="1.7" fill="rgba(255,255,255,0.7)" />
-                        </svg>
-                        {/* 이름표 - 성 빼고 이름만, 풍선 한가운데 */}
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                          <span className="text-[8px] font-bold leading-none whitespace-nowrap" style={{ color: '#FFFFFF', textShadow: '0 1px 2px rgba(0,0,0,0.45)' }}>{givenNameOnly(dispName(b.author_name, isLoggedIn))}</span>
-                        </div>
-                      </div>
-                      {/* 끈 - 하트 바로 아래, 풍선 세로 길이의 절반 정도 */}
-                      <svg width="8" height="16" viewBox="0 0 8 16" style={{ overflow: 'visible', display: 'block', marginTop: -1 }}>
-                        <path d="M4 0 C 6 4.5, 2 11.5, 4 16" stroke="rgba(255,255,255,0.45)" strokeWidth="1" fill="none" />
-                      </svg>
-                      {(currentMember?.id === b.author_id || canManage) && (
-                        <button onClick={(e) => { e.stopPropagation(); requestDelete(() => removeBalloon(b.id), '이 풍선을 없앨까요?'); }} className="absolute -top-1.5 -right-1.5 rounded-full p-0.5" style={{ background: CARD_BG }} aria-label="풍선 삭제"><X size={10} style={{ color: MUTE }} /></button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-              {burstEffects.map((e) => <ConfettiBurst key={e.key} left={e.left} top={e.top} color={e.color} />)}
-              {showBalloonPhoto && (
-                <div className="absolute" style={{ left: '50%', top: '45%', animation: 'photoRevealIn 0.7s ease-out both', pointerEvents: 'none' }}>
-                  <div className="relative">
-                    {/* 은은하게 숨쉬는 글로우 - 넓게 퍼지는 층 + 밝은 중심층, 두 겹 */}
-                    <div style={{ position: 'absolute', inset: -34, borderRadius: 50, background: 'radial-gradient(circle, rgba(255,224,120,0.55) 0%, rgba(255,224,120,0) 75%)', animation: 'photoGlowPulse 2.6s ease-in-out infinite', zIndex: -1 }} />
-                    <div style={{ position: 'absolute', inset: -14, borderRadius: 30, background: 'radial-gradient(circle, rgba(255,244,200,0.85) 0%, rgba(255,213,74,0.4) 45%, rgba(255,213,74,0) 75%)', animation: 'photoGlowPulse 2.6s ease-in-out 0.1s infinite', zIndex: -1 }} />
-                    <img src={BALLOON_REVEAL_PHOTOS[birthdayFolksToday[0]?.name] || BALLOON_REVEAL_PHOTO_DEFAULT} alt="" style={{ width: 176, height: 'auto', borderRadius: 20, display: 'block', border: '3px solid rgba(255,255,255,0.85)', boxShadow: '0 4px 14px rgba(0,0,0,0.45)' }} />
-                    {/* 주변을 도는 작은 반짝임 */}
-                    {[
-                      { x: -14, y: -8, d: 0 }, { x: 190, y: 4, d: 0.4 }, { x: 200, y: 130, d: 0.9 },
-                      { x: 176, y: 250, d: 0.2 }, { x: -10, y: 240, d: 0.7 }, { x: -18, y: 120, d: 1.2 },
-                    ].map((s, i) => (
-                      <span key={i} style={{ position: 'absolute', left: s.x, top: s.y, fontSize: 16, color: '#FFF4C8', textShadow: '0 0 10px rgba(255,224,120,1), 0 0 18px rgba(255,213,74,0.7)', animation: `sparkleTwinkle 1.8s ease-in-out ${s.d}s infinite` }}>✦</span>
-                    ))}
-                  </div>
-                </div>
-              )}
+          <div className="relative mx-auto mt-2" style={{ width: 176, height: 'auto' }}>
+            <div className="relative" style={{ animation: 'photoRevealIn 1.3s ease-out both' }}>
+              {/* 은은하게 숨쉬는 글로우 - 넓게 퍼지는 층 + 밝은 중심층, 두 겹 */}
+              <div style={{ position: 'absolute', inset: -34, borderRadius: 50, background: 'radial-gradient(circle, rgba(255,224,120,0.55) 0%, rgba(255,224,120,0) 75%)', animation: 'photoGlowPulse 2.6s ease-in-out infinite', zIndex: -1 }} />
+              <div style={{ position: 'absolute', inset: -14, borderRadius: 30, background: 'radial-gradient(circle, rgba(255,244,200,0.85) 0%, rgba(255,213,74,0.4) 45%, rgba(255,213,74,0) 75%)', animation: 'photoGlowPulse 2.6s ease-in-out 0.1s infinite', zIndex: -1 }} />
+              <img src={BALLOON_REVEAL_PHOTOS[birthdayFolksToday[0]?.name] || BALLOON_REVEAL_PHOTO_DEFAULT} alt="" style={{ width: 176, height: 'auto', borderRadius: 20, display: 'block', border: '3px solid rgba(255,255,255,0.85)', boxShadow: '0 4px 14px rgba(0,0,0,0.45)' }} />
+              {/* 주변을 도는 작은 반짝임 */}
+              {[
+                { x: -14, y: -8, d: 0 }, { x: 190, y: 4, d: 0.4 }, { x: 200, y: 130, d: 0.9 },
+                { x: 176, y: 250, d: 0.2 }, { x: -10, y: 240, d: 0.7 }, { x: -18, y: 120, d: 1.2 },
+              ].map((s, i) => (
+                <span key={i} style={{ position: 'absolute', left: s.x, top: s.y, fontSize: 16, color: '#FFF4C8', textShadow: '0 0 10px rgba(255,224,120,1), 0 0 18px rgba(255,213,74,0.7)', animation: `sparkleTwinkle 1.8s ease-in-out ${s.d}s infinite` }}>✦</span>
+              ))}
             </div>
-          )}
-          {showBalloonPhoto && (
-            <p className="text-sm mb-1" style={{ color: MUTE, marginTop: -6 }}>생일 축하해요! 행복한 하루 되세요 🎂</p>
-          )}
-          {currentMember && (
-            <>
-              <button onClick={sendBalloon} disabled={sendingBalloon} className="mt-3 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50" style={{ background: BTN_BG, color: BTN_TEXT }}>🎈 축하 풍선 띄우기</button>
-              <p className="text-[11px] mt-1.5" style={{ color: MUTE }}>✨ 터뜨릴수록 행운이 함께하길 ✨</p>
-            </>
-          )}
+          </div>
+          <p className="text-sm mb-1 mt-2" style={{ color: MUTE }}>생일 축하해요! 행복한 하루 되세요 🎂</p>
         </Card>
       )}
       {canManage && (
