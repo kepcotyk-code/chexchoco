@@ -712,7 +712,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
   const birthdayFolksToday = members.filter((m) => m.birthday && mdOf(m.birthday) === todayMd);
   const todayFull = todayStr();
   const [sendingBalloon, setSendingBalloon] = useState(false);
-  const BALLOON_COLORS = ['#E0958C', '#D9A9C4', '#F0A87C', '#EFC94C', '#7FA8D9', '#7FDCCF', '#D9C24C'];
+  const BALLOON_COLORS = ['#F2543F', '#F0479C', '#F2841A', '#F5C400', '#2E86E0', '#12C7A5', '#C7CC1A'];
   const todaysBalloons = (birthdayBalloons || []).filter((b) => b.for_date === todayFull).sort((a, b) => a.created_at.localeCompare(b.created_at));
   const sendBalloon = async () => {
     if (!currentMember || sendingBalloon) return;
@@ -732,14 +732,14 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
     return `#${((1 << 24) | (r << 16) | (g << 8) | bl).toString(16).slice(1)}`;
   };
 
-  // 풍선이 쌓일 자리를 하트 모양으로 미리 계산해둠 — 안쪽 레이어부터 채워져서, 풍선이 늘어날수록 큰 하트가 완성되는 것처럼 보임
+  // 풍선이 쌓일 자리를 하트 모양으로 미리 계산해둠 — 바깥쪽 윤곽선부터 채워져서, 몇 개만 있어도 큰 하트 윤곽이 바로 보이고 늘어날수록 속이 채워짐
   const heartSlots = useMemo(() => {
     const layers = [
-      { k: 0.32, n: 3 },
-      { k: 0.52, n: 5 },
-      { k: 0.70, n: 7 },
-      { k: 0.86, n: 9 },
       { k: 1.00, n: 11 },
+      { k: 0.86, n: 9 },
+      { k: 0.70, n: 7 },
+      { k: 0.52, n: 5 },
+      { k: 0.32, n: 3 },
     ];
     const raw = [];
     layers.forEach(({ k, n }) => {
@@ -844,8 +844,10 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
           100% { transform: translateY(0) scale(1); opacity: 1; }
         }
         @keyframes balloonBob {
-          0%, 100% { transform: translateY(0) rotate(0deg); }
-          50% { transform: translateY(-6px) rotate(2deg); }
+          0%, 100% { transform: translate(0, 0) rotate(0deg); }
+          25% { transform: translate(3px, -3px) rotate(-2deg); }
+          50% { transform: translate(0, -6px) rotate(0deg); }
+          75% { transform: translate(-3px, -3px) rotate(2deg); }
         }
       `}</style>
       {birthdayFolksToday.length > 0 && (
@@ -867,10 +869,11 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
                 const jx = wrapRound ? ((jHash % 7) - 3) * 1.2 : 0;
                 const jy = wrapRound ? (((jHash >> 3) % 7) - 3) * 1.2 : 0;
                 const gradId = `balloon-grad-${b.id}`;
+                const riseDelay = Math.min(i, 10) * 0.09; // 접속 시 하나씩 순차적으로 올라오는 느낌
                 return (
                   <div key={b.id} className="absolute" style={{ left: `${slot.left + jx}%`, top: `${slot.top + jy}%`, transform: 'translate(-50%, -50%)' }}>
-                    <div className="relative flex flex-col items-center" style={{ width: 48, animation: `balloonRiseIn 0.7s ease-out forwards, balloonBob ${2.6 + (i % 3) * 0.4}s ease-in-out 0.7s infinite` }}>
-                      <svg width="46" height="42" viewBox="0 0 24 24" style={{ filter: 'drop-shadow(0 3px 3px rgba(0,0,0,0.35))', overflow: 'visible' }}>
+                    <div className="relative flex flex-col items-center" style={{ width: 48, animation: `balloonRiseIn 0.7s ease-out ${riseDelay}s both, balloonBob ${2.6 + (i % 3) * 0.4}s ease-in-out ${riseDelay + 0.7}s infinite` }}>
+                      <svg width="46" height="42" viewBox="0 0 24 24" style={{ filter: 'drop-shadow(0 3px 3px rgba(0,0,0,0.35)) saturate(1.35)', overflow: 'visible' }}>
                         <defs>
                           <radialGradient id={gradId} cx="32%" cy="26%" r="80%">
                             <stop offset="0%" stopColor={shadeColor(b.color, 55)} />
