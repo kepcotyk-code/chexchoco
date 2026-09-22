@@ -4,7 +4,7 @@ import { supabase } from './supabaseClient';
 import {
   Crown, Shield, Wallet, User, Plus, Pencil, Trash2, Check, X, Lock, AlertCircle, Mail,
   Megaphone, QrCode, BarChart3, Users, Settings2, Settings, Download, Upload, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Briefcase, Coffee,
-  LogIn, LogOut, Cake, PartyPopper, Archive, Paperclip, FileText, Eye, Pin, Gavel, BookOpen,
+  LogIn, LogOut, Cake, PartyPopper, Archive, Paperclip, FileText, Eye, Pin, Gavel, BookOpen, Search,
   Image as ImageIcon, Trophy, Plane,
 } from 'lucide-react';
 
@@ -1110,6 +1110,34 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [editShareAuthor, setEditShareAuthor] = useState('');
   const [editSharePublisher, setEditSharePublisher] = useState('');
   const [coverCache, setCoverCache] = useState({}); // { [shareId]: 'loading' | url | 'none' }
+  // 책 검색 (등록 폼)
+  const [shareCoverUrl, setShareCoverUrl] = useState('');
+  const [bookSearchOpen, setBookSearchOpen] = useState(false);
+  const [bookSearchLoading, setBookSearchLoading] = useState(false);
+  const [bookSearchResults, setBookSearchResults] = useState([]);
+  // 책 검색 (수정 폼)
+  const [editShareCoverUrl, setEditShareCoverUrl] = useState('');
+  const [editBookSearchOpen, setEditBookSearchOpen] = useState(false);
+  const [editBookSearchLoading, setEditBookSearchLoading] = useState(false);
+  const [editBookSearchResults, setEditBookSearchResults] = useState([]);
+  const searchBooks = async (query, setResults, setLoading, setOpen) => {
+    if (!query.trim()) return;
+    setLoading(true);
+    setOpen(true);
+    try {
+      const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query.trim())}&maxResults=8&country=KR`);
+      const data = await res.json();
+      setResults((data.items || []).map((it) => ({
+        title: it.volumeInfo?.title || '',
+        author: (it.volumeInfo?.authors || []).join(', '),
+        publisher: it.volumeInfo?.publisher || '',
+        cover: (it.volumeInfo?.imageLinks?.thumbnail || it.volumeInfo?.imageLinks?.smallThumbnail || '').replace(/^http:/, 'https:'),
+      })));
+    } catch (e) {
+      setResults([]);
+    }
+    setLoading(false);
+  };
   const notify = async (memberId, message, linkId) => {
     await insertRow('notifications', { id: uid('nt'), member_id: memberId, message, link_id: linkId, created_at: new Date().toISOString() });
   };
@@ -1118,14 +1146,16 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     await insertRow('book_shares', {
       id: uid('bs'), kind: shareKind, posted_by: currentMember.id,
       book_title: shareTitle.trim(), book_author: shareAuthor.trim() || null, book_publisher: sharePublisher.trim() || null,
+      cover_url: shareCoverUrl || null,
       status: 'open', created_at: new Date().toISOString(),
     });
-    setShareTitle(''); setShareAuthor(''); setSharePublisher(''); setShowShareForm(false);
+    setShareTitle(''); setShareAuthor(''); setSharePublisher(''); setShareCoverUrl(''); setBookSearchResults([]); setBookSearchOpen(false); setShowShareForm(false);
     await reload();
   };
   const saveShareEdit = async (share) => {
     if (!editShareTitle.trim()) return;
-    await updateRow('book_shares', 'id', share.id, { book_title: editShareTitle.trim(), book_author: editShareAuthor.trim() || null, book_publisher: editSharePublisher.trim() || null });
+    await updateRow('book_shares', 'id', share.id, { book_title: editShareTitle.trim(), book_author: editShareAuthor.trim() || null, book_publisher: editSharePublisher.trim() || null, cover_url: editShareCoverUrl || null });
+    setCoverCache((prev) => { const next = { ...prev }; delete next[share.id]; return next; });
     setEditingShare(false);
     await reload();
   };
@@ -1197,6 +1227,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   useEffect(() => {
     if (!viewingShare) return;
     if (coverCache[viewingShare.id]) return; // 이미 조회했으면 재요청 안 함
+    if (viewingShare.cover_url) { setCoverCache((prev) => ({ ...prev, [viewingShare.id]: viewingShare.cover_url })); return; } // 등록 시 선택해둔 표지가 있으면 그걸 그대로 사용
     let cancelled = false;
     const key = viewingShare.id;
     setCoverCache((prev) => ({ ...prev, [key]: 'loading' }));
@@ -1319,7 +1350,37 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
               <button onClick={() => setShareKind('offer')} className="flex-1 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'offer' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'offer' ? BTN_TEXT : NEUTRAL_TEXT }}>빌려줄까요?</button>
               <button onClick={() => setShareKind('request')} className="flex-1 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'request' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'request' ? BTN_TEXT : NEUTRAL_TEXT }}>빌려주실수있나요?</button>
             </div>
-            <input value={shareTitle} onChange={(e) => setShareTitle(e.target.value)} placeholder="책 제목 (필수)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+            <div className="relative">
+              <div className="flex gap-2">
+                <input value={shareTitle} onChange={(e) => { setShareTitle(e.target.value); setShareCoverUrl(''); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); searchBooks(shareTitle, setBookSearchResults, setBookSearchLoading, setBookSearchOpen); } }} placeholder="책 제목 (필수)" className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                <button onClick={() => searchBooks(shareTitle, setBookSearchResults, setBookSearchLoading, setBookSearchOpen)} disabled={!shareTitle.trim()} className="shrink-0 rounded-xl px-3 disabled:opacity-40" style={{ background: NEUTRAL_BG }} aria-label="책 검색"><Search size={16} style={{ color: NEUTRAL_TEXT }} /></button>
+              </div>
+              {bookSearchOpen && (
+                <div className="absolute z-10 left-0 right-0 mt-1 rounded-xl border overflow-hidden" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 260, overflowY: 'auto' }}>
+                  <div className="flex items-center justify-between px-2 py-1" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
+                    <span className="text-[11px]" style={{ color: MUTE }}>{bookSearchLoading ? '검색 중…' : `검색 결과 ${bookSearchResults.length}건`}</span>
+                    <button onClick={() => setBookSearchOpen(false)} className="p-1" aria-label="검색 결과 닫기"><X size={12} style={{ color: MUTE }} /></button>
+                  </div>
+                  {!bookSearchLoading && bookSearchResults.length === 0 && <div className="px-3 py-3 text-xs" style={{ color: MUTE }}>검색 결과가 없어요.</div>}
+                  {bookSearchResults.map((r, i) => (
+                    <button key={i} onClick={() => { setShareTitle(r.title); setShareAuthor(r.author); setSharePublisher(r.publisher); setShareCoverUrl(r.cover); setBookSearchOpen(false); }} className="w-full flex items-center gap-2.5 px-2.5 py-2 text-left" style={{ borderBottom: i < bookSearchResults.length - 1 ? `1px solid ${ROW_LINE}` : 'none' }}>
+                      {r.cover ? <img src={r.cover} alt="" className="rounded shrink-0" style={{ width: 32, height: 46, objectFit: 'cover' }} /> : <div className="rounded shrink-0" style={{ width: 32, height: 46, background: NEUTRAL_BG }} />}
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold truncate" style={{ color: INK }}>{r.title}</div>
+                        <div className="text-[11px] truncate" style={{ color: MUTE }}>{[r.author, r.publisher].filter(Boolean).join(' · ')}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {shareCoverUrl && (
+              <div className="flex items-center gap-2">
+                <img src={shareCoverUrl} alt="" className="rounded shadow-sm" style={{ width: 32, height: 46, objectFit: 'cover' }} />
+                <span className="text-[11px]" style={{ color: MUTE }}>표지가 선택됐어요</span>
+                <button onClick={() => setShareCoverUrl('')} className="text-[11px] underline" style={{ color: MUTE }}>선택 해제</button>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <input value={shareAuthor} onChange={(e) => setShareAuthor(e.target.value)} placeholder="저자 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
               <input value={sharePublisher} onChange={(e) => setSharePublisher(e.target.value)} placeholder="출판사 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
@@ -1377,14 +1438,44 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: viewingShare.kind === 'offer' ? '#1E2A38' : '#332815', color: viewingShare.kind === 'offer' ? '#7FA8D9' : '#EFC94C' }}>{viewingShare.kind === 'offer' ? '제공' : '요청'}</span>
                 <div className="flex items-center gap-2">
                   {canEditPost && !editingShare && (
-                    <button onClick={() => { setEditingShare(true); setEditShareTitle(viewingShare.book_title); setEditShareAuthor(viewingShare.book_author || ''); setEditSharePublisher(viewingShare.book_publisher || ''); }} aria-label="글 수정"><Pencil size={14} style={{ color: MUTE }} /></button>
+                    <button onClick={() => { setEditingShare(true); setEditShareTitle(viewingShare.book_title); setEditShareAuthor(viewingShare.book_author || ''); setEditSharePublisher(viewingShare.book_publisher || ''); setEditShareCoverUrl(viewingShare.cover_url || ''); }} aria-label="글 수정"><Pencil size={14} style={{ color: MUTE }} /></button>
                   )}
                   <button onClick={() => setViewingShareId(null)} aria-label="닫기"><X size={16} style={{ color: MUTE }} /></button>
                 </div>
               </div>
               {editingShare ? (
                 <div className="space-y-2 mb-3">
-                  <input value={editShareTitle} onChange={(e) => setEditShareTitle(e.target.value)} placeholder="책 제목" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                  <div className="relative">
+                    <div className="flex gap-2">
+                      <input value={editShareTitle} onChange={(e) => { setEditShareTitle(e.target.value); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); searchBooks(editShareTitle, setEditBookSearchResults, setEditBookSearchLoading, setEditBookSearchOpen); } }} placeholder="책 제목" className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                      <button onClick={() => searchBooks(editShareTitle, setEditBookSearchResults, setEditBookSearchLoading, setEditBookSearchOpen)} disabled={!editShareTitle.trim()} className="shrink-0 rounded-xl px-3 disabled:opacity-40" style={{ background: NEUTRAL_BG }} aria-label="책 검색"><Search size={16} style={{ color: NEUTRAL_TEXT }} /></button>
+                    </div>
+                    {editBookSearchOpen && (
+                      <div className="absolute z-10 left-0 right-0 mt-1 rounded-xl border overflow-hidden" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 260, overflowY: 'auto' }}>
+                        <div className="flex items-center justify-between px-2 py-1" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
+                          <span className="text-[11px]" style={{ color: MUTE }}>{editBookSearchLoading ? '검색 중…' : `검색 결과 ${editBookSearchResults.length}건`}</span>
+                          <button onClick={() => setEditBookSearchOpen(false)} className="p-1" aria-label="검색 결과 닫기"><X size={12} style={{ color: MUTE }} /></button>
+                        </div>
+                        {!editBookSearchLoading && editBookSearchResults.length === 0 && <div className="px-3 py-3 text-xs" style={{ color: MUTE }}>검색 결과가 없어요.</div>}
+                        {editBookSearchResults.map((r, i) => (
+                          <button key={i} onClick={() => { setEditShareTitle(r.title); setEditShareAuthor(r.author); setEditSharePublisher(r.publisher); setEditShareCoverUrl(r.cover); setEditBookSearchOpen(false); }} className="w-full flex items-center gap-2.5 px-2.5 py-2 text-left" style={{ borderBottom: i < editBookSearchResults.length - 1 ? `1px solid ${ROW_LINE}` : 'none' }}>
+                            {r.cover ? <img src={r.cover} alt="" className="rounded shrink-0" style={{ width: 32, height: 46, objectFit: 'cover' }} /> : <div className="rounded shrink-0" style={{ width: 32, height: 46, background: NEUTRAL_BG }} />}
+                            <div className="min-w-0">
+                              <div className="text-xs font-semibold truncate" style={{ color: INK }}>{r.title}</div>
+                              <div className="text-[11px] truncate" style={{ color: MUTE }}>{[r.author, r.publisher].filter(Boolean).join(' · ')}</div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {editShareCoverUrl && (
+                    <div className="flex items-center gap-2">
+                      <img src={editShareCoverUrl} alt="" className="rounded shadow-sm" style={{ width: 32, height: 46, objectFit: 'cover' }} />
+                      <span className="text-[11px]" style={{ color: MUTE }}>표지가 선택됐어요</span>
+                      <button onClick={() => setEditShareCoverUrl('')} className="text-[11px] underline" style={{ color: MUTE }}>선택 해제</button>
+                    </div>
+                  )}
                   <input value={editShareAuthor} onChange={(e) => setEditShareAuthor(e.target.value)} placeholder="저자 (선택)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
                   <input value={editSharePublisher} onChange={(e) => setEditSharePublisher(e.target.value)} placeholder="출판사 (선택)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
                   <div className="flex gap-2">
