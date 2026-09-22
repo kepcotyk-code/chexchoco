@@ -1511,71 +1511,71 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 const statusText = t.finished_date ? '완독' : t.current_page ? `p.${t.current_page}` : '읽는 중';
                 // id를 기반으로 한 안정적인 값으로 살짝 다른 두께를 줘서 실제 책처럼 자연스럽게
                 const hash = t.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
-                const containerH = [64, 70, 76][hash % 3];
-                // 너비가 제각각이고, 왼쪽 여백도 (3단계가 아니라) 남은 공간 안에서 연속적으로 랜덤해야
-                // 실제로 손으로 쌓은 책더미처럼 자연스럽게 보임. 살짝 기울기도 더해줌.
-                const widthPct = 60 + ((hash >> 2) % 30); // 60~89%
-                const maxLeftPct = 100 - widthPct;
-                const leftPct = maxLeftPct > 0 ? (hash >> 7) % (maxLeftPct + 1) : 0;
-                const tiltDeg = (((hash >> 10) % 9) - 4) * 0.45; // 약 -1.8~1.8도
+                const containerH = [46, 50, 54][hash % 3]; // 기존보다 얇고 아담하게
+                // 좌우 어느 한쪽으로도 치우치지 않도록 가운데를 중심으로 고정하고, 너비(두께감)만 책마다 다르게
+                const widthPct = 64 + ((hash >> 2) % 26); // 64~89%
+                const leftPct = (100 - widthPct) / 2;
                 const lineShade = dark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.12)';
                 const highlight = dark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.35)';
                 const shade = dark ? 'rgba(0,0,0,0.22)' : 'rgba(0,0,0,0.06)';
+                if (isEditing) {
+                  return (
+                    <div key={t.id} className="rounded-2xl p-3 space-y-2" style={{ background: CARD_BG, border: `1px solid ${ROW_LINE}` }}>
+                      <div className="text-sm font-bold truncate" style={{ color: INK }}>{t.book_title}</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>읽기 시작일</div><input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} aria-label="읽기 시작일" /></div>
+                        <div>
+                          <div className="text-[10px] mb-1" style={{ color: MUTE }}>다 읽은 날</div>
+                          <div className="flex gap-1 items-center">
+                            <input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none flex-1 min-w-0" style={inputStyle} aria-label="다 읽은 날" />
+                            {towerFinishedInput && (
+                              <button onClick={() => setTowerFinishedInput('')} className="shrink-0 p-1.5" aria-label="다 읽은 날 지우기"><X size={13} style={{ color: MUTE }} /></button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} placeholder="예: 128" className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
+                      <label className="flex items-center gap-1.5 text-xs" style={{ color: MUTE }}>
+                        <input type="checkbox" checked={editingTowerPublic} onChange={(e) => setEditingTowerPublic(e.target.checked)} />
+                        모임 책장에 공개
+                      </label>
+                      <div className="flex gap-1.5 items-center pt-1">
+                        <button onClick={() => saveTowerEdit(t)} className="flex-1 text-xs rounded-full py-2 font-semibold" style={{ background: '#1E1C16', color: '#F2EEE3' }}>저장</button>
+                        <button onClick={() => setEditingTowerId(null)} className="flex-1 text-xs rounded-full py-2 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>취소</button>
+                      </div>
+                    </div>
+                  );
+                }
                 return (
                   <div key={t.id} style={{ position: 'relative' }}>
                   <div className="relative overflow-hidden" style={{
                     width: `${widthPct}%`, marginLeft: `${leftPct}%`, height: containerH, borderRadius: 14,
-                    transform: `rotate(${tiltDeg}deg)`,
                     background: `linear-gradient(180deg, ${highlight} 0%, transparent 25%, transparent 75%, ${shade} 100%), ${t.color}`,
                     boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
                   }}>
                     {/* 왼쪽 페이지 결 — 책이 옆으로 누워 여러 장 겹친 느낌 */}
-                    <div className="absolute pointer-events-none" style={{ top: 6, bottom: 6, left: 12, width: 2, background: lineShade, borderRadius: 1 }} />
-                    <div className="absolute pointer-events-none" style={{ top: 6, bottom: 6, left: 17, width: 2, background: lineShade, borderRadius: 1 }} />
+                    <div className="absolute pointer-events-none" style={{ top: 5, bottom: 5, left: 10, width: 2, background: lineShade, borderRadius: 1 }} />
+                    <div className="absolute pointer-events-none" style={{ top: 5, bottom: 5, left: 14, width: 2, background: lineShade, borderRadius: 1 }} />
                     {/* 우상단 책갈피 리본 */}
-                    <div className="absolute pointer-events-none" style={{ top: 0, right: 20, width: 11, height: 22, background: dark ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.2)', clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%)' }} />
-                    {isEditing ? (
-                      <div className="absolute inset-0 flex flex-col justify-center gap-1.5 px-6" style={{ background: CARD_BG }}>
-                        <div className="text-sm font-bold truncate" style={{ color: INK }}>{t.book_title}</div>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          <input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="rounded-lg px-2 py-1 text-[11px] outline-none" style={inputStyle} aria-label="읽기 시작일" />
-                          <div className="flex gap-1 items-center">
-                            <input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="rounded-lg px-2 py-1 text-[11px] outline-none flex-1 min-w-0" style={inputStyle} aria-label="다 읽은 날" />
-                            {towerFinishedInput && (
-                              <button onClick={() => setTowerFinishedInput('')} className="shrink-0 p-1" aria-label="다 읽은 날 지우기"><X size={12} style={{ color: fgMute }} /></button>
-                            )}
-                          </div>
-                        </div>
-                        <label className="flex items-center gap-1.5 text-[10px]" style={{ color: fgMute }}>
-                          <input type="checkbox" checked={editingTowerPublic} onChange={(e) => setEditingTowerPublic(e.target.checked)} />
-                          모임 책장에 공개
-                        </label>
-                        <div className="flex gap-1.5 items-center">
-                          <input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} placeholder="현재 페이지" className="flex-1 rounded-lg px-2 py-1 text-[11px] outline-none" style={inputStyle} />
-                          <button onClick={() => saveTowerEdit(t)} className="text-[11px] rounded-full px-2.5 py-1 font-semibold shrink-0" style={{ background: '#1E1C16', color: '#F2EEE3' }}>저장</button>
-                          <button onClick={() => setEditingTowerId(null)} className="text-[11px] rounded-full px-2.5 py-1 font-semibold shrink-0" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>취소</button>
+                    <div className="absolute pointer-events-none" style={{ top: 0, right: 16, width: 9, height: 16, background: dark ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.2)', clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%)' }} />
+                    <div className="relative flex items-center justify-between h-full pl-6 pr-3 gap-2">
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold truncate" style={{ color: fg }}>{t.book_title}</div>
+                        <div className="text-[11px] truncate" style={{ color: fgMute }}>
+                          {owner ? dispName(owner.name, isLoggedIn) : (t.start_date ? `시작 ${fmtDate(t.start_date)}` : '')}
                         </div>
                       </div>
-                    ) : (
-                      <div className="relative flex items-center justify-between h-full pl-7 pr-4 gap-2">
-                        <div className="min-w-0">
-                          <div className="text-sm font-bold truncate" style={{ color: fg }}>{t.book_title}</div>
-                          <div className="text-[11px] truncate" style={{ color: fgMute }}>
-                            {owner ? dispName(owner.name, isLoggedIn) : (t.start_date ? `시작 ${fmtDate(t.start_date)}` : '')}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {t.is_public === false && <Lock size={11} style={{ color: fgMute }} />}
-                          <span className="text-xs font-medium" style={{ color: fgMute }}>{statusText}</span>
-                          {isMine && (
-                            <>
-                              <button onClick={() => startTowerEdit(t)} className="p-1" aria-label="책탑 항목 수정"><Pencil size={12} style={{ color: fgMute }} /></button>
-                              <button onClick={() => removeTowerEntry(t.id)} className="p-1" aria-label="책탑에서 제거"><X size={12} style={{ color: fgMute }} /></button>
-                            </>
-                          )}
-                        </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {t.is_public === false && <Lock size={11} style={{ color: fgMute }} />}
+                        <span className="text-xs font-medium" style={{ color: fgMute }}>{statusText}</span>
+                        {isMine && (
+                          <>
+                            <button onClick={() => startTowerEdit(t)} className="p-1" aria-label="책탑 항목 수정"><Pencil size={12} style={{ color: fgMute }} /></button>
+                            <button onClick={() => requestDelete(() => removeTowerEntry(t.id), `'${t.book_title}'을(를) 책장에서 없앨까요?`)} className="p-1" aria-label="책탑에서 제거"><X size={12} style={{ color: fgMute }} /></button>
+                          </>
+                        )}
                       </div>
-                    )}
+                    </div>
                   </div>
                   </div>
                 );
