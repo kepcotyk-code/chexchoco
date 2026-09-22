@@ -1132,12 +1132,31 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [editBookSearchOpen, setEditBookSearchOpen] = useState(false);
   const [editBookSearchLoading, setEditBookSearchLoading] = useState(false);
   const [editBookSearchResults, setEditBookSearchResults] = useState([]);
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [editCoverUploading, setEditCoverUploading] = useState(false);
+  // 외부 URL을 그대로 걸지 않고, 우리 저장소로 이미지를 직접 업로드해서 안정적으로 보이게 함
+  const uploadCoverImage = async (file, setCoverUrl, setUploading) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { showToast?.('이미지 파일만 업로드할 수 있어요.', 'error'); return; }
+    setUploading(true);
+    try {
+      const blob = await compressImage(file);
+      const path = `book-cover-${uid('bc')}.jpg`;
+      const { error: upErr } = await supabase.storage.from('photos').upload(path, blob, { contentType: 'image/jpeg' });
+      if (upErr) throw upErr;
+      setCoverUrl(publicUrl('photos', path));
+    } catch (e) {
+      showToast?.('표지 업로드에 실패했어요.', 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
   const searchBooks = async (query, setResults, setLoading, setOpen) => {
     if (!query.trim()) return;
     setLoading(true);
     setOpen(true);
     try {
-      const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query.trim())}&maxResults=8&country=KR`);
+      const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query.trim())}&maxResults=8`);
       const data = await res.json();
       setResults((data.items || []).map((it) => ({
         title: it.volumeInfo?.title || '',
@@ -1243,9 +1262,9 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     let cancelled = false;
     const key = viewingShare.id;
     setCoverCache((prev) => ({ ...prev, [key]: 'loading' }));
-    const q = [viewingShare.book_title, viewingShare.book_author].filter(Boolean).map((v) => v.trim()).filter(Boolean);
-    const query = encodeURIComponent(`intitle:${q[0] || ''}${q[1] ? ` inauthor:${q[1]}` : ''}`);
-    fetch(`https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=1&country=KR`)
+    const q = [viewingShare.book_title, viewingShare.book_author].filter(Boolean).map((v) => v.trim()).filter(Boolean).join(' ');
+    const query = encodeURIComponent(q);
+    fetch(`https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=1`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (cancelled) return;
@@ -1373,7 +1392,12 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                     <span className="text-[11px]" style={{ color: MUTE }}>{bookSearchLoading ? '검색 중…' : `검색 결과 ${bookSearchResults.length}건`}</span>
                     <button onClick={() => setBookSearchOpen(false)} className="p-1" aria-label="검색 결과 닫기"><X size={12} style={{ color: MUTE }} /></button>
                   </div>
-                  {!bookSearchLoading && bookSearchResults.length === 0 && <div className="px-3 py-3 text-xs" style={{ color: MUTE }}>검색 결과가 없어요.</div>}
+                  {!bookSearchLoading && bookSearchResults.length === 0 && (
+                    <div className="px-3 py-3 text-xs space-y-2" style={{ color: MUTE }}>
+                      <div>검색 결과가 없어요.</div>
+                      <a href={`https://www.google.com/search?tbm=isch&q=${encodeURIComponent((shareTitle || '') + ' 책 표지')}`} target="_blank" rel="noreferrer" className="inline-block underline" style={{ color: NEUTRAL_TEXT }}>구글 이미지에서 표지 찾아보기 →</a>
+                    </div>
+                  )}
                   {bookSearchResults.map((r, i) => (
                     <button key={i} onClick={() => { setShareTitle(r.title); setShareAuthor(r.author); setSharePublisher(r.publisher); setShareCoverUrl(r.cover); setBookSearchOpen(false); }} className="w-full flex items-center gap-2.5 px-2.5 py-2 text-left" style={{ borderBottom: i < bookSearchResults.length - 1 ? `1px solid ${ROW_LINE}` : 'none' }}>
                       {r.cover ? <img src={r.cover} alt="" className="rounded shrink-0" style={{ width: 32, height: 46, objectFit: 'cover' }} /> : <div className="rounded shrink-0" style={{ width: 32, height: 46, background: NEUTRAL_BG }} />}
@@ -1393,6 +1417,11 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 <button onClick={() => setShareCoverUrl('')} className="text-[11px] underline" style={{ color: MUTE }}>선택 해제</button>
               </div>
             )}
+            <label className="inline-flex items-center gap-1.5 text-[11px] cursor-pointer" style={{ color: NEUTRAL_TEXT }}>
+              <Paperclip size={12} />
+              {coverUploading ? '업로드 중…' : '표지 이미지 직접 올리기 (구글 이미지 등에서 저장한 사진)'}
+              <input type="file" accept="image/*" className="hidden" disabled={coverUploading} onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; uploadCoverImage(f, setShareCoverUrl, setCoverUploading); }} />
+            </label>
             <div className="grid grid-cols-2 gap-2">
               <input value={shareAuthor} onChange={(e) => setShareAuthor(e.target.value)} placeholder="저자 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
               <input value={sharePublisher} onChange={(e) => setSharePublisher(e.target.value)} placeholder="출판사 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
@@ -1468,7 +1497,12 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                           <span className="text-[11px]" style={{ color: MUTE }}>{editBookSearchLoading ? '검색 중…' : `검색 결과 ${editBookSearchResults.length}건`}</span>
                           <button onClick={() => setEditBookSearchOpen(false)} className="p-1" aria-label="검색 결과 닫기"><X size={12} style={{ color: MUTE }} /></button>
                         </div>
-                        {!editBookSearchLoading && editBookSearchResults.length === 0 && <div className="px-3 py-3 text-xs" style={{ color: MUTE }}>검색 결과가 없어요.</div>}
+                        {!editBookSearchLoading && editBookSearchResults.length === 0 && (
+                          <div className="px-3 py-3 text-xs space-y-2" style={{ color: MUTE }}>
+                            <div>검색 결과가 없어요.</div>
+                            <a href={`https://www.google.com/search?tbm=isch&q=${encodeURIComponent((editShareTitle || '') + ' 책 표지')}`} target="_blank" rel="noreferrer" className="inline-block underline" style={{ color: NEUTRAL_TEXT }}>구글 이미지에서 표지 찾아보기 →</a>
+                          </div>
+                        )}
                         {editBookSearchResults.map((r, i) => (
                           <button key={i} onClick={() => { setEditShareTitle(r.title); setEditShareAuthor(r.author); setEditSharePublisher(r.publisher); setEditShareCoverUrl(r.cover); setEditBookSearchOpen(false); }} className="w-full flex items-center gap-2.5 px-2.5 py-2 text-left" style={{ borderBottom: i < editBookSearchResults.length - 1 ? `1px solid ${ROW_LINE}` : 'none' }}>
                             {r.cover ? <img src={r.cover} alt="" className="rounded shrink-0" style={{ width: 32, height: 46, objectFit: 'cover' }} /> : <div className="rounded shrink-0" style={{ width: 32, height: 46, background: NEUTRAL_BG }} />}
@@ -1488,6 +1522,11 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                       <button onClick={() => setEditShareCoverUrl('')} className="text-[11px] underline" style={{ color: MUTE }}>선택 해제</button>
                     </div>
                   )}
+                  <label className="inline-flex items-center gap-1.5 text-[11px] cursor-pointer" style={{ color: NEUTRAL_TEXT }}>
+                    <Paperclip size={12} />
+                    {editCoverUploading ? '업로드 중…' : '표지 이미지 직접 올리기 (구글 이미지 등에서 저장한 사진)'}
+                    <input type="file" accept="image/*" className="hidden" disabled={editCoverUploading} onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; uploadCoverImage(f, setEditShareCoverUrl, setEditCoverUploading); }} />
+                  </label>
                   <input value={editShareAuthor} onChange={(e) => setEditShareAuthor(e.target.value)} placeholder="저자 (선택)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
                   <input value={editSharePublisher} onChange={(e) => setEditSharePublisher(e.target.value)} placeholder="출판사 (선택)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
                   <div className="flex gap-2">
