@@ -1480,8 +1480,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           </div>
         )}
         <div className="flex gap-2 mb-3">
-          <button onClick={() => setTowerView('mine')} className="flex-1 rounded-xl py-1.5 text-xs font-semibold" style={{ background: towerView === 'mine' ? BTN_BG : NEUTRAL_BG, color: towerView === 'mine' ? BTN_TEXT : NEUTRAL_TEXT }}>내 책탑 ({myTower.length})</button>
-          <button onClick={() => setTowerView('group')} className="flex-1 rounded-xl py-1.5 text-xs font-semibold" style={{ background: towerView === 'group' ? BTN_BG : NEUTRAL_BG, color: towerView === 'group' ? BTN_TEXT : NEUTRAL_TEXT }}>모임 전체 ({groupTower.length})</button>
+          <button onClick={() => setTowerView('mine')} className="flex-1 rounded-xl py-1.5 text-xs font-semibold" style={{ background: towerView === 'mine' ? BTN_BG : NEUTRAL_BG, color: towerView === 'mine' ? BTN_TEXT : NEUTRAL_TEXT }}>내 책장 ({myTower.length})</button>
+          <button onClick={() => setTowerView('group')} className="flex-1 rounded-xl py-1.5 text-xs font-semibold" style={{ background: towerView === 'group' ? BTN_BG : NEUTRAL_BG, color: towerView === 'group' ? BTN_TEXT : NEUTRAL_TEXT }}>모임 책장 ({groupTower.length})</button>
         </div>
         {(() => {
           const list = towerView === 'mine' ? myTower : groupTower;
@@ -1499,12 +1499,16 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 // id를 기반으로 한 안정적인 값으로 살짝 다른 두께를 줘서 실제 책처럼 자연스럽게
                 const hash = t.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
                 const containerH = [64, 70, 76][hash % 3];
+                // 책마다 너비와 좌우 위치가 제각각이어야 실제로 쌓인 책더미처럼 삐뚤빼뚤한 느낌이 남
+                const widthPct = 62 + ((hash >> 2) % 35); // 62~96%
+                const align = ['flex-start', 'center', 'flex-end'][(hash >> 5) % 3];
                 const lineShade = dark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.12)';
                 const highlight = dark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.35)';
                 const shade = dark ? 'rgba(0,0,0,0.22)' : 'rgba(0,0,0,0.06)';
                 return (
-                  <div key={t.id} className="relative overflow-hidden" style={{
-                    height: containerH, borderRadius: 14,
+                  <div key={t.id} style={{ display: 'flex', justifyContent: align }}>
+                  <div className="relative overflow-hidden" style={{
+                    width: `${widthPct}%`, height: containerH, borderRadius: 14,
                     background: `linear-gradient(180deg, ${highlight} 0%, transparent 25%, transparent 75%, ${shade} 100%), ${t.color}`,
                     boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
                   }}>
@@ -1545,6 +1549,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                         </div>
                       </div>
                     )}
+                  </div>
                   </div>
                 );
               })}
