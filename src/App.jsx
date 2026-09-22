@@ -42,6 +42,15 @@ const LEATHER_PALETTE = [
 const TOWER_BADGE_PALETTE = ['#7C5CC4', '#D97A3D', '#C4544A', '#3E93A0', '#C48A3E'];
 // 정확한 우측 90도 측면(옆에서 본 책 두께 단면)용 - 표지 단면에 쓰이는 단색
 const COVER_EDGE_COLORS = ['#8B5E34', '#3E6B69', '#8A6F45', '#472B1D', '#2E4A66', '#3A5A3A', '#3A3A38', '#663636'];
+// 책마다 미세하게 다른 종이 톤 (같은 크림색이라도 책마다 살짝 다르게)
+const PAGE_TONES = [
+  { light: '#F3EBD8', dark: '#E7DCC1' },
+  { light: '#F0E6D2', dark: '#E2D5B6' },
+  { light: '#F5EEE0', dark: '#E9DFC9' },
+  { light: '#EEE3CB', dark: '#DFD1AE' },
+];
+// 페이지 단면에 아주 은은하게 얹는 종이 결 노이즈 텍스처 (외부 라이브러리 없이 SVG data URI로 생성)
+const PAGE_NOISE_BG = "url(\"data:image/svg+xml;utantml:parameter name=%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
 const roleMeta = (role) => ROLES.find((r) => r.key === role) || ROLES[3];
 const roleOrder = (role) => { const i = ROLES.findIndex((r) => r.key === role); return i === -1 ? 99 : i; };
 
@@ -1699,23 +1708,29 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                     </div>
                   );
                 }
-                const shiftX = ((hash % 5) - 2) * 8; // -16~+16px, 책마다 살짝씩 좌우로 어긋나게 쌓인 느낌
-                const barH = [42, 46, 50][hash % 3]; // 책마다 두께(높이)도 살짝 다르게
-                const edgeH = Math.max(4, Math.round(barH * 0.13)); // 위아래 표지 두께
+                const shiftX = ((hash % 7) - 3) * 6; // 좌우로 살짝씩 어긋나게 (무너지진 않을 정도)
+                const microY = (hash % 3) - 1; // -1~1px, 실제로 쌓았을 때 생기는 미세한 높이 오차
+                const barH = [40, 47, 53, 60][hash % 4]; // 책마다 두께(높이)를 확실히 다르게
+                const edgeH = Math.max(5, Math.round(barH * 0.16)); // 위아래 표지 두께
+                const tone = PAGE_TONES[hash % PAGE_TONES.length];
+                const ribbonColor = ['#C0472F', '#B99B6B', '#5C7A6B', '#7A5C8C'][hash % 4];
                 return (
-                  <div key={t.id} style={{ height: barH, marginLeft: Math.max(0, shiftX), marginRight: Math.max(0, -shiftX), borderRadius: 5, overflow: 'hidden', boxShadow: '5px 5px 9px rgba(0,0,0,0.4)' }}>
+                  <div key={t.id} style={{ height: barH, marginLeft: Math.max(0, shiftX), marginRight: Math.max(0, -shiftX), transform: `translateY(${microY}px)`, borderRadius: 4, overflow: 'hidden', background: edgeColor, boxShadow: '0 3px 7px rgba(0,0,0,0.45), 0 1px 3px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -1px 0 rgba(0,0,0,0.3)' }}>
                     <div className="relative w-full h-full">
-                      {/* 위/아래 - 표지 두께 단면 (책마다 고유 색) */}
-                      <div className="absolute inset-x-0 top-0 pointer-events-none" style={{ height: edgeH, background: `linear-gradient(180deg, rgba(255,255,255,0.25), ${edgeColor})` }} />
-                      <div className="absolute inset-x-0 bottom-0 pointer-events-none" style={{ height: edgeH, background: `linear-gradient(0deg, rgba(0,0,0,0.25), ${edgeColor})` }} />
-                      {/* 가운데 - 종이 페이지 단면 (촘촘한 가로 결) */}
-                      <div className="absolute inset-x-0 pointer-events-none" style={{ top: edgeH, bottom: edgeH, background: 'repeating-linear-gradient(180deg, #F2EAD6 0px, #F2EAD6 2px, #E6DCC2 2px, #E6DCC2 3px)' }} />
-                      {/* 오른쪽 끝 - 책갈피 리본 */}
-                      <div className="absolute pointer-events-none" style={{ top: 0, right: 14, width: 9, height: Math.min(16, barH - 6), background: '#B99B6B', clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%)', boxShadow: '0 1px 2px rgba(0,0,0,0.25)' }} />
+                      {/* 위/아래 - 실제 양장본 표지: 재질감 있는 그라데이션 + 페이지와 맞닿는 경계 그림자 */}
+                      <div className="absolute inset-x-0 top-0 pointer-events-none" style={{ height: edgeH, background: `linear-gradient(180deg, rgba(255,255,255,0.30) 0%, ${edgeColor} 55%, rgba(0,0,0,0.15) 100%)`, boxShadow: 'inset 0 -2px 3px -1px rgba(0,0,0,0.35)' }} />
+                      <div className="absolute inset-x-0 bottom-0 pointer-events-none" style={{ height: edgeH, background: `linear-gradient(0deg, rgba(0,0,0,0.35) 0%, ${edgeColor} 55%, rgba(255,255,255,0.10) 100%)`, boxShadow: 'inset 0 2px 3px -1px rgba(0,0,0,0.35)' }} />
+                      {/* 가운데 - 종이 페이지 단면: 촘촘한 결 + 은은한 볼륨감 + 종이 노이즈, 표지가 좌우로 1px 살짝 돌출 */}
+                      <div className="absolute pointer-events-none" style={{ top: edgeH, bottom: edgeH, left: 1, right: 1,
+                        background: `linear-gradient(180deg, rgba(0,0,0,0.16) 0%, rgba(0,0,0,0) 18%, rgba(0,0,0,0) 82%, rgba(0,0,0,0.20) 100%),
+                          repeating-linear-gradient(180deg, ${tone.light} 0px, ${tone.light} 1.4px, ${tone.dark} 1.4px, ${tone.dark} 2.1px)` }} />
+                      <div className="absolute pointer-events-none" style={{ top: edgeH, bottom: edgeH, left: 1, right: 1, backgroundImage: PAGE_NOISE_BG, backgroundSize: '60px 60px', opacity: 0.05, mixBlendMode: 'multiply' }} />
+                      {/* 오른쪽 끝 - 페이지 사이에 꽂힌 책갈피 */}
+                      <div className="absolute pointer-events-none" style={{ top: -1, right: 16, width: 8, height: Math.min(18, barH - 4), background: `linear-gradient(180deg, ${ribbonColor}, ${ribbonColor}dd)`, clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 68%, 0 100%)', boxShadow: '1px 1px 2px rgba(0,0,0,0.35)', transform: 'rotate(-2deg)' }} />
                       <div className="relative h-full flex items-center justify-between gap-2 pl-3 pr-3.5">
                         <div className="min-w-0 flex items-baseline gap-1.5">
                           {t.is_public === false && <Lock size={10} style={{ color: '#6B5B3E' }} />}
-                          <span className="text-sm font-bold truncate" style={{ color: '#3A2C18' }}>{t.book_title}</span>
+                          <span className="text-sm font-semibold truncate" style={{ color: '#3A2C18', letterSpacing: '0.2px', textShadow: '0 1px 0 rgba(255,255,255,0.35)' }}>{t.book_title}</span>
                           <span className="text-[10px] truncate shrink-0" style={{ color: '#6B5B3E' }}>
                             {owner ? dispName(owner.name, isLoggedIn) : ''}
                           </span>
@@ -1724,7 +1739,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                           {showPageOnly ? (
                             <span className="text-xs font-bold" style={{ color: '#3A2C18', fontFamily: "'IBM Plex Mono', monospace" }}>{statusText}</span>
                           ) : (
-                            <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ background: badgeColor, color: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.25)' }}>{statusText}</span>
+                            <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ background: badgeColor, color: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.25), inset 0 -1px 1px rgba(0,0,0,0.2)' }}>{statusText}</span>
                           )}
                           {isMine && (
                             <div className="flex items-center gap-1">
