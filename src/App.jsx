@@ -1708,14 +1708,15 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                     </div>
                   );
                 }
-                const shiftX = ((hash % 7) - 3) * 6; // 좌우로 살짝씩 어긋나게 (무너지진 않을 정도)
+                const jitterX = ((hash % 7) - 3) * 5; // 중심에서 좌우로 살짝씩만 어긋나게 (쌓인 더미의 중심은 유지)
+                const lengthInset = 10 + (hash % 3) * 6; // 책마다 길이(폭)도 살짝 다르게 - 항상 가운데 기준으로 좁아짐
                 const microY = (hash % 3) - 1; // -1~1px, 실제로 쌓았을 때 생기는 미세한 높이 오차
                 const barH = [40, 47, 53, 60][hash % 4]; // 책마다 두께(높이)를 확실히 다르게
-                const edgeH = Math.max(5, Math.round(barH * 0.16)); // 위아래 표지 두께
+                const edgeH = Math.max(3, Math.round(barH * 0.112)); // 위아래 표지 두께 (기존의 70%)
                 const tone = PAGE_TONES[hash % PAGE_TONES.length];
                 const ribbonColor = ['#C0472F', '#B99B6B', '#5C7A6B', '#7A5C8C'][hash % 4];
                 return (
-                  <div key={t.id} style={{ height: barH, marginLeft: Math.max(0, shiftX), marginRight: Math.max(0, -shiftX), transform: `translateY(${microY}px)`, borderRadius: 4, overflow: 'hidden', background: edgeColor, boxShadow: '0 3px 7px rgba(0,0,0,0.45), 0 1px 3px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -1px 0 rgba(0,0,0,0.3)' }}>
+                  <div key={t.id} style={{ height: barH, marginLeft: Math.max(2, lengthInset + jitterX), marginRight: Math.max(2, lengthInset - jitterX), transform: `translateY(${microY}px)`, borderRadius: 4, overflow: 'hidden', background: edgeColor, boxShadow: '0 3px 7px rgba(0,0,0,0.45), 0 1px 3px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -1px 0 rgba(0,0,0,0.3)' }}>
                     <div className="relative w-full h-full">
                       {/* 위/아래 - 실제 양장본 표지: 재질감 있는 그라데이션 + 페이지와 맞닿는 경계 그림자 */}
                       <div className="absolute inset-x-0 top-0 pointer-events-none" style={{ height: edgeH, background: `linear-gradient(180deg, rgba(255,255,255,0.30) 0%, ${edgeColor} 55%, rgba(0,0,0,0.15) 100%)`, boxShadow: 'inset 0 -2px 3px -1px rgba(0,0,0,0.35)' }} />
