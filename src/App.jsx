@@ -1697,32 +1697,34 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                     </div>
                   );
                 }
+                const shiftX = ((hash % 5) - 2) * 7; // -14~+14px, 책마다 살짝씩 좌우로 어긋나게 쌓인 느낌
                 return (
-                  <div key={t.id} className="flex" style={{ height: 78, borderRadius: 16, overflow: 'hidden', boxShadow: '0 4px 10px rgba(0,0,0,0.4)' }}>
-                    {/* 책등 (leather spine) - 좌우로도 그라데이션을 줘서 원통형으로 살짝 둥근 입체감 */}
-                    <div className="relative flex-1 min-w-0 flex flex-col justify-center pl-6 pr-4" style={{
-                      background: `linear-gradient(90deg, rgba(0,0,0,0.28) 0%, rgba(255,255,255,0.12) 10%, transparent 22%, transparent 78%, rgba(0,0,0,0.32) 100%), ${leather.bg}`,
+                  <div key={t.id} className="flex" style={{ height: 78, marginLeft: Math.max(0, shiftX), marginRight: Math.max(0, -shiftX), borderRadius: 16, overflow: 'hidden', boxShadow: '9px 7px 16px rgba(0,0,0,0.45)' }}>
+                    {/* 책등 (leather spine) - 왼쪽을 사다리꼴로 깎아 오른쪽(페이지 단면)이 카메라에 더 가깝게 보이는 원근 느낌 */}
+                    <div className="relative flex-1 min-w-0 flex flex-col justify-center pl-7 pr-4" style={{
+                      background: `linear-gradient(90deg, rgba(0,0,0,0.32) 0%, rgba(255,255,255,0.1) 12%, transparent 26%, transparent 82%, rgba(0,0,0,0.2) 100%), ${leather.bg}`,
+                      clipPath: 'polygon(4% 9%, 100% 0%, 100% 100%, 4% 91%)',
                     }}>
                       {/* 왼쪽 하드커버 모서리 - 둥글게 튀어나온 느낌의 밝은 하이라이트 띠 */}
-                      <div className="absolute pointer-events-none" style={{ left: 0, top: 3, bottom: 3, width: 5, borderRadius: '6px 0 0 6px', background: 'linear-gradient(90deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.15) 60%, transparent 100%)' }} />
-                      <div className="absolute pointer-events-none" style={{ left: 5, top: 5, bottom: 5, width: 1, background: 'rgba(0,0,0,0.25)' }} />
+                      <div className="absolute pointer-events-none" style={{ left: '4%', top: 6, bottom: 6, width: 5, background: 'linear-gradient(90deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.12) 60%, transparent 100%)' }} />
                       {/* 은은한 세로 가죽 결 (여러 겹의 얇은 밝은/어두운 줄무늬) */}
                       <div className="absolute inset-0 pointer-events-none" style={{ background: 'repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 7px)' }} />
-                      <div className="absolute left-4 right-4 pointer-events-none" style={{ top: 9, height: 1, background: leather.line }} />
-                      <div className="absolute left-4 right-4 pointer-events-none" style={{ top: 12, height: 1, background: leather.line }} />
-                      <div className="absolute left-4 right-4 pointer-events-none" style={{ bottom: 9, height: 1, background: leather.line }} />
-                      <div className="absolute left-4 right-4 pointer-events-none" style={{ bottom: 12, height: 1, background: leather.line }} />
+                      <div className="absolute left-5 right-4 pointer-events-none" style={{ top: 9, height: 1, background: leather.line }} />
+                      <div className="absolute left-5 right-4 pointer-events-none" style={{ top: 12, height: 1, background: leather.line }} />
+                      <div className="absolute left-5 right-4 pointer-events-none" style={{ bottom: 9, height: 1, background: leather.line }} />
+                      <div className="absolute left-5 right-4 pointer-events-none" style={{ bottom: 12, height: 1, background: leather.line }} />
                       <div className="relative text-base font-bold truncate" style={{ color: leather.text, fontFamily: "'Fraunces', serif", textShadow: '0 1px 2px rgba(0,0,0,0.35)' }}>{t.book_title}</div>
                       <div className="relative text-[11px] truncate mt-0.5" style={{ color: leather.text, opacity: 0.75 }}>
                         {owner ? dispName(owner.name, isLoggedIn) : (t.start_date ? `시작 ${fmtDate(t.start_date)}` : '')}
                       </div>
                     </div>
-                    {/* 페이지 단면 (page block) */}
+                    {/* 페이지 단면 (page block) - 카메라와 가장 가까운 면이라 더 넓고 밝게, 층 결을 촘촘히 */}
                     <div className="relative shrink-0 flex flex-col items-center justify-center gap-1.5" style={{
-                      width: 104,
-                      background: 'linear-gradient(90deg, rgba(0,0,0,0.15) 0%, transparent 8%), repeating-linear-gradient(180deg, #EFE7D3 0px, #EFE7D3 2px, #E6DCC2 2px, #E6DCC2 3px)',
+                      width: 118,
+                      background: 'linear-gradient(90deg, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.05) 6%, transparent 14%), repeating-linear-gradient(180deg, #F2EAD6 0px, #F2EAD6 2px, #E6DCC2 2px, #E6DCC2 3px)',
+                      boxShadow: 'inset 3px 0 4px rgba(0,0,0,0.12)',
                     }}>
-                      <div className="absolute pointer-events-none" style={{ top: 0, right: 14, width: 11, height: 20, background: '#B99B6B', clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%)', boxShadow: '0 1px 2px rgba(0,0,0,0.25)' }} />
+                      <div className="absolute pointer-events-none" style={{ top: 0, right: 16, width: 11, height: 20, background: '#B99B6B', clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%)', boxShadow: '0 1px 2px rgba(0,0,0,0.25)' }} />
                       {t.is_public === false && <Lock size={11} style={{ color: '#6B5B3E' }} />}
                       {showPageOnly ? (
                         <span className="text-sm font-bold" style={{ color: '#3A2C18', fontFamily: "'IBM Plex Mono', monospace" }}>{statusText}</span>
