@@ -1700,9 +1700,12 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 return (
                   <div key={t.id} className="flex" style={{ height: 78, borderRadius: 16, overflow: 'hidden', boxShadow: '0 4px 10px rgba(0,0,0,0.4)' }}>
                     {/* 책등 (leather spine) - 좌우로도 그라데이션을 줘서 원통형으로 살짝 둥근 입체감 */}
-                    <div className="relative flex-1 min-w-0 flex flex-col justify-center px-4" style={{
+                    <div className="relative flex-1 min-w-0 flex flex-col justify-center pl-6 pr-4" style={{
                       background: `linear-gradient(90deg, rgba(0,0,0,0.28) 0%, rgba(255,255,255,0.12) 10%, transparent 22%, transparent 78%, rgba(0,0,0,0.32) 100%), ${leather.bg}`,
                     }}>
+                      {/* 왼쪽 하드커버 모서리 - 둥글게 튀어나온 느낌의 밝은 하이라이트 띠 */}
+                      <div className="absolute pointer-events-none" style={{ left: 0, top: 3, bottom: 3, width: 5, borderRadius: '6px 0 0 6px', background: 'linear-gradient(90deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.15) 60%, transparent 100%)' }} />
+                      <div className="absolute pointer-events-none" style={{ left: 5, top: 5, bottom: 5, width: 1, background: 'rgba(0,0,0,0.25)' }} />
                       {/* 은은한 세로 가죽 결 (여러 겹의 얇은 밝은/어두운 줄무늬) */}
                       <div className="absolute inset-0 pointer-events-none" style={{ background: 'repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 7px)' }} />
                       <div className="absolute left-4 right-4 pointer-events-none" style={{ top: 9, height: 1, background: leather.line }} />
