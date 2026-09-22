@@ -28,6 +28,18 @@ const ROLES = [
   { key: '회원', label: '회원', icon: User, ink: '#C7C1B0', paper: '#26231A' },
 ];
 const MANAGE_ROLES = ['회장', '간사', '총무'];
+// 북적북적 책탑 - 가죽 책등 느낌의 색상 팔레트 (책마다 id 기반으로 하나씩 고정 배정)
+const LEATHER_PALETTE = [
+  { bg: 'linear-gradient(180deg, #AD7A4E 0%, #8B5E34 45%, #6F461D 100%)', text: '#FBF3E4', line: 'rgba(255,235,205,0.55)' },
+  { bg: 'linear-gradient(180deg, #52807D 0%, #3E6B69 45%, #2C4E4C 100%)', text: '#F0F7F5', line: 'rgba(220,240,235,0.5)' },
+  { bg: 'linear-gradient(180deg, #E6D9BD 0%, #D9C7A3 45%, #C2A87C 100%)', text: '#3A2C18', line: 'rgba(60,40,10,0.35)' },
+  { bg: 'linear-gradient(180deg, #5E3D2C 0%, #472B1D 45%, #331E13 100%)', text: '#F3E7D8', line: 'rgba(255,230,200,0.4)' },
+  { bg: 'linear-gradient(180deg, #446485 0%, #2E4A66 45%, #1F3650 100%)', text: '#EDF2F7', line: 'rgba(220,235,250,0.45)' },
+  { bg: 'linear-gradient(180deg, #4F7350 0%, #3A5A3A 45%, #293F29 100%)', text: '#EFF5EC', line: 'rgba(220,240,215,0.4)' },
+  { bg: 'linear-gradient(180deg, #4F4F4D 0%, #3A3A38 45%, #292927 100%)', text: '#F0EEE9', line: 'rgba(230,228,220,0.35)' },
+  { bg: 'linear-gradient(180deg, #7A4444 0%, #663636 45%, #4A2626 100%)', text: '#F5E9E4', line: 'rgba(250,225,215,0.4)' },
+];
+const TOWER_BADGE_PALETTE = ['#7C5CC4', '#D97A3D', '#C4544A', '#3E93A0', '#C48A3E'];
 const roleMeta = (role) => ROLES.find((r) => r.key === role) || ROLES[3];
 const roleOrder = (role) => { const i = ROLES.findIndex((r) => r.key === role); return i === -1 ? 99 : i; };
 
@@ -1596,19 +1608,11 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 const owner = towerView === 'group' ? members.find((m) => m.id === t.member_id) : null;
                 const isMine = towerView === 'mine' && currentMember;
                 const isEditing = editingTowerId === t.id;
-                const dark = isDarkColor(t.color);
-                const fg = dark ? '#F2EEE3' : '#2A2620';
-                const fgMute = dark ? 'rgba(242,238,227,0.68)' : 'rgba(42,38,32,0.62)';
                 const statusText = t.finished_date ? '완독' : t.current_page ? `p.${t.current_page}` : '읽는 중';
-                // id를 기반으로 한 안정적인 값으로 살짝 다른 두께를 줘서 실제 책처럼 자연스럽게
                 const hash = t.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
-                const containerH = [46, 50, 54][hash % 3]; // 기존보다 얇고 아담하게
-                // 좌우 어느 한쪽으로도 치우치지 않도록 가운데를 중심으로 고정하고, 너비(두께감)만 책마다 다르게
-                const widthPct = 64 + ((hash >> 2) % 26); // 64~89%
-                const leftPct = (100 - widthPct) / 2;
-                const lineShade = dark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.12)';
-                const highlight = dark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.35)';
-                const shade = dark ? 'rgba(0,0,0,0.22)' : 'rgba(0,0,0,0.06)';
+                const leather = LEATHER_PALETTE[hash % LEATHER_PALETTE.length];
+                const badgeColor = t.finished_date ? '#3F8F5C' : TOWER_BADGE_PALETTE[hash % TOWER_BADGE_PALETTE.length];
+                const showPageOnly = t.current_page && !t.finished_date; // 현재 읽는 페이지가 있으면 뱃지 대신 페이지 숫자를 그대로 보여줌
                 if (isEditing) {
                   return (
                     <div key={t.id} className="rounded-2xl p-3 space-y-2" style={{ background: CARD_BG, border: `1px solid ${ROW_LINE}` }}>
@@ -1638,36 +1642,34 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                   );
                 }
                 return (
-                  <div key={t.id} style={{ position: 'relative' }}>
-                  <div className="relative overflow-hidden" style={{
-                    width: `${widthPct}%`, marginLeft: `${leftPct}%`, height: containerH, borderRadius: 14,
-                    background: `linear-gradient(180deg, ${highlight} 0%, transparent 25%, transparent 75%, ${shade} 100%), ${t.color}`,
-                    boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
-                  }}>
-                    {/* 왼쪽 페이지 결 — 책이 옆으로 누워 여러 장 겹친 느낌 */}
-                    <div className="absolute pointer-events-none" style={{ top: 5, bottom: 5, left: 10, width: 2, background: lineShade, borderRadius: 1 }} />
-                    <div className="absolute pointer-events-none" style={{ top: 5, bottom: 5, left: 14, width: 2, background: lineShade, borderRadius: 1 }} />
-                    {/* 우상단 책갈피 리본 */}
-                    <div className="absolute pointer-events-none" style={{ top: 0, right: 16, width: 9, height: 16, background: dark ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.2)', clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%)' }} />
-                    <div className="relative flex items-center justify-between h-full pl-6 pr-3 gap-2">
-                      <div className="min-w-0">
-                        <div className="text-sm font-bold truncate" style={{ color: fg }}>{t.book_title}</div>
-                        <div className="text-[11px] truncate" style={{ color: fgMute }}>
-                          {owner ? dispName(owner.name, isLoggedIn) : (t.start_date ? `시작 ${fmtDate(t.start_date)}` : '')}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {t.is_public === false && <Lock size={11} style={{ color: fgMute }} />}
-                        <span className="text-xs font-medium" style={{ color: fgMute }}>{statusText}</span>
-                        {isMine && (
-                          <>
-                            <button onClick={() => startTowerEdit(t)} className="p-1" aria-label="책탑 항목 수정"><Pencil size={12} style={{ color: fgMute }} /></button>
-                            <button onClick={() => requestDelete(() => removeTowerEntry(t.id), `'${t.book_title}'을(를) 책장에서 없앨까요?`)} className="p-1" aria-label="책탑에서 제거"><X size={12} style={{ color: fgMute }} /></button>
-                          </>
-                        )}
+                  <div key={t.id} className="flex" style={{ height: 74, borderRadius: 16, overflow: 'hidden', boxShadow: '0 3px 8px rgba(0,0,0,0.35)' }}>
+                    {/* 책등 (leather spine) */}
+                    <div className="relative flex-1 min-w-0 flex flex-col justify-center px-4" style={{ background: leather.bg }}>
+                      <div className="absolute left-4 right-4 pointer-events-none" style={{ top: 8, height: 1, background: leather.line }} />
+                      <div className="absolute left-4 right-4 pointer-events-none" style={{ top: 11, height: 1, background: leather.line }} />
+                      <div className="absolute left-4 right-4 pointer-events-none" style={{ bottom: 8, height: 1, background: leather.line }} />
+                      <div className="absolute left-4 right-4 pointer-events-none" style={{ bottom: 11, height: 1, background: leather.line }} />
+                      <div className="text-base font-bold truncate" style={{ color: leather.text, fontFamily: "'Fraunces', serif" }}>{t.book_title}</div>
+                      <div className="text-[11px] truncate mt-0.5" style={{ color: leather.text, opacity: 0.75 }}>
+                        {owner ? dispName(owner.name, isLoggedIn) : (t.start_date ? `시작 ${fmtDate(t.start_date)}` : '')}
                       </div>
                     </div>
-                  </div>
+                    {/* 페이지 단면 (page block) */}
+                    <div className="relative shrink-0 flex flex-col items-center justify-center gap-1.5" style={{ width: 104, background: 'repeating-linear-gradient(180deg, #EFE7D3 0px, #EFE7D3 2px, #E6DCC2 2px, #E6DCC2 3px)' }}>
+                      <div className="absolute pointer-events-none" style={{ top: 0, right: 14, width: 10, height: 18, background: '#B99B6B', clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%)' }} />
+                      {t.is_public === false && <Lock size={11} style={{ color: '#6B5B3E' }} />}
+                      {showPageOnly ? (
+                        <span className="text-sm font-bold" style={{ color: '#3A2C18', fontFamily: "'IBM Plex Mono', monospace" }}>{statusText}</span>
+                      ) : (
+                        <span className="text-[11px] font-bold rounded-full px-2.5 py-1" style={{ background: badgeColor, color: '#fff' }}>{statusText}</span>
+                      )}
+                      {isMine && (
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <button onClick={() => startTowerEdit(t)} className="p-0.5" aria-label="책탑 항목 수정"><Pencil size={11} style={{ color: '#6B5B3E' }} /></button>
+                          <button onClick={() => requestDelete(() => removeTowerEntry(t.id), `'${t.book_title}'을(를) 책장에서 없앨까요?`)} className="p-0.5" aria-label="책탑에서 제거"><X size={11} style={{ color: '#6B5B3E' }} /></button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               })}
