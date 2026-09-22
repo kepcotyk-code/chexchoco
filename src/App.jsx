@@ -1233,9 +1233,13 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     await reload();
   };
   const saveTowerEdit = async (entry) => {
-    await updateRow('book_tower_entries', 'id', entry.id, { start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null });
-    setEditingTowerId(null);
-    await reload();
+    try {
+      await updateRow('book_tower_entries', 'id', entry.id, { start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null });
+      setEditingTowerId(null);
+      await reload();
+    } catch (e) {
+      showToast?.('저장에 실패했어요: ' + (e?.message || '알 수 없는 오류'), 'error');
+    }
   };
   const startTowerEdit = (entry) => {
     setEditingTowerId(entry.id);
@@ -1461,7 +1465,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
       {/* ---------- 책탑 ---------- */}
       <Card>
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: INK }}>📚 책탑</div>
+          <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: INK }}>📚 북적북적</div>
           {currentMember && <button onClick={() => setShowTowerAdd((v) => !v)} className="text-xs rounded-full px-3 py-1.5 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{showTowerAdd ? '취소' : '+ 책 추가'}</button>}
         </div>
         {showTowerAdd && (
@@ -1980,7 +1984,11 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     const repDate = chunk.find((d) => d.inCurrentMonth)?.date || d1; // 주차 번호는 실제 이번 달에 속한 날짜 기준으로 계산
     return { main: `${weekOfMonth(repDate)}주차`, sub: `(${range})` };
   });
-  const weekColWidths = weekLabels.map(({ main, sub }) => Math.max(32, Math.max(main.length, sub.length) * 6.6 + 6));
+  const weekColWidths = weekLabels.map(({ main, sub }, wi) => {
+    const [start, end] = weekChunkRanges[wi];
+    const dotsWidth = (end - start) * 13 - 4; // 도트(9px)+간격(4px)만큼 실제로 필요한 최소 폭 — 라벨이 짧아도 도트가 늘어나면 이 폭을 확보
+    return Math.max(32, Math.max(main.length, sub.length) * 6.6 + 6, dotsWidth);
+  });
   // "이번 달" 뷰는 벌칙과 동일하게 주 단위 기준으로 통일 — 월 경계에 걸쳐 끌어온 날짜(예: 8/31)도 포함해서 계산
   const totalDays = monthDayList.filter((d) => d.session).length;
   // 30분 이상: 정상 출석(1일), 15분 이상 30분 미만: 절반 인정(0.5일), 출장/휴가 사유: 별도 표시, 그 외: 결석
@@ -2353,7 +2361,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#7FA8D9' }} />출석</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: 'linear-gradient(90deg, #7FA8D9 50%, transparent 50%)', border: `1px solid ${LINE}` }} />절반출석(15~29분)</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#E0958C' }} />휴무일</span>
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>출장</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><svg width="11.7" height="11.7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>출장</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: INK }} />휴가</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
             </div>
@@ -2399,7 +2407,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                           {r.flags.slice(start, end).map((status, i) => {
                             const fromPrevMonth = !monthDayList[start + i].inCurrentMonth;
                             if (status === 'trip') {
-                              return <svg key={i} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C', opacity: fromPrevMonth ? 0.6 : 1 }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>;
+                              return <svg key={i} width="11.7" height="11.7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C', opacity: fromPrevMonth ? 0.6 : 1 }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>;
                             }
                             if (status === 'vacation') {
                               return <Plane key={i} size={9} style={{ color: INK, opacity: fromPrevMonth ? 0.6 : 1 }} />;
