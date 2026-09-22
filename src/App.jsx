@@ -1134,6 +1134,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [editBookSearchResults, setEditBookSearchResults] = useState([]);
   const [coverUploading, setCoverUploading] = useState(false);
   const [editCoverUploading, setEditCoverUploading] = useState(false);
+  const [detailCoverUploading, setDetailCoverUploading] = useState(false);
   // 외부 URL을 그대로 걸지 않고, 우리 저장소로 이미지를 직접 업로드해서 안정적으로 보이게 함
   const uploadCoverImage = async (file, setCoverUrl, setUploading) => {
     if (!file) return;
@@ -1417,9 +1418,9 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 <button onClick={() => setShareCoverUrl('')} className="text-[11px] underline" style={{ color: MUTE }}>선택 해제</button>
               </div>
             )}
-            <label className="inline-flex items-center gap-1.5 text-[11px] cursor-pointer" style={{ color: NEUTRAL_TEXT }}>
-              <Paperclip size={12} />
-              {coverUploading ? '업로드 중…' : '표지 이미지 직접 올리기 (구글 이미지 등에서 저장한 사진)'}
+            <label className={`flex items-center justify-center gap-1.5 text-xs font-semibold rounded-xl border-2 border-dashed py-2.5 cursor-pointer ${coverUploading ? 'opacity-60' : ''}`} style={{ borderColor: LINE, color: NEUTRAL_TEXT }}>
+              <ImageIcon size={14} />
+              {coverUploading ? '업로드 중…' : '표지 사진 올리기 (구글 이미지 캡처 등)'}
               <input type="file" accept="image/*" className="hidden" disabled={coverUploading} onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; uploadCoverImage(f, setShareCoverUrl, setCoverUploading); }} />
             </label>
             <div className="grid grid-cols-2 gap-2">
@@ -1522,9 +1523,9 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                       <button onClick={() => setEditShareCoverUrl('')} className="text-[11px] underline" style={{ color: MUTE }}>선택 해제</button>
                     </div>
                   )}
-                  <label className="inline-flex items-center gap-1.5 text-[11px] cursor-pointer" style={{ color: NEUTRAL_TEXT }}>
-                    <Paperclip size={12} />
-                    {editCoverUploading ? '업로드 중…' : '표지 이미지 직접 올리기 (구글 이미지 등에서 저장한 사진)'}
+                  <label className={`flex items-center justify-center gap-1.5 text-xs font-semibold rounded-xl border-2 border-dashed py-2.5 cursor-pointer ${editCoverUploading ? 'opacity-60' : ''}`} style={{ borderColor: LINE, color: NEUTRAL_TEXT }}>
+                    <ImageIcon size={14} />
+                    {editCoverUploading ? '업로드 중…' : '표지 사진 올리기 (구글 이미지 캡처 등)'}
                     <input type="file" accept="image/*" className="hidden" disabled={editCoverUploading} onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; uploadCoverImage(f, setEditShareCoverUrl, setEditCoverUploading); }} />
                   </label>
                   <input value={editShareAuthor} onChange={(e) => setEditShareAuthor(e.target.value)} placeholder="저자 (선택)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
@@ -1539,6 +1540,22 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                   {coverCache[viewingShare.id] && coverCache[viewingShare.id] !== 'none' && coverCache[viewingShare.id] !== 'loading' && (
                     <div className="flex justify-center mb-3">
                       <img src={coverCache[viewingShare.id]} alt="" className="rounded-lg shadow-md" style={{ height: 128, width: 'auto' }} />
+                    </div>
+                  )}
+                  {coverCache[viewingShare.id] === 'none' && canEditPost && (
+                    <div className="flex justify-center mb-3">
+                      <label className={`flex items-center justify-center gap-1.5 text-xs font-semibold rounded-xl border-2 border-dashed px-4 py-2.5 cursor-pointer ${detailCoverUploading ? 'opacity-60' : ''}`} style={{ borderColor: LINE, color: NEUTRAL_TEXT }}>
+                        <ImageIcon size={14} />
+                        {detailCoverUploading ? '업로드 중…' : '표지 사진 올리기'}
+                        <input type="file" accept="image/*" className="hidden" disabled={detailCoverUploading} onChange={(e) => {
+                          const f = e.target.files[0]; e.target.value = '';
+                          uploadCoverImage(f, async (url) => {
+                            await updateRow('book_shares', 'id', viewingShare.id, { cover_url: url });
+                            setCoverCache((prev) => ({ ...prev, [viewingShare.id]: url }));
+                            await reload();
+                          }, setDetailCoverUploading);
+                        }} />
+                      </label>
                     </div>
                   )}
                   {coverCache[viewingShare.id] === 'loading' && (
@@ -1681,26 +1698,33 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                   );
                 }
                 return (
-                  <div key={t.id} className="flex" style={{ height: 74, borderRadius: 16, overflow: 'hidden', boxShadow: '0 3px 8px rgba(0,0,0,0.35)' }}>
-                    {/* 책등 (leather spine) */}
-                    <div className="relative flex-1 min-w-0 flex flex-col justify-center px-4" style={{ background: leather.bg }}>
-                      <div className="absolute left-4 right-4 pointer-events-none" style={{ top: 8, height: 1, background: leather.line }} />
-                      <div className="absolute left-4 right-4 pointer-events-none" style={{ top: 11, height: 1, background: leather.line }} />
-                      <div className="absolute left-4 right-4 pointer-events-none" style={{ bottom: 8, height: 1, background: leather.line }} />
-                      <div className="absolute left-4 right-4 pointer-events-none" style={{ bottom: 11, height: 1, background: leather.line }} />
-                      <div className="text-base font-bold truncate" style={{ color: leather.text, fontFamily: "'Fraunces', serif" }}>{t.book_title}</div>
-                      <div className="text-[11px] truncate mt-0.5" style={{ color: leather.text, opacity: 0.75 }}>
+                  <div key={t.id} className="flex" style={{ height: 78, borderRadius: 16, overflow: 'hidden', boxShadow: '0 4px 10px rgba(0,0,0,0.4)' }}>
+                    {/* 책등 (leather spine) - 좌우로도 그라데이션을 줘서 원통형으로 살짝 둥근 입체감 */}
+                    <div className="relative flex-1 min-w-0 flex flex-col justify-center px-4" style={{
+                      background: `linear-gradient(90deg, rgba(0,0,0,0.28) 0%, rgba(255,255,255,0.12) 10%, transparent 22%, transparent 78%, rgba(0,0,0,0.32) 100%), ${leather.bg}`,
+                    }}>
+                      {/* 은은한 세로 가죽 결 (여러 겹의 얇은 밝은/어두운 줄무늬) */}
+                      <div className="absolute inset-0 pointer-events-none" style={{ background: 'repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 7px)' }} />
+                      <div className="absolute left-4 right-4 pointer-events-none" style={{ top: 9, height: 1, background: leather.line }} />
+                      <div className="absolute left-4 right-4 pointer-events-none" style={{ top: 12, height: 1, background: leather.line }} />
+                      <div className="absolute left-4 right-4 pointer-events-none" style={{ bottom: 9, height: 1, background: leather.line }} />
+                      <div className="absolute left-4 right-4 pointer-events-none" style={{ bottom: 12, height: 1, background: leather.line }} />
+                      <div className="relative text-base font-bold truncate" style={{ color: leather.text, fontFamily: "'Fraunces', serif", textShadow: '0 1px 2px rgba(0,0,0,0.35)' }}>{t.book_title}</div>
+                      <div className="relative text-[11px] truncate mt-0.5" style={{ color: leather.text, opacity: 0.75 }}>
                         {owner ? dispName(owner.name, isLoggedIn) : (t.start_date ? `시작 ${fmtDate(t.start_date)}` : '')}
                       </div>
                     </div>
                     {/* 페이지 단면 (page block) */}
-                    <div className="relative shrink-0 flex flex-col items-center justify-center gap-1.5" style={{ width: 104, background: 'repeating-linear-gradient(180deg, #EFE7D3 0px, #EFE7D3 2px, #E6DCC2 2px, #E6DCC2 3px)' }}>
-                      <div className="absolute pointer-events-none" style={{ top: 0, right: 14, width: 10, height: 18, background: '#B99B6B', clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%)' }} />
+                    <div className="relative shrink-0 flex flex-col items-center justify-center gap-1.5" style={{
+                      width: 104,
+                      background: 'linear-gradient(90deg, rgba(0,0,0,0.15) 0%, transparent 8%), repeating-linear-gradient(180deg, #EFE7D3 0px, #EFE7D3 2px, #E6DCC2 2px, #E6DCC2 3px)',
+                    }}>
+                      <div className="absolute pointer-events-none" style={{ top: 0, right: 14, width: 11, height: 20, background: '#B99B6B', clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%)', boxShadow: '0 1px 2px rgba(0,0,0,0.25)' }} />
                       {t.is_public === false && <Lock size={11} style={{ color: '#6B5B3E' }} />}
                       {showPageOnly ? (
                         <span className="text-sm font-bold" style={{ color: '#3A2C18', fontFamily: "'IBM Plex Mono', monospace" }}>{statusText}</span>
                       ) : (
-                        <span className="text-[11px] font-bold rounded-full px-2.5 py-1" style={{ background: badgeColor, color: '#fff' }}>{statusText}</span>
+                        <span className="text-[11px] font-bold rounded-full px-2.5 py-1" style={{ background: badgeColor, color: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.25)' }}>{statusText}</span>
                       )}
                       {isMine && (
                         <div className="flex items-center gap-2 mt-0.5">
