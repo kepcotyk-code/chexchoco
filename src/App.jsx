@@ -1222,19 +1222,26 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [towerPageInput, setTowerPageInput] = useState('');
   const [towerFinishedInput, setTowerFinishedInput] = useState('');
   const [editingTowerId, setEditingTowerId] = useState(null);
+  const [towerPublicInput, setTowerPublicInput] = useState(true);
+  const [editingTowerPublic, setEditingTowerPublic] = useState(true);
   const addManualTowerEntry = async () => {
     if (!currentMember || !towerTitleInput.trim()) return;
     await insertRow('book_tower_entries', {
       id: uid('bt'), member_id: currentMember.id, book_title: towerTitleInput.trim(),
       start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null,
-      color: randomPastel(), source_share_id: null, created_at: new Date().toISOString(),
+      color: randomPastel(), source_share_id: null, created_at: new Date().toISOString(), is_public: towerPublicInput,
     });
-    setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setShowTowerAdd(false);
+    setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setTowerPublicInput(true); setShowTowerAdd(false);
     await reload();
   };
   const saveTowerEdit = async (entry) => {
     try {
-      await updateRow('book_tower_entries', 'id', entry.id, { start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null });
+      const { data, error } = await supabase.from('book_tower_entries')
+        .update({ start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null, is_public: editingTowerPublic })
+        .eq('id', entry.id)
+        .select();
+      if (error) throw error;
+      if (!data || data.length === 0) throw new Error('저장 권한이 없거나 항목을 찾지 못했어요 (관리자에게 문의해주세요).');
       setEditingTowerId(null);
       await reload();
     } catch (e) {
@@ -1246,11 +1253,13 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     setTowerStartInput(entry.start_date || '');
     setTowerPageInput(entry.current_page ? String(entry.current_page) : '');
     setTowerFinishedInput(entry.finished_date || '');
+    setEditingTowerPublic(entry.is_public !== false);
   };
   const removeTowerEntry = async (entryId) => { await deleteRow('book_tower_entries', 'id', entryId); await reload(); };
   const towerSortKey = (t) => t.finished_date || t.start_date || t.created_at.slice(0, 10);
   const myTower = currentMember ? bookTowerEntries.filter((t) => t.member_id === currentMember.id).sort((a, b) => towerSortKey(a).localeCompare(towerSortKey(b))) : [];
-  const groupTower = [...bookTowerEntries].sort((a, b) => towerSortKey(a).localeCompare(towerSortKey(b)));
+  // 비공개(is_public === false)로 설정한 책은 모임 책장에서는 빠지고 본인 책장에서만 보임. 기존 데이터(is_public 필드 없음)는 공개로 취급
+  const groupTower = bookTowerEntries.filter((t) => t.is_public !== false).sort((a, b) => towerSortKey(a).localeCompare(towerSortKey(b)));
 
   return (
     <div className="space-y-4">
@@ -1476,6 +1485,10 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
               <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>다 읽은 날 (선택)</div><input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
             </div>
             <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지 (선택)</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} placeholder="예: 128" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+            <label className="flex items-center gap-1.5 text-xs" style={{ color: MUTE }}>
+              <input type="checkbox" checked={towerPublicInput} onChange={(e) => setTowerPublicInput(e.target.checked)} />
+              모임 책장에도 공개하기 (끄면 나만 볼 수 있어요)
+            </label>
             <PrimaryBtn onClick={addManualTowerEntry} icon={Plus}>추가</PrimaryBtn>
           </div>
         )}
@@ -1499,16 +1512,20 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 // id를 기반으로 한 안정적인 값으로 살짝 다른 두께를 줘서 실제 책처럼 자연스럽게
                 const hash = t.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
                 const containerH = [64, 70, 76][hash % 3];
-                // 책마다 너비와 좌우 위치가 제각각이어야 실제로 쌓인 책더미처럼 삐뚤빼뚤한 느낌이 남
-                const widthPct = 62 + ((hash >> 2) % 35); // 62~96%
-                const align = ['flex-start', 'center', 'flex-end'][(hash >> 5) % 3];
+                // 너비가 제각각이고, 왼쪽 여백도 (3단계가 아니라) 남은 공간 안에서 연속적으로 랜덤해야
+                // 실제로 손으로 쌓은 책더미처럼 자연스럽게 보임. 살짝 기울기도 더해줌.
+                const widthPct = 60 + ((hash >> 2) % 30); // 60~89%
+                const maxLeftPct = 100 - widthPct;
+                const leftPct = maxLeftPct > 0 ? (hash >> 7) % (maxLeftPct + 1) : 0;
+                const tiltDeg = (((hash >> 10) % 9) - 4) * 0.45; // 약 -1.8~1.8도
                 const lineShade = dark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.12)';
                 const highlight = dark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.35)';
                 const shade = dark ? 'rgba(0,0,0,0.22)' : 'rgba(0,0,0,0.06)';
                 return (
-                  <div key={t.id} style={{ display: 'flex', justifyContent: align }}>
+                  <div key={t.id} style={{ position: 'relative' }}>
                   <div className="relative overflow-hidden" style={{
-                    width: `${widthPct}%`, height: containerH, borderRadius: 14,
+                    width: `${widthPct}%`, marginLeft: `${leftPct}%`, height: containerH, borderRadius: 14,
+                    transform: `rotate(${tiltDeg}deg)`,
                     background: `linear-gradient(180deg, ${highlight} 0%, transparent 25%, transparent 75%, ${shade} 100%), ${t.color}`,
                     boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
                   }}>
@@ -1522,8 +1539,17 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                         <div className="text-sm font-bold truncate" style={{ color: INK }}>{t.book_title}</div>
                         <div className="grid grid-cols-2 gap-1.5">
                           <input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="rounded-lg px-2 py-1 text-[11px] outline-none" style={inputStyle} aria-label="읽기 시작일" />
-                          <input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="rounded-lg px-2 py-1 text-[11px] outline-none" style={inputStyle} aria-label="다 읽은 날" />
+                          <div className="flex gap-1 items-center">
+                            <input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="rounded-lg px-2 py-1 text-[11px] outline-none flex-1 min-w-0" style={inputStyle} aria-label="다 읽은 날" />
+                            {towerFinishedInput && (
+                              <button onClick={() => setTowerFinishedInput('')} className="shrink-0 p-1" aria-label="다 읽은 날 지우기"><X size={12} style={{ color: fgMute }} /></button>
+                            )}
+                          </div>
                         </div>
+                        <label className="flex items-center gap-1.5 text-[10px]" style={{ color: fgMute }}>
+                          <input type="checkbox" checked={editingTowerPublic} onChange={(e) => setEditingTowerPublic(e.target.checked)} />
+                          모임 책장에 공개
+                        </label>
                         <div className="flex gap-1.5 items-center">
                           <input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} placeholder="현재 페이지" className="flex-1 rounded-lg px-2 py-1 text-[11px] outline-none" style={inputStyle} />
                           <button onClick={() => saveTowerEdit(t)} className="text-[11px] rounded-full px-2.5 py-1 font-semibold shrink-0" style={{ background: '#1E1C16', color: '#F2EEE3' }}>저장</button>
@@ -1539,6 +1565,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
+                          {t.is_public === false && <Lock size={11} style={{ color: fgMute }} />}
                           <span className="text-xs font-medium" style={{ color: fgMute }}>{statusText}</span>
                           {isMine && (
                             <>
