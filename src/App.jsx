@@ -47,7 +47,16 @@ const SHARE_REQUEST_BG = '#3A2519';
 // 책장 상태 리본 색상
 const RIBBON_DONE = '#2F7A4D';    // 완독 - 짙은 초록
 const RIBBON_READING = '#C98A2B'; // 읽는 중 - 호박색
-const SHOW_PAGE_IN_GROUP = false; // 모임 책장에서 남의 진행 페이지 노출 여부 (true면 공개)
+const SHOW_PAGE_IN_GROUP = false;
+const BOOK_TITLE_FONT = "'Noto Serif KR', 'Nanum Myeongjo', serif"; // 책 제목용 한글 명조
+// 책 제목용 한글 명조 폰트 1회 로드
+if (typeof document !== 'undefined' && !document.getElementById('font-noto-serif-kr')) {
+  const l = document.createElement('link');
+  l.id = 'font-noto-serif-kr';
+  l.rel = 'stylesheet';
+  l.href = 'https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@600;700&display=swap';
+  document.head.appendChild(l);
+} // 모임 책장에서 남의 진행 페이지 노출 여부 (true면 공개)
 const TOWER_BADGE_PALETTE = ['#7C5CC4', '#D97A3D', '#C4544A', '#3E93A0', '#C48A3E'];
 // 정확한 우측 90도 측면(옆에서 본 책 두께 단면)용 - 표지 단면에 쓰이는 단색
 const COVER_EDGE_COLORS = ['#8B5E34', '#3E6B69', '#8A6F45', '#472B1D', '#2E4A66', '#3A5A3A', '#3A3A38', '#663636'];
@@ -1712,7 +1721,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 const edgeColor = COVER_EDGE_COLORS[hash % COVER_EDGE_COLORS.length];
                 const isDone = !!t.finished_date;
                 const ribbonStatusColor = isDone ? RIBBON_DONE : RIBBON_READING;
-                const ribbonLabel = isDone ? '완독' : '읽는중';
+                const ribbonLabel = isDone ? '완독' : '읽는 중';
                 // 읽는 중일 때만 페이지를 작은 동그라미로 표시 (모임 책장은 SHOW_PAGE_IN_GROUP 설정 따름)
                 const showPage = !isDone && t.current_page && (towerView === 'mine' || SHOW_PAGE_IN_GROUP);
                 if (isEditing) {
@@ -1752,7 +1761,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 const jitterX = ((hash % 7) - 3) * 5; // 중심에서 좌우로 살짝씩만 어긋나게 (쌓인 더미의 중심은 유지)
                 const lengthInset = 10 + (hash % 3) * 6; // 책마다 길이(폭)도 살짝 다르게 - 항상 가운데 기준으로 좁아짐
                 const microY = (hash % 3) - 1; // -1~1px, 실제로 쌓았을 때 생기는 미세한 높이 오차
-                const barH = t.event_tag ? [48, 50, 52, 54][hash % 4] : [40, 47, 53, 60][hash % 4]; // 책마다 두께를 다르게 (태그 있는 책은 제목이 태그 바로 아래 붙도록 범위를 좁힘)
+                const barH = [42, 47, 53, 58][hash % 4] + (t.event_tag ? 8 : 0); // 책마다 두께를 다르게, 태그 있으면 한 줄만큼만 여유
                 const edgeH = Math.max(3, Math.round(barH * 0.112)); // 위아래 표지 두께 (기존의 70%)
                 const tone = PAGE_TONES[hash % PAGE_TONES.length];
                 return (
@@ -1766,28 +1775,30 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                         background: `linear-gradient(180deg, rgba(0,0,0,0.16) 0%, rgba(0,0,0,0) 18%, rgba(0,0,0,0) 82%, rgba(0,0,0,0.20) 100%),
                           repeating-linear-gradient(180deg, ${tone.light} 0px, ${tone.light} 1.4px, ${tone.dark} 1.4px, ${tone.dark} 2.1px)` }} />
                       <div className="absolute pointer-events-none" style={{ top: edgeH, bottom: edgeH, left: 1, right: 1, backgroundImage: PAGE_NOISE_BG, backgroundSize: '60px 60px', opacity: 0.05, mixBlendMode: 'multiply' }} />
-                      {/* 오른쪽 끝 - 상태 리본 (완독=초록 / 읽는중=호박색), 글자는 세로로 */}
-                      <div className="absolute pointer-events-none flex flex-col items-center" style={{ top: -1, right: 10, width: 15, height: barH - 6, paddingTop: 3, background: `linear-gradient(180deg, ${ribbonStatusColor}, ${ribbonStatusColor}e6)`, clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 5px), 0 100%)', boxShadow: '1px 1px 2px rgba(0,0,0,0.35)' }}>
-                        {ribbonLabel.split('').map((ch, i) => (
-                          <span key={i} style={{ fontSize: 8.5, lineHeight: '10px', fontWeight: 700, color: '#fff' }}>{ch}</span>
-                        ))}
-                      </div>
-                      {/* 왼쪽 상단 모서리 - 행사/토론회 태그 코너 리본 */}
-                      {t.event_tag && (
-                        <div className="absolute pointer-events-none" style={{ top: 0, left: 0, fontSize: 8, lineHeight: '10px', fontWeight: 700, color: '#F2EAD6', background: '#3A2C18', padding: '1.5px 5px 1.5px 4px', borderRadius: '0 0 5px 0', letterSpacing: '0.1px', maxWidth: '55%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.event_tag}</div>
-                      )}
-                      <div className={`relative h-full flex justify-between gap-2 pl-3 ${t.event_tag ? 'items-start' : 'items-center'}`} style={{ paddingRight: 32, paddingTop: t.event_tag ? 15 : 0 }}>
-                        <div className="min-w-0 flex items-baseline gap-1.5">
-                          {t.is_public === false && <Lock size={10} style={{ color: '#6B5B3E' }} />}
-                          <span className="text-sm font-semibold truncate" style={{ color: '#3A2C18', letterSpacing: '0.2px', lineHeight: '18px', textShadow: '0 1px 0 rgba(255,255,255,0.35)' }}>{t.book_title}</span>
-                          <span className="text-[10px] truncate shrink-0" style={{ color: '#6B5B3E' }}>
-                            {t.owner_name_override != null ? t.owner_name_override : (owner ? dispName(owner.name, isLoggedIn) : '')}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0 self-center">
-                          {showPage && (
-                            <span className="inline-flex items-center justify-center rounded-full font-bold" style={{ minWidth: 26, height: 26, padding: '0 4px', fontSize: 9, background: '#FBF6EA', color: RIBBON_READING, border: `1.5px solid ${RIBBON_READING}`, fontFamily: "'IBM Plex Mono', monospace", boxShadow: '0 1px 2px rgba(0,0,0,0.25)' }} aria-label={`현재 ${t.current_page}페이지`}>{t.current_page}p</span>
+                      {/* 오른쪽 끝 - 상태 리본 (완독=초록 / 읽는중=호박색) */}
+                      <div className="absolute pointer-events-none" style={{ top: -1, right: 12, width: 9, height: Math.round(barH * 0.62), background: `linear-gradient(90deg, ${ribbonStatusColor} 0%, ${ribbonStatusColor}cc 100%)`, clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 4px), 0 100%)', boxShadow: '1px 1px 2px rgba(0,0,0,0.3)' }} />
+                      <div className="relative h-full flex items-center justify-between gap-3 pl-3.5" style={{ paddingRight: 28 }}>
+                        {/* 왼쪽 - 행사 태그(한 줄) + 제목을 한 덩어리로 묶어 가운데 정렬 */}
+                        <div className="min-w-0 flex flex-col" style={{ gap: 1 }}>
+                          {t.event_tag && (
+                            <span className="truncate" style={{ fontSize: 9.5, lineHeight: '12px', fontWeight: 600, color: '#8A6A3F', letterSpacing: '0.3px' }}>{t.event_tag}</span>
                           )}
+                          <div className="min-w-0 flex items-baseline gap-1.5">
+                            {t.is_public === false && <Lock size={10} style={{ color: '#6B5B3E' }} />}
+                            <span className="truncate" style={{ fontFamily: BOOK_TITLE_FONT, fontSize: 14.5, fontWeight: 700, lineHeight: '19px', color: '#2E2416', letterSpacing: '-0.2px', textShadow: '0 1px 0 rgba(255,255,255,0.4)' }}>{t.book_title}</span>
+                            <span className="text-[10px] truncate shrink-0" style={{ color: '#7A6749' }}>
+                              {t.owner_name_override != null ? t.owner_name_override : (owner ? dispName(owner.name, isLoggedIn) : '')}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {/* 상태 글씨는 리본 옆에 작게, 읽는 중이면 쪽수를 아래 줄에 */}
+                          <div className="flex flex-col items-end" style={{ lineHeight: '12px' }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: ribbonStatusColor, letterSpacing: '0.2px' }}>{ribbonLabel}</span>
+                            {showPage && (
+                              <span style={{ fontSize: 9.5, color: '#7A6749', fontFamily: "'IBM Plex Mono', monospace" }} aria-label={`현재 ${t.current_page}페이지`}>{t.current_page}쪽</span>
+                            )}
+                          </div>
                           {isMine && (
                             <div className="flex items-center gap-1">
                               <button onClick={() => startTowerEdit(t)} className="p-0.5" aria-label="책탑 항목 수정"><Pencil size={10} style={{ color: '#6B5B3E' }} /></button>
