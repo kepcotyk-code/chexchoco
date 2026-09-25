@@ -5,7 +5,7 @@ import {
   Crown, Shield, Wallet, User, Plus, Pencil, Trash2, Check, X, Lock, AlertCircle, Mail,
   Megaphone, QrCode, BarChart3, Users, Settings2, Settings, Download, Upload, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Briefcase, Coffee,
   LogIn, LogOut, Cake, PartyPopper, Archive, Paperclip, FileText, Eye, Pin, Gavel, BookOpen, Search,
-  Image as ImageIcon, Trophy, Plane, HandHelping,
+  Image as ImageIcon, Trophy, Plane,
 } from 'lucide-react';
 
 /* ---------- design tokens (dark) ---------- */
@@ -40,13 +40,13 @@ const LEATHER_PALETTE = [
   { bg: 'linear-gradient(180deg, #7A4444 0%, #663636 45%, #4A2626 100%)', text: '#F5E9E4', line: 'rgba(250,225,215,0.4)' },
 ];
 // 도서 공유함 구분 색상 - 상태 뱃지(대여가능=민트, 요청중/대여중=골드)와 겹치지 않는 색으로 분리
-const SHARE_OFFER_COLOR = '#8FAD7A';   // 빌려줄까요? - 세이지 그린
-const SHARE_OFFER_BG = '#232C1D';
+const SHARE_OFFER_COLOR = '#B39DDB';   // 빌려줄까요? - 보라색
+const SHARE_OFFER_BG = '#2A2438';
 const SHARE_REQUEST_COLOR = '#F0A87C'; // 빌려주실 수 있나요? - 코랄
 const SHARE_REQUEST_BG = '#3A2519';
-// 도서 공유함 글쓰기 패널 - 아래 목록과 확실히 구분되도록 카드 안의 별도 박스로 표시
-const SHARE_FORM_BG = '#171510';
-const SHARE_FORM_BORDER = '#3D3826';
+// 글쓰기/추가 패널 - 아래 목록과 확실히 구분되도록 카드 안의 별도 박스로 표시 (도서공유함·북적북적 공통)
+const FORM_PANEL_BG = '#171510';
+const FORM_PANEL_BORDER = '#3D3826';
 // 책장 상태 리본 색상
 const RIBBON_DONE = '#2F7A4D';    // 완독 - 짙은 초록
 const RIBBON_READING = '#C98A2B'; // 읽는 중 - 호박색
@@ -63,7 +63,10 @@ if (typeof document !== 'undefined' && !document.getElementById('font-gowun-bata
 } // 모임 책장에서 남의 진행 페이지 노출 여부 (true면 공개)
 const TOWER_BADGE_PALETTE = ['#7C5CC4', '#D97A3D', '#C4544A', '#3E93A0', '#C48A3E'];
 // 정확한 우측 90도 측면(옆에서 본 책 두께 단면)용 - 표지 단면에 쓰이는 단색
-const COVER_EDGE_COLORS = ['#8B5E34', '#3E6B69', '#8A6F45', '#472B1D', '#2E4A66', '#3A5A3A', '#3A3A38', '#663636'];
+const COVER_EDGE_COLORS = [
+  '#8B5E34', '#3E6B69', '#8A6F45', '#472B1D', '#2E4A66', '#3A5A3A', '#3A3A38', '#663636',
+  '#5C3A21', '#264653', '#6B2D3C', '#4B4423', '#3D2B56', '#1F4E4A', '#5A3E5C', '#704214',
+];
 // 책마다 미세하게 다른 종이 톤 (같은 크림색이라도 책마다 살짝 다르게)
 const PAGE_TONES = [
   { light: '#F3EBD8', dark: '#E7DCC1' },
@@ -1323,20 +1326,19 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [editingTowerPublic, setEditingTowerPublic] = useState(true);
   const [towerTagInput, setTowerTagInput] = useState('');
   const [editingTowerTag, setEditingTowerTag] = useState('');
-  const [towerOwnerNameInput, setTowerOwnerNameInput] = useState('');
-  const [editingTowerOwnerName, setEditingTowerOwnerName] = useState('');
   const [towerColorInput, setTowerColorInput] = useState(COVER_EDGE_COLORS[0]); // 내 책장에 등록할 책 표지 색상
+  const [editingTowerColor, setEditingTowerColor] = useState(COVER_EDGE_COLORS[0]); // 수정 시 표지 색상
   const addManualTowerEntry = async () => {
     if (!currentMember || !towerTitleInput.trim()) return;
     await insertRow('book_tower_entries', {
       id: uid('bt'), member_id: currentMember.id, book_title: towerTitleInput.trim(),
       start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null,
-      color: towerColorInput, source_share_id: null, created_at: new Date().toISOString(),
+      color: towerColorInput, source_share_id: null, created_at: new Date().toISOString(), sort_order: Date.now(),
       is_public: isSecretary ? towerPublicInput : false, // 모임 책장 공개는 간사만 가능 - 그 외 회원 글은 항상 내 책장에만
       event_tag: towerTagInput.trim() || null,
-      owner_name_override: isSecretary ? towerOwnerNameInput.trim() : null, // 간사는 등록자 이름을 직접 입력하거나 비울 수 있음
+      owner_name_override: null,
     });
-    setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setTowerPublicInput(true); setTowerTagInput(''); setTowerOwnerNameInput(''); setTowerColorInput(COVER_EDGE_COLORS[Math.floor(Math.random() * COVER_EDGE_COLORS.length)]); setShowTowerAdd(false);
+    setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setTowerPublicInput(true); setTowerTagInput(''); setTowerColorInput(COVER_EDGE_COLORS[Math.floor(Math.random() * COVER_EDGE_COLORS.length)]); setShowTowerAdd(false);
     await reload();
   };
   const saveTowerEdit = async (entry) => {
@@ -1346,7 +1348,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null,
           is_public: isSecretary ? editingTowerPublic : entry.is_public,
           event_tag: editingTowerTag.trim() || null,
-          owner_name_override: isSecretary ? editingTowerOwnerName.trim() : entry.owner_name_override,
+          owner_name_override: entry.owner_name_override,
+          color: editingTowerColor,
         })
         .eq('id', entry.id)
         .select();
@@ -1365,13 +1368,28 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     setTowerFinishedInput(entry.finished_date || '');
     setEditingTowerPublic(entry.is_public !== false);
     setEditingTowerTag(entry.event_tag || '');
-    setEditingTowerOwnerName(entry.owner_name_override ?? '');
+    setEditingTowerColor(entry.color || COVER_EDGE_COLORS[0]);
   };
   const removeTowerEntry = async (entryId) => { await deleteRow('book_tower_entries', 'id', entryId); await reload(); };
   const towerSortKey = (t) => t.finished_date || t.start_date || t.created_at.slice(0, 10);
-  const myTower = currentMember ? bookTowerEntries.filter((t) => t.member_id === currentMember.id).sort((a, b) => towerSortKey(a).localeCompare(towerSortKey(b))) : [];
+  // 순서를 손으로 바꾼 적이 있으면 sort_order를, 없으면 날짜를 기준으로 삼음 (둘 다 밀리초 단위 숫자라 섞여도 자연스럽게 정렬됨)
+  const towerEffectiveOrder = (t) => t.sort_order != null ? t.sort_order : (new Date(towerSortKey(t)).getTime() || 0);
+  const towerCompare = (a, b) => towerEffectiveOrder(a) - towerEffectiveOrder(b);
+  const myTower = currentMember ? bookTowerEntries.filter((t) => t.member_id === currentMember.id).sort(towerCompare) : [];
   // 비공개(is_public === false)로 설정한 책은 모임 책장에서는 빠지고 본인 책장에서만 보임. 기존 데이터(is_public 필드 없음)는 공개로 취급
-  const groupTower = bookTowerEntries.filter((t) => t.is_public !== false).sort((a, b) => towerSortKey(a).localeCompare(towerSortKey(b)));
+  const groupTower = bookTowerEntries.filter((t) => t.is_public !== false).sort(towerCompare);
+  // 목록 안에서 책탑 순서를 위/아래로 한 칸씩 바꿈 (쌓인 순서상 뒤 항목=화면 위쪽, 앞 항목=화면 아래쪽)
+  const moveTowerItem = async (list, entry, direction) => {
+    const idx = list.findIndex((x) => x.id === entry.id);
+    const swapIdx = direction === 'up' ? idx + 1 : idx - 1;
+    if (idx === -1 || swapIdx < 0 || swapIdx >= list.length) return;
+    const other = list[swapIdx];
+    const a = towerEffectiveOrder(entry);
+    const b = towerEffectiveOrder(other);
+    await updateRow('book_tower_entries', 'id', entry.id, { sort_order: b });
+    await updateRow('book_tower_entries', 'id', other.id, { sort_order: a });
+    await reload();
+  };
 
   return (
     <div className="space-y-4">
@@ -1426,7 +1444,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           {currentMember && <button onClick={() => setShowShareForm((v) => !v)} className="text-xs rounded-full px-3 py-1.5 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{showShareForm ? '취소' : '글쓰기'}</button>}
         </div>
         {showShareForm && (
-          <div className="rounded-2xl p-3 mb-4 space-y-2" style={{ background: SHARE_FORM_BG, border: `1.5px solid ${SHARE_FORM_BORDER}`, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)' }}>
+          <div className="rounded-2xl p-3 mb-4 space-y-2" style={{ background: FORM_PANEL_BG, border: `1.5px solid ${FORM_PANEL_BORDER}`, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)' }}>
             <div className="flex items-center gap-1.5 text-xs font-bold mb-0.5" style={{ color: MUTE }}><Pencil size={11} /> 새 글 작성</div>
             <div className="flex gap-2">
               <button onClick={() => setShareKind('offer')} className="flex-1 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'offer' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'offer' ? BTN_TEXT : NEUTRAL_TEXT }}>빌려줄까요?</button>
@@ -1482,7 +1500,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         )}
         {!currentMember && !showShareForm && <p className="text-xs mb-2" style={{ color: MUTE }}>상단에서 본인을 먼저 선택해야 글을 올릴 수 있어요.</p>}
         {showShareForm && <div className="text-[10px] font-semibold mb-2" style={{ color: MUTE }}>등록된 글 목록</div>}
-        <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold" style={{ color: SHARE_OFFER_COLOR }}><HandHelping size={13} /> 빌려줄까요? ({offers.length})</div>
+        <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold" style={{ color: SHARE_OFFER_COLOR }}><span style={{ fontSize: 13, lineHeight: 1 }} role="img" aria-label="손 내미는 사람">💁‍♀️</span> 빌려줄까요? ({offers.length})</div>
         <div className="space-y-1.5 mb-3">
           {offers.length === 0 && <p className="text-xs" style={{ color: MUTE }}>등록된 글이 없어요.</p>}
           {offers.map((s) => {
@@ -1690,7 +1708,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           {currentMember && <button onClick={() => setShowTowerAdd((v) => !v)} className="text-xs rounded-full px-3 py-1.5 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{showTowerAdd ? '취소' : '+ 책 추가'}</button>}
         </div>
         {showTowerAdd && (
-          <div className="space-y-2 mb-3 pb-3" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
+          <div className="rounded-2xl p-3 mb-3 space-y-2" style={{ background: FORM_PANEL_BG, border: `1.5px solid ${FORM_PANEL_BORDER}`, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)' }}>
+            <div className="flex items-center gap-1.5 text-xs font-bold mb-0.5" style={{ color: MUTE }}><Pencil size={11} /> 새 책 추가</div>
             <input value={towerTitleInput} onChange={(e) => setTowerTitleInput(e.target.value)} placeholder="책 제목" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
             <div className="grid grid-cols-2 gap-2">
               <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>읽기 시작일</div><input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
@@ -1713,15 +1732,13 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 모임 책장에도 공개하기
               </label>
             )}
-            {isSecretary && towerPublicInput && (
-              <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>등록자 이름 (선택 — 비우면 이름 없이 표시)</div><input value={towerOwnerNameInput} onChange={(e) => setTowerOwnerNameInput(e.target.value)} placeholder="예: 간사 · 비워두면 이름 없음" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
-            )}
             {!isSecretary && (
               <p className="text-[11px]" style={{ color: MUTE }}>* 모임 책장 공개는 간사만 가능해요. 이 책은 내 책장에만 기록돼요.</p>
             )}
             <PrimaryBtn onClick={addManualTowerEntry} icon={Plus}>추가</PrimaryBtn>
           </div>
         )}
+        {showTowerAdd && <div className="text-[10px] font-semibold mb-2" style={{ color: MUTE }}>쌓인 책 목록</div>}
         <div className="flex gap-2 mb-3">
           <button onClick={() => setTowerView('mine')} className="flex-1 rounded-xl py-1.5 text-xs font-semibold" style={{ background: towerView === 'mine' ? BTN_BG : NEUTRAL_BG, color: towerView === 'mine' ? BTN_TEXT : NEUTRAL_TEXT }}>내 책장 ({myTower.length})</button>
           <button onClick={() => setTowerView('group')} className="flex-1 rounded-xl py-1.5 text-xs font-semibold" style={{ background: towerView === 'group' ? BTN_BG : NEUTRAL_BG, color: towerView === 'group' ? BTN_TEXT : NEUTRAL_TEXT }}>모임 책장 ({groupTower.length})</button>
@@ -1731,9 +1748,12 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           if (list.length === 0) return <p className="text-xs text-center py-6" style={{ color: MUTE }}>아직 쌓인 책이 없어요.</p>;
           return (
             <div className="flex flex-col-reverse gap-1.5 max-h-[28rem] overflow-y-auto pr-1">
-              {list.map((t) => {
+              {list.map((t, idx) => {
                 const owner = towerView === 'group' ? members.find((m) => m.id === t.member_id) : null;
                 const isMine = towerView === 'mine' && currentMember;
+                const canReorder = towerView === 'mine' ? !!isMine : isSecretary; // 내 책장은 본인이, 모임 책장은 간사만 순서 변경 가능
+                const canMoveUp = canReorder && idx < list.length - 1; // 배열 뒤쪽일수록 화면 위쪽에 쌓이므로 '위로'는 다음 인덱스와 교체
+                const canMoveDown = canReorder && idx > 0;
                 const isEditing = editingTowerId === t.id;
                 const hash = t.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
                 const edgeColor = t.color || COVER_EDGE_COLORS[hash % COVER_EDGE_COLORS.length]; // 등록 시 고른 색상 우선, 없으면(기존 항목) 해시 기반 자동 색상
@@ -1744,7 +1764,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 const showPage = !isDone && t.current_page && (towerView === 'mine' || SHOW_PAGE_IN_GROUP);
                 if (isEditing) {
                   return (
-                    <div key={t.id} className="rounded-2xl p-3 space-y-2" style={{ background: CARD_BG, border: `1px solid ${ROW_LINE}` }}>
+                    <div key={t.id} className="rounded-2xl p-3 space-y-2" style={{ background: FORM_PANEL_BG, border: `1.5px solid ${FORM_PANEL_BORDER}`, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)' }}>
+                      <div className="flex items-center gap-1.5 text-xs font-bold" style={{ color: MUTE }}><Pencil size={11} /> 책 정보 수정</div>
                       <div className="text-sm font-bold truncate" style={{ color: INK }}>{t.book_title}</div>
                       <div className="grid grid-cols-2 gap-2">
                         <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>읽기 시작일</div><input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} aria-label="읽기 시작일" /></div>
@@ -1760,14 +1781,20 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                       </div>
                       <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} placeholder="예: 128" className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
                       <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그</div><input value={editingTowerTag} onChange={(e) => setEditingTowerTag(e.target.value)} placeholder="예: 제 1차 독서토론회 도서" className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
+                      <div>
+                        <div className="text-[10px] mb-1" style={{ color: MUTE }}>표지 색상</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {COVER_EDGE_COLORS.map((c) => (
+                            <button key={c} type="button" onClick={() => setEditingTowerColor(c)} aria-label={`표지 색상 ${c}`}
+                              className="rounded-full shrink-0" style={{ width: 22, height: 22, background: c, border: editingTowerColor === c ? `2px solid ${BTN_BG}` : `1px solid ${LINE}`, boxShadow: editingTowerColor === c ? '0 0 0 2px rgba(242,238,227,0.15)' : 'none' }} />
+                          ))}
+                        </div>
+                      </div>
                       {isSecretary && (
-                        <>
-                          <label className="flex items-center gap-1.5 text-xs" style={{ color: MUTE }}>
-                            <input type="checkbox" checked={editingTowerPublic} onChange={(e) => setEditingTowerPublic(e.target.checked)} />
-                            모임 책장에 공개
-                          </label>
-                          <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>등록자 이름 (비우면 이름 없이 표시)</div><input value={editingTowerOwnerName} onChange={(e) => setEditingTowerOwnerName(e.target.value)} placeholder="비워두면 이름 없음" className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
-                        </>
+                        <label className="flex items-center gap-1.5 text-xs" style={{ color: MUTE }}>
+                          <input type="checkbox" checked={editingTowerPublic} onChange={(e) => setEditingTowerPublic(e.target.checked)} />
+                          모임 책장에 공개
+                        </label>
                       )}
                       <div className="flex gap-1.5 items-center pt-1">
                         <button onClick={() => saveTowerEdit(t)} className="flex-1 text-xs rounded-full py-2 font-semibold" style={{ background: '#1E1C16', color: '#F2EEE3' }}>저장</button>
@@ -1777,7 +1804,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                   );
                 }
                 const jitterX = ((hash % 7) - 3) * 5; // 중심에서 좌우로 살짝씩만 어긋나게 (쌓인 더미의 중심은 유지)
-                const lengthInset = 10 + (hash % 3) * 6; // 책마다 길이(폭)도 살짝 다르게 - 항상 가운데 기준으로 좁아짐
+                const lengthInset = 6 + (hash % 3) * 4; // 책마다 길이(폭)도 살짝 다르게 - 항상 가운데 기준으로 좁아짐 (제목이 잘리지 않도록 여백을 좁게)
                 const microY = (hash % 3) - 1; // -1~1px, 실제로 쌓았을 때 생기는 미세한 높이 오차
                 const barH = [42, 47, 53, 58][hash % 4] + (t.event_tag ? 8 : 0); // 책마다 두께를 다르게, 태그 있으면 한 줄만큼만 여유
                 const edgeH = Math.max(3, Math.round(barH * 0.112)); // 위아래 표지 두께 (기존의 70%)
@@ -1799,21 +1826,23 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                         boxShadow: 'inset 1px 0 0 rgba(255,255,255,0.25), inset -1px 0 0 rgba(255,255,255,0.25)' }} />
                       {/* 오른쪽 끝 - 상태 리본 (완독=초록 / 읽는중=호박색) */}
                       <div className="absolute pointer-events-none" style={{ top: -1, right: 12, width: 9, height: Math.round(barH * 0.62), background: `linear-gradient(90deg, ${ribbonStatusColor} 0%, ${ribbonStatusColor}cc 100%)`, clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 4px), 0 100%)', boxShadow: '1px 1px 2px rgba(0,0,0,0.3)' }} />
-                      <div className="relative h-full flex items-center justify-between gap-2.5 pl-3.5" style={{ paddingRight: 26 }}>
+                      <div className="relative h-full flex items-center justify-between gap-1.5 pl-3" style={{ paddingRight: 20 }}>
                         {/* 왼쪽 - 행사 태그(캡션) 위, 제목·등록자 아래로 한 덩어리 */}
                         <div className="min-w-0 flex flex-col justify-center" style={{ gap: 2 }}>
                           {t.event_tag && (
                             <span className="truncate" style={{ fontSize: 9, lineHeight: '11px', fontWeight: 600, color: '#9C7B4A', letterSpacing: '0.15px' }}>{t.event_tag}</span>
                           )}
-                          <div className="min-w-0 flex items-baseline gap-1.5">
+                          <div className="min-w-0 flex items-baseline gap-1">
                             {t.is_public === false && <Lock size={10} style={{ color: '#6B5B3E', alignSelf: 'center' }} />}
-                            <span className="truncate" style={{ fontFamily: BOOK_TITLE_FONT, fontSize: 14, fontWeight: 700, lineHeight: '18px', color: '#2A2015', letterSpacing: '0px', textShadow: '0 1px 0 rgba(255,255,255,0.3)' }}>{t.book_title}</span>
-                            <span className="text-[10px] truncate shrink-0" style={{ color: '#8A7355', fontWeight: 500 }}>
-                              {t.owner_name_override != null ? t.owner_name_override : (owner ? dispName(owner.name, isLoggedIn) : '')}
-                            </span>
+                            <span className="truncate min-w-0" style={{ fontFamily: BOOK_TITLE_FONT, fontSize: 13.5, fontWeight: 700, lineHeight: '17px', color: '#2A2015', letterSpacing: '0px', textShadow: '0 1px 0 rgba(255,255,255,0.3)' }}>{t.book_title}</span>
+                            {(t.owner_name_override != null ? t.owner_name_override : (owner ? dispName(owner.name, isLoggedIn) : '')) && (
+                              <span className="text-[10px] truncate shrink-0" style={{ color: '#8A7355', fontWeight: 500 }}>
+                                {t.owner_name_override != null ? t.owner_name_override : (owner ? dispName(owner.name, isLoggedIn) : '')}
+                              </span>
+                            )}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2.5 shrink-0">
+                        <div className="flex items-center gap-1.5 shrink-0">
                           {/* 상태 - 읽는 중이면 쪽수를 바로 아래 줄에, 완독이면 한 줄만 */}
                           <div className="flex flex-col items-end" style={{ gap: 1 }}>
                             <span style={{ fontSize: 10, lineHeight: '11px', fontWeight: 700, color: ribbonStatusColor, letterSpacing: '0.1px' }}>{ribbonLabel}</span>
@@ -1821,6 +1850,12 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                               <span style={{ fontSize: 9, lineHeight: '10px', color: '#8A6A3F', fontWeight: 600, fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: 'tabular-nums' }} aria-label={`현재 ${t.current_page}페이지`}>{t.current_page}쪽</span>
                             )}
                           </div>
+                          {canReorder && (
+                            <div className="flex flex-col" style={{ gap: 1 }}>
+                              <button onClick={() => moveTowerItem(list, t, 'up')} disabled={!canMoveUp} className="p-0" style={{ opacity: canMoveUp ? 1 : 0.25 }} aria-label="위로 이동"><ChevronUp size={11} style={{ color: '#6B5B3E' }} /></button>
+                              <button onClick={() => moveTowerItem(list, t, 'down')} disabled={!canMoveDown} className="p-0" style={{ opacity: canMoveDown ? 1 : 0.25 }} aria-label="아래로 이동"><ChevronDown size={11} style={{ color: '#6B5B3E' }} /></button>
+                            </div>
+                          )}
                           {isMine && (
                             <div className="flex items-center gap-1">
                               <button onClick={() => startTowerEdit(t)} className="p-0.5" aria-label="책탑 항목 수정"><Pencil size={10} style={{ color: '#6B5B3E' }} /></button>
@@ -2271,8 +2306,8 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   });
   const weekColWidths = weekLabels.map(({ main, sub }, wi) => {
     const [start, end] = weekChunkRanges[wi];
-    const dotsWidth = (end - start) * 13 - 4; // 도트(9px)+간격(4px)만큼 실제로 필요한 최소 폭 — 라벨이 짧아도 도트가 늘어나면 이 폭을 확보
-    return Math.max(32, Math.max(main.length, sub.length) * 6.6 + 6, dotsWidth);
+    const dotsWidth = (end - start) * 11 - 2; // 도트(9px)+간격(2px)만큼 실제로 필요한 최소 폭 — 라벨이 짧아도 도트가 늘어나면 이 폭을 확보
+    return Math.max(28, Math.max(main.length, sub.length) * 5.9 + 4, dotsWidth);
   });
   // "이번 달" 뷰는 벌칙과 동일하게 주 단위 기준으로 통일 — 월 경계에 걸쳐 끌어온 날짜(예: 8/31)도 포함해서 계산
   const totalDays = monthDayList.filter((d) => d.session).length;
@@ -2650,19 +2685,22 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: INK }} />휴가</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
             </div>
+            {/* 주차가 많아지는 달에도 절대 두 줄로 줄바꿈되지 않도록, 주차 영역만 각각 독립된 가로 스크롤로 처리 (이름·출석률 줄은 그대로 고정 노출) */}
             {weekChunkRanges.length > 0 && (
-              <div className="flex items-center flex-wrap gap-y-1 mb-1.5" style={{ paddingLeft: 34 }}>
+              <div className="overflow-x-auto mb-1.5" style={{ WebkitOverflowScrolling: 'touch' }}>
+              <div className="flex items-center" style={{ paddingLeft: 34, width: 'max-content' }}>
                 {weekChunkRanges.map(([start, end], wi) => (
                   <React.Fragment key={wi}>
-                    <div className="flex flex-col items-center" style={{ width: weekColWidths[wi] }}>
-                      <span className="text-[10px] leading-tight" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi].main}</span>
-                      <span className="text-[10px] leading-tight" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi].sub}</span>
+                    <div className="flex flex-col items-center shrink-0" style={{ width: weekColWidths[wi] }}>
+                      <span className="text-[9px] leading-tight" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi].main}</span>
+                      <span className="text-[9px] leading-tight" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi].sub}</span>
                     </div>
                     {wi < weekChunkRanges.length - 1 && (
-                      <span className="shrink-0" style={{ width: 1, height: 11, background: MUTE, opacity: 0.4, transform: 'rotate(22deg)', margin: '0 7px' }} />
+                      <span className="shrink-0" style={{ width: 1, height: 11, background: MUTE, opacity: 0.4, transform: 'rotate(22deg)', margin: '0 5px' }} />
                     )}
                   </React.Fragment>
                 ))}
+              </div>
               </div>
             )}
             <div className="space-y-3">
@@ -2685,10 +2723,11 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{r.denom} · {r.rate}%</span>
                     </div>
                   </div>
-                  <div className="flex items-center flex-wrap gap-y-1.5" style={{ paddingLeft: 34 }}>
+                  <div className="overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+                  <div className="flex items-center" style={{ paddingLeft: 34, width: 'max-content' }}>
                     {weekChunkRanges.map(([start, end], wi) => (
                       <React.Fragment key={wi}>
-                        <div className="flex items-center justify-center gap-1" style={{ width: weekColWidths[wi] }}>
+                        <div className="flex items-center justify-center gap-0.5 shrink-0" style={{ width: weekColWidths[wi] }}>
                           {r.flags.slice(start, end).map((status, i) => {
                             const fromPrevMonth = !monthDayList[start + i].inCurrentMonth;
                             if (status === 'trip') {
@@ -2709,10 +2748,11 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                           })}
                         </div>
                         {wi < weekChunkRanges.length - 1 && (
-                          <span className="shrink-0" style={{ width: 1, height: 11, background: MUTE, opacity: 0.4, transform: 'rotate(22deg)', margin: '0 7px' }} />
+                          <span className="shrink-0" style={{ width: 1, height: 11, background: MUTE, opacity: 0.4, transform: 'rotate(22deg)', margin: '0 5px' }} />
                         )}
                       </React.Fragment>
                     ))}
+                  </div>
                   </div>
                 </div>
               ))}
@@ -2938,8 +2978,10 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
     <div className="space-y-4">
       {canManage && (
         <div className="flex gap-2">
-          <GhostBtn onClick={downloadExcel} icon={Download}>명단 다운로드</GhostBtn>
-          <label className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 px-4 text-sm font-semibold cursor-pointer" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>
+          <button onClick={downloadExcel} className="flex-1 min-w-0 flex items-center justify-center gap-1.5 rounded-xl py-2.5 px-2 text-sm font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>
+            <Download size={15} /> 명단 다운로드
+          </button>
+          <label className="flex-1 min-w-0 flex items-center justify-center gap-1.5 rounded-xl py-2.5 px-2 text-sm font-semibold cursor-pointer" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>
             <Upload size={15} /> 엑셀 업로드<input type="file" accept=".xlsx,.xls" onChange={uploadExcel} className="hidden" />
           </label>
         </div>
