@@ -39,6 +39,15 @@ const LEATHER_PALETTE = [
   { bg: 'linear-gradient(180deg, #4F4F4D 0%, #3A3A38 45%, #292927 100%)', text: '#F0EEE9', line: 'rgba(230,228,220,0.35)' },
   { bg: 'linear-gradient(180deg, #7A4444 0%, #663636 45%, #4A2626 100%)', text: '#F5E9E4', line: 'rgba(250,225,215,0.4)' },
 ];
+// 도서 공유함 구분 색상 - 상태 뱃지(대여가능=민트, 요청중/대여중=골드)와 겹치지 않는 색으로 분리
+const SHARE_OFFER_COLOR = '#B8A3E3';   // 빌려줄까요? - 라벤더
+const SHARE_OFFER_BG = '#2A2438';
+const SHARE_REQUEST_COLOR = '#F0A87C'; // 빌려주실수있나요? - 코랄
+const SHARE_REQUEST_BG = '#3A2519';
+// 책장 상태 리본 색상
+const RIBBON_DONE = '#2F7A4D';    // 완독 - 짙은 초록
+const RIBBON_READING = '#C98A2B'; // 읽는 중 - 호박색
+const SHOW_PAGE_IN_GROUP = false; // 모임 책장에서 남의 진행 페이지 노출 여부 (true면 공개)
 const TOWER_BADGE_PALETTE = ['#7C5CC4', '#D97A3D', '#C4544A', '#3E93A0', '#C48A3E'];
 // 정확한 우측 90도 측면(옆에서 본 책 두께 단면)용 - 표지 단면에 쓰이는 단색
 const COVER_EDGE_COLORS = ['#8B5E34', '#3E6B69', '#8A6F45', '#472B1D', '#2E4A66', '#3A5A3A', '#3A3A38', '#663636'];
@@ -1456,7 +1465,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           </div>
         )}
         {!currentMember && !showShareForm && <p className="text-xs mb-2" style={{ color: MUTE }}>상단에서 본인을 먼저 선택해야 글을 올릴 수 있어요.</p>}
-        <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold" style={{ color: '#7FA8D9' }}><Gift size={12} /> 빌려줄까요? ({offers.length})</div>
+        <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold" style={{ color: SHARE_OFFER_COLOR }}><Gift size={12} /> 빌려줄까요? ({offers.length})</div>
         <div className="space-y-1.5 mb-3">
           {offers.length === 0 && <p className="text-xs" style={{ color: MUTE }}>등록된 글이 없어요.</p>}
           {offers.map((s) => {
@@ -1472,7 +1481,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
             );
           })}
         </div>
-        <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold" style={{ color: '#EFC94C' }}>🙋 빌려주실수있나요? ({requests.length})</div>
+        <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold" style={{ color: SHARE_REQUEST_COLOR }}>🙋 빌려주실수있나요? ({requests.length})</div>
         <div className="space-y-1.5">
           {requests.length === 0 && <p className="text-xs" style={{ color: MUTE }}>등록된 글이 없어요.</p>}
           {requests.map((s) => {
@@ -1502,7 +1511,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setViewingShareId(null)}>
             <div className="w-full max-w-sm rounded-2xl border p-5" style={{ background: CARD_BG, borderColor: LINE }} onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: viewingShare.kind === 'offer' ? '#1E2A38' : '#332815', color: viewingShare.kind === 'offer' ? '#7FA8D9' : '#EFC94C' }}>{viewingShare.kind === 'offer' ? '빌려줄까요?' : '빌려주실수있나요?'}</span>
+                <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: viewingShare.kind === 'offer' ? SHARE_OFFER_BG : SHARE_REQUEST_BG, color: viewingShare.kind === 'offer' ? SHARE_OFFER_COLOR : SHARE_REQUEST_COLOR }}>{viewingShare.kind === 'offer' ? '빌려줄까요?' : '빌려주실수있나요?'}</span>
                 <div className="flex items-center gap-2">
                   {canEditPost && !editingShare && (
                     <button onClick={() => { setEditingShare(true); setEditShareTitle(viewingShare.book_title); setEditShareAuthor(viewingShare.book_author || ''); setEditSharePublisher(viewingShare.book_publisher || ''); setEditShareCoverUrl(viewingShare.cover_url || ''); }} aria-label="글 수정"><Pencil size={14} style={{ color: MUTE }} /></button>
@@ -1671,7 +1680,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
               <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>다 읽은 날 (선택)</div><input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
             </div>
             <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지 (선택)</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} placeholder="예: 128" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
-            <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그 (선택)</div><input value={towerTagInput} onChange={(e) => setTowerTagInput(e.target.value)} placeholder="예: 제 1회 독서토론회 도서" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+            <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그 (선택)</div><input value={towerTagInput} onChange={(e) => setTowerTagInput(e.target.value)} placeholder="예: 제 1차 독서토론회 도서" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
             {canManage ? (
               <>
                 <label className="flex items-center gap-1.5 text-xs" style={{ color: MUTE }}>
@@ -1699,11 +1708,13 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 const owner = towerView === 'group' ? members.find((m) => m.id === t.member_id) : null;
                 const isMine = towerView === 'mine' && currentMember;
                 const isEditing = editingTowerId === t.id;
-                const statusText = t.finished_date ? '완독' : t.current_page ? `p.${t.current_page}` : '읽는 중';
                 const hash = t.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
                 const edgeColor = COVER_EDGE_COLORS[hash % COVER_EDGE_COLORS.length];
-                const badgeColor = t.finished_date ? '#3F8F5C' : TOWER_BADGE_PALETTE[hash % TOWER_BADGE_PALETTE.length];
-                const showPageOnly = t.current_page && !t.finished_date; // 현재 읽는 페이지가 있으면 뱃지 대신 페이지 숫자를 그대로 보여줌
+                const isDone = !!t.finished_date;
+                const ribbonStatusColor = isDone ? RIBBON_DONE : RIBBON_READING;
+                const ribbonLabel = isDone ? '완독' : '읽는중';
+                // 읽는 중일 때만 페이지를 작은 동그라미로 표시 (모임 책장은 SHOW_PAGE_IN_GROUP 설정 따름)
+                const showPage = !isDone && t.current_page && (towerView === 'mine' || SHOW_PAGE_IN_GROUP);
                 if (isEditing) {
                   return (
                     <div key={t.id} className="rounded-2xl p-3 space-y-2" style={{ background: CARD_BG, border: `1px solid ${ROW_LINE}` }}>
@@ -1721,7 +1732,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                         </div>
                       </div>
                       <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} placeholder="예: 128" className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
-                      <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그</div><input value={editingTowerTag} onChange={(e) => setEditingTowerTag(e.target.value)} placeholder="예: 제 1회 독서토론회 도서" className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
+                      <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그</div><input value={editingTowerTag} onChange={(e) => setEditingTowerTag(e.target.value)} placeholder="예: 제 1차 독서토론회 도서" className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
                       {canManage && (
                         <>
                           <label className="flex items-center gap-1.5 text-xs" style={{ color: MUTE }}>
@@ -1741,10 +1752,9 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 const jitterX = ((hash % 7) - 3) * 5; // 중심에서 좌우로 살짝씩만 어긋나게 (쌓인 더미의 중심은 유지)
                 const lengthInset = 10 + (hash % 3) * 6; // 책마다 길이(폭)도 살짝 다르게 - 항상 가운데 기준으로 좁아짐
                 const microY = (hash % 3) - 1; // -1~1px, 실제로 쌓았을 때 생기는 미세한 높이 오차
-                const barH = [40, 47, 53, 60][hash % 4] + (t.event_tag ? 13 : 0); // 책마다 두께를 다르게, 태그 있으면 겹치지 않도록 높이 추가 확보
+                const barH = t.event_tag ? [48, 50, 52, 54][hash % 4] : [40, 47, 53, 60][hash % 4]; // 책마다 두께를 다르게 (태그 있는 책은 제목이 태그 바로 아래 붙도록 범위를 좁힘)
                 const edgeH = Math.max(3, Math.round(barH * 0.112)); // 위아래 표지 두께 (기존의 70%)
                 const tone = PAGE_TONES[hash % PAGE_TONES.length];
-                const ribbonColor = ['#C0472F', '#B99B6B', '#5C7A6B', '#7A5C8C'][hash % 4];
                 return (
                   <div key={t.id} style={{ height: barH, marginLeft: Math.max(2, lengthInset + jitterX), marginRight: Math.max(2, lengthInset - jitterX), transform: `translateY(${microY}px)`, borderRadius: 4, overflow: 'hidden', background: edgeColor, boxShadow: '0 3px 7px rgba(0,0,0,0.45), 0 1px 3px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -1px 0 rgba(0,0,0,0.3)' }}>
                     <div className="relative w-full h-full">
@@ -1756,25 +1766,27 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                         background: `linear-gradient(180deg, rgba(0,0,0,0.16) 0%, rgba(0,0,0,0) 18%, rgba(0,0,0,0) 82%, rgba(0,0,0,0.20) 100%),
                           repeating-linear-gradient(180deg, ${tone.light} 0px, ${tone.light} 1.4px, ${tone.dark} 1.4px, ${tone.dark} 2.1px)` }} />
                       <div className="absolute pointer-events-none" style={{ top: edgeH, bottom: edgeH, left: 1, right: 1, backgroundImage: PAGE_NOISE_BG, backgroundSize: '60px 60px', opacity: 0.05, mixBlendMode: 'multiply' }} />
-                      {/* 오른쪽 끝 - 페이지 사이에 꽂힌 책갈피 */}
-                      <div className="absolute pointer-events-none" style={{ top: -1, right: 16, width: 8, height: Math.min(18, barH - 4), background: `linear-gradient(180deg, ${ribbonColor}, ${ribbonColor}dd)`, clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 68%, 0 100%)', boxShadow: '1px 1px 2px rgba(0,0,0,0.35)', transform: 'rotate(-2deg)' }} />
+                      {/* 오른쪽 끝 - 상태 리본 (완독=초록 / 읽는중=호박색), 글자는 세로로 */}
+                      <div className="absolute pointer-events-none flex flex-col items-center" style={{ top: -1, right: 10, width: 15, height: barH - 6, paddingTop: 3, background: `linear-gradient(180deg, ${ribbonStatusColor}, ${ribbonStatusColor}e6)`, clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 5px), 0 100%)', boxShadow: '1px 1px 2px rgba(0,0,0,0.35)' }}>
+                        {ribbonLabel.split('').map((ch, i) => (
+                          <span key={i} style={{ fontSize: 8.5, lineHeight: '10px', fontWeight: 700, color: '#fff' }}>{ch}</span>
+                        ))}
+                      </div>
                       {/* 왼쪽 상단 모서리 - 행사/토론회 태그 코너 리본 */}
                       {t.event_tag && (
-                        <div className="absolute pointer-events-none" style={{ top: 0, left: 0, fontSize: 8, fontWeight: 700, color: '#F2EAD6', background: '#3A2C18', padding: '1.5px 5px 1.5px 4px', borderRadius: '0 0 5px 0', letterSpacing: '0.1px', maxWidth: '55%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.event_tag}</div>
+                        <div className="absolute pointer-events-none" style={{ top: 0, left: 0, fontSize: 8, lineHeight: '10px', fontWeight: 700, color: '#F2EAD6', background: '#3A2C18', padding: '1.5px 5px 1.5px 4px', borderRadius: '0 0 5px 0', letterSpacing: '0.1px', maxWidth: '55%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.event_tag}</div>
                       )}
-                      <div className={`relative h-full flex items-center justify-between gap-2 pl-3 pr-3.5 ${t.event_tag ? 'pt-3' : ''}`}>
+                      <div className={`relative h-full flex justify-between gap-2 pl-3 ${t.event_tag ? 'items-start' : 'items-center'}`} style={{ paddingRight: 32, paddingTop: t.event_tag ? 15 : 0 }}>
                         <div className="min-w-0 flex items-baseline gap-1.5">
                           {t.is_public === false && <Lock size={10} style={{ color: '#6B5B3E' }} />}
-                          <span className="text-sm font-semibold truncate" style={{ color: '#3A2C18', letterSpacing: '0.2px', textShadow: '0 1px 0 rgba(255,255,255,0.35)' }}>{t.book_title}</span>
+                          <span className="text-sm font-semibold truncate" style={{ color: '#3A2C18', letterSpacing: '0.2px', lineHeight: '18px', textShadow: '0 1px 0 rgba(255,255,255,0.35)' }}>{t.book_title}</span>
                           <span className="text-[10px] truncate shrink-0" style={{ color: '#6B5B3E' }}>
                             {t.owner_name_override != null ? t.owner_name_override : (owner ? dispName(owner.name, isLoggedIn) : '')}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {showPageOnly ? (
-                            <span className="text-xs font-bold" style={{ color: '#3A2C18', fontFamily: "'IBM Plex Mono', monospace" }}>{statusText}</span>
-                          ) : (
-                            <span className="text-[10px] font-bold rounded-full px-2 py-0.5" style={{ background: badgeColor, color: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.25), inset 0 -1px 1px rgba(0,0,0,0.2)' }}>{statusText}</span>
+                        <div className="flex items-center gap-1.5 shrink-0 self-center">
+                          {showPage && (
+                            <span className="inline-flex items-center justify-center rounded-full font-bold" style={{ minWidth: 26, height: 26, padding: '0 4px', fontSize: 9, background: '#FBF6EA', color: RIBBON_READING, border: `1.5px solid ${RIBBON_READING}`, fontFamily: "'IBM Plex Mono', monospace", boxShadow: '0 1px 2px rgba(0,0,0,0.25)' }} aria-label={`현재 ${t.current_page}페이지`}>{t.current_page}p</span>
                           )}
                           {isMine && (
                             <div className="flex items-center gap-1">
