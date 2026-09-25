@@ -49,13 +49,13 @@ const RIBBON_DONE = '#2F7A4D';    // 완독 - 짙은 초록
 const RIBBON_READING = '#C98A2B'; // 읽는 중 - 호박색
 const SHOW_PAGE_IN_GROUP = false;
 const PAGE_INSET = 5; // 책장: 표지보다 페이지 단면이 좌우로 들어간 깊이(px)
-const BOOK_TITLE_FONT = "'Noto Serif KR', 'Nanum Myeongjo', serif"; // 책 제목용 한글 명조
+const BOOK_TITLE_FONT = "'Gowun Batang', 'Nanum Myeongjo', serif"; // 책 제목용 한글 세리프 - 붓결이 살아있는 서체
 // 책 제목용 한글 명조 폰트 1회 로드
-if (typeof document !== 'undefined' && !document.getElementById('font-noto-serif-kr')) {
+if (typeof document !== 'undefined' && !document.getElementById('font-gowun-batang')) {
   const l = document.createElement('link');
-  l.id = 'font-noto-serif-kr';
+  l.id = 'font-gowun-batang';
   l.rel = 'stylesheet';
-  l.href = 'https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@600;700&display=swap';
+  l.href = 'https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@700&display=swap';
   document.head.appendChild(l);
 } // 모임 책장에서 남의 진행 페이지 노출 여부 (true면 공개)
 const TOWER_BADGE_PALETTE = ['#7C5CC4', '#D97A3D', '#C4544A', '#3E93A0', '#C48A3E'];
@@ -1782,26 +1782,26 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                         boxShadow: 'inset 1px 0 0 rgba(255,255,255,0.25), inset -1px 0 0 rgba(255,255,255,0.25)' }} />
                       {/* 오른쪽 끝 - 상태 리본 (완독=초록 / 읽는중=호박색) */}
                       <div className="absolute pointer-events-none" style={{ top: -1, right: 12, width: 9, height: Math.round(barH * 0.62), background: `linear-gradient(90deg, ${ribbonStatusColor} 0%, ${ribbonStatusColor}cc 100%)`, clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 4px), 0 100%)', boxShadow: '1px 1px 2px rgba(0,0,0,0.3)' }} />
-                      <div className="relative h-full flex items-center justify-between gap-3 pl-3.5" style={{ paddingRight: 28 }}>
-                        {/* 왼쪽 - 행사 태그(한 줄) + 제목을 한 덩어리로 묶어 가운데 정렬 */}
-                        <div className="min-w-0 flex flex-col" style={{ gap: 1 }}>
+                      <div className="relative h-full flex items-center justify-between gap-2.5 pl-3.5" style={{ paddingRight: 26 }}>
+                        {/* 왼쪽 - 행사 태그(캡션) 위, 제목·등록자 아래로 한 덩어리 */}
+                        <div className="min-w-0 flex flex-col justify-center" style={{ gap: 2 }}>
                           {t.event_tag && (
-                            <span className="truncate" style={{ fontSize: 9.5, lineHeight: '12px', fontWeight: 600, color: '#8A6A3F', letterSpacing: '0.3px' }}>{t.event_tag}</span>
+                            <span className="truncate" style={{ fontSize: 9, lineHeight: '11px', fontWeight: 600, color: '#9C7B4A', letterSpacing: '0.15px' }}>{t.event_tag}</span>
                           )}
                           <div className="min-w-0 flex items-baseline gap-1.5">
-                            {t.is_public === false && <Lock size={10} style={{ color: '#6B5B3E' }} />}
-                            <span className="truncate" style={{ fontFamily: BOOK_TITLE_FONT, fontSize: 14.5, fontWeight: 700, lineHeight: '19px', color: '#2E2416', letterSpacing: '-0.2px', textShadow: '0 1px 0 rgba(255,255,255,0.4)' }}>{t.book_title}</span>
-                            <span className="text-[10px] truncate shrink-0" style={{ color: '#7A6749' }}>
+                            {t.is_public === false && <Lock size={10} style={{ color: '#6B5B3E', alignSelf: 'center' }} />}
+                            <span className="truncate" style={{ fontFamily: BOOK_TITLE_FONT, fontSize: 14, fontWeight: 700, lineHeight: '18px', color: '#2A2015', letterSpacing: '0px', textShadow: '0 1px 0 rgba(255,255,255,0.3)' }}>{t.book_title}</span>
+                            <span className="text-[10px] truncate shrink-0" style={{ color: '#8A7355', fontWeight: 500 }}>
                               {t.owner_name_override != null ? t.owner_name_override : (owner ? dispName(owner.name, isLoggedIn) : '')}
                             </span>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {/* 상태 글씨는 리본 옆에 작게, 읽는 중이면 쪽수를 아래 줄에 */}
-                          <div className="flex flex-col items-end" style={{ lineHeight: '12px' }}>
-                            <span style={{ fontSize: 10, fontWeight: 700, color: ribbonStatusColor, letterSpacing: '0.2px' }}>{ribbonLabel}</span>
+                        <div className="flex items-center gap-2.5 shrink-0">
+                          {/* 상태 - 읽는 중이면 쪽수를 바로 아래 줄에, 완독이면 한 줄만 */}
+                          <div className="flex flex-col items-end" style={{ gap: 1 }}>
+                            <span style={{ fontSize: 10, lineHeight: '11px', fontWeight: 700, color: ribbonStatusColor, letterSpacing: '0.1px' }}>{ribbonLabel}</span>
                             {showPage && (
-                              <span style={{ fontSize: 9.5, color: '#7A6749', fontFamily: "'IBM Plex Mono', monospace" }} aria-label={`현재 ${t.current_page}페이지`}>{t.current_page}쪽</span>
+                              <span style={{ fontSize: 9, lineHeight: '10px', color: '#8A6A3F', fontWeight: 600, fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: 'tabular-nums' }} aria-label={`현재 ${t.current_page}페이지`}>{t.current_page}쪽</span>
                             )}
                           </div>
                           {isMine && (
