@@ -5,7 +5,7 @@ import {
   Crown, Shield, Wallet, User, Plus, Pencil, Trash2, Check, X, Lock, AlertCircle, Mail,
   Megaphone, QrCode, BarChart3, Users, Settings2, Settings, Download, Upload, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Briefcase, Coffee,
   LogIn, LogOut, Cake, PartyPopper, Archive, Paperclip, FileText, Eye, Pin, Gavel, BookOpen, Search,
-  Image as ImageIcon, Trophy, Plane,
+  Image as ImageIcon, Trophy, Plane, Gift,
 } from 'lucide-react';
 
 /* ---------- design tokens (dark) ---------- */
@@ -1298,20 +1298,22 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [editingTowerId, setEditingTowerId] = useState(null);
   const [towerPublicInput, setTowerPublicInput] = useState(true);
   const [editingTowerPublic, setEditingTowerPublic] = useState(true);
+  const [towerTagInput, setTowerTagInput] = useState('');
+  const [editingTowerTag, setEditingTowerTag] = useState('');
   const addManualTowerEntry = async () => {
     if (!currentMember || !towerTitleInput.trim()) return;
     await insertRow('book_tower_entries', {
       id: uid('bt'), member_id: currentMember.id, book_title: towerTitleInput.trim(),
       start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null,
-      color: randomPastel(), source_share_id: null, created_at: new Date().toISOString(), is_public: towerPublicInput,
+      color: randomPastel(), source_share_id: null, created_at: new Date().toISOString(), is_public: towerPublicInput, event_tag: towerTagInput.trim() || null,
     });
-    setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setTowerPublicInput(true); setShowTowerAdd(false);
+    setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setTowerPublicInput(true); setTowerTagInput(''); setShowTowerAdd(false);
     await reload();
   };
   const saveTowerEdit = async (entry) => {
     try {
       const { data, error } = await supabase.from('book_tower_entries')
-        .update({ start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null, is_public: editingTowerPublic })
+        .update({ start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null, is_public: editingTowerPublic, event_tag: editingTowerTag.trim() || null })
         .eq('id', entry.id)
         .select();
       if (error) throw error;
@@ -1328,6 +1330,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     setTowerPageInput(entry.current_page ? String(entry.current_page) : '');
     setTowerFinishedInput(entry.finished_date || '');
     setEditingTowerPublic(entry.is_public !== false);
+    setEditingTowerTag(entry.event_tag || '');
   };
   const removeTowerEntry = async (entryId) => { await deleteRow('book_tower_entries', 'id', entryId); await reload(); };
   const towerSortKey = (t) => t.finished_date || t.start_date || t.created_at.slice(0, 10);
@@ -1442,7 +1445,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           </div>
         )}
         {!currentMember && !showShareForm && <p className="text-xs mb-2" style={{ color: MUTE }}>상단에서 본인을 먼저 선택해야 글을 올릴 수 있어요.</p>}
-        <div className="mb-1.5 text-xs font-semibold" style={{ color: MUTE }}>📚 빌려줄까요? ({offers.length})</div>
+        <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold rounded-full px-2.5 py-1" style={{ background: 'rgba(127,168,217,0.18)', color: '#7FA8D9' }}><Gift size={12} /> 빌려줄까요? ({offers.length})</div>
         <div className="space-y-1.5 mb-3">
           {offers.length === 0 && <p className="text-xs" style={{ color: MUTE }}>등록된 글이 없어요.</p>}
           {offers.map((s) => {
@@ -1458,7 +1461,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
             );
           })}
         </div>
-        <div className="mb-1.5 text-xs font-semibold" style={{ color: MUTE }}>🙋 빌려주실수있나요? ({requests.length})</div>
+        <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold rounded-full px-2.5 py-1" style={{ background: 'rgba(217,122,61,0.18)', color: '#D97A3D' }}>🙋 빌려주실수있나요? ({requests.length})</div>
         <div className="space-y-1.5">
           {requests.length === 0 && <p className="text-xs" style={{ color: MUTE }}>등록된 글이 없어요.</p>}
           {requests.map((s) => {
@@ -1550,7 +1553,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 <>
                   {coverCache[viewingShare.id] && coverCache[viewingShare.id] !== 'none' && coverCache[viewingShare.id] !== 'loading' && (
                     <div className="flex justify-center mb-3">
-                      <img src={coverCache[viewingShare.id]} alt="" className="rounded-lg shadow-md" style={{ height: 128, width: 'auto' }} />
+                      <img src={coverCache[viewingShare.id]} alt="" className="rounded-lg shadow-md" style={{ height: 256, width: 'auto' }} />
                     </div>
                   )}
                   {coverCache[viewingShare.id] === 'none' && canEditPost && (
@@ -1571,7 +1574,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                   )}
                   {coverCache[viewingShare.id] === 'loading' && (
                     <div className="flex justify-center mb-3">
-                      <div className="rounded-lg animate-pulse" style={{ height: 128, width: 88, background: NEUTRAL_BG }} />
+                      <div className="rounded-lg animate-pulse" style={{ height: 256, width: 176, background: NEUTRAL_BG }} />
                     </div>
                   )}
                   <div className="text-base font-semibold mb-2" style={{ color: INK }}>{viewingShare.book_title}</div>
@@ -1655,6 +1658,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
               <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>다 읽은 날 (선택)</div><input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
             </div>
             <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지 (선택)</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} placeholder="예: 128" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+            <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그 (선택)</div><input value={towerTagInput} onChange={(e) => setTowerTagInput(e.target.value)} placeholder="예: 제 1회 독서토론회 도서" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
             <label className="flex items-center gap-1.5 text-xs" style={{ color: MUTE }}>
               <input type="checkbox" checked={towerPublicInput} onChange={(e) => setTowerPublicInput(e.target.checked)} />
               모임 책장에도 공개하기 (끄면 나만 볼 수 있어요)
@@ -1697,6 +1701,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                         </div>
                       </div>
                       <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} placeholder="예: 128" className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
+                      <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그</div><input value={editingTowerTag} onChange={(e) => setEditingTowerTag(e.target.value)} placeholder="예: 제 1회 독서토론회 도서" className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
                       <label className="flex items-center gap-1.5 text-xs" style={{ color: MUTE }}>
                         <input type="checkbox" checked={editingTowerPublic} onChange={(e) => setEditingTowerPublic(e.target.checked)} />
                         모임 책장에 공개
@@ -1731,6 +1736,9 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                       <div className="relative h-full flex items-center justify-between gap-2 pl-3 pr-3.5">
                         <div className="min-w-0 flex items-baseline gap-1.5">
                           {t.is_public === false && <Lock size={10} style={{ color: '#6B5B3E' }} />}
+                          {t.event_tag && (
+                            <span className="text-[9px] font-bold rounded px-1.5 py-0.5 shrink-0" style={{ background: '#3A2C18', color: '#F2EAD6' }}>{t.event_tag}</span>
+                          )}
                           <span className="text-sm font-semibold truncate" style={{ color: '#3A2C18', letterSpacing: '0.2px', textShadow: '0 1px 0 rgba(255,255,255,0.35)' }}>{t.book_title}</span>
                           <span className="text-[10px] truncate shrink-0" style={{ color: '#6B5B3E' }}>
                             {owner ? dispName(owner.name, isLoggedIn) : ''}
@@ -2519,11 +2527,11 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       )}
                     </div>
                   )}
-                  {currentMember && penaltyEntries.some((e) => e.member.id === currentMember.id) && (
+                  {currentMember && penaltyEntries.some((e) => e.member.id === currentMember.id && !isWeekCompleted(e.weekKey, currentMember.id)) && (
                     <div className="mb-3">
                       <div className="text-xs mb-1.5 flex items-center gap-1" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}><Coffee size={12} style={{ color: '#EFC94C' }} /> 본인 벌칙 수행일 지정</div>
                       <div className="space-y-1.5">
-                        {penaltyEntries.filter((e) => e.member.id === currentMember.id).map((e) => {
+                        {penaltyEntries.filter((e) => e.member.id === currentMember.id && !isWeekCompleted(e.weekKey, currentMember.id)).map((e) => {
                           const isSetToThisDate = e.completion?.performed_date === selectedDate;
                           return (
                             <div key={e.weekKey} className="flex items-center justify-between text-xs">
