@@ -1472,7 +1472,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
             );
           })}
         </div>
-        <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold" style={{ color: '#D97A3D' }}>🙋 빌려주실수있나요? ({requests.length})</div>
+        <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold" style={{ color: '#EFC94C' }}>🙋 빌려주실수있나요? ({requests.length})</div>
         <div className="space-y-1.5">
           {requests.length === 0 && <p className="text-xs" style={{ color: MUTE }}>등록된 글이 없어요.</p>}
           {requests.map((s) => {
@@ -1502,7 +1502,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setViewingShareId(null)}>
             <div className="w-full max-w-sm rounded-2xl border p-5" style={{ background: CARD_BG, borderColor: LINE }} onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: viewingShare.kind === 'offer' ? '#1E2A38' : '#332815', color: viewingShare.kind === 'offer' ? '#7FA8D9' : '#EFC94C' }}>{viewingShare.kind === 'offer' ? '제공' : '요청'}</span>
+                <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: viewingShare.kind === 'offer' ? '#1E2A38' : '#332815', color: viewingShare.kind === 'offer' ? '#7FA8D9' : '#EFC94C' }}>{viewingShare.kind === 'offer' ? '빌려줄까요?' : '빌려주실수있나요?'}</span>
                 <div className="flex items-center gap-2">
                   {canEditPost && !editingShare && (
                     <button onClick={() => { setEditingShare(true); setEditShareTitle(viewingShare.book_title); setEditShareAuthor(viewingShare.book_author || ''); setEditSharePublisher(viewingShare.book_publisher || ''); setEditShareCoverUrl(viewingShare.cover_url || ''); }} aria-label="글 수정"><Pencil size={14} style={{ color: MUTE }} /></button>
@@ -1567,7 +1567,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 <>
                   {coverCache[viewingShare.id] && coverCache[viewingShare.id] !== 'none' && coverCache[viewingShare.id] !== 'loading' && (
                     <div className="flex justify-center mb-3">
-                      <img src={coverCache[viewingShare.id]} alt="" className="rounded-lg shadow-md" style={{ height: 340, width: 'auto', maxWidth: '100%' }} />
+                      <img src={coverCache[viewingShare.id]} alt="" className="rounded-lg shadow-md" style={{ height: 408, width: 'auto', maxWidth: '100%' }} />
                     </div>
                   )}
                   {coverCache[viewingShare.id] === 'none' && canEditPost && (
@@ -1588,7 +1588,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                   )}
                   {coverCache[viewingShare.id] === 'loading' && (
                     <div className="flex justify-center mb-3">
-                      <div className="rounded-lg animate-pulse" style={{ height: 340, width: 232, background: NEUTRAL_BG }} />
+                      <div className="rounded-lg animate-pulse" style={{ height: 408, width: 278, background: NEUTRAL_BG }} />
                     </div>
                   )}
                   <div className="text-base font-semibold mb-2" style={{ color: INK }}>{viewingShare.book_title}</div>
@@ -1741,7 +1741,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 const jitterX = ((hash % 7) - 3) * 5; // 중심에서 좌우로 살짝씩만 어긋나게 (쌓인 더미의 중심은 유지)
                 const lengthInset = 10 + (hash % 3) * 6; // 책마다 길이(폭)도 살짝 다르게 - 항상 가운데 기준으로 좁아짐
                 const microY = (hash % 3) - 1; // -1~1px, 실제로 쌓았을 때 생기는 미세한 높이 오차
-                const barH = [40, 47, 53, 60][hash % 4]; // 책마다 두께(높이)를 확실히 다르게
+                const barH = [40, 47, 53, 60][hash % 4] + (t.event_tag ? 13 : 0); // 책마다 두께를 다르게, 태그 있으면 겹치지 않도록 높이 추가 확보
                 const edgeH = Math.max(3, Math.round(barH * 0.112)); // 위아래 표지 두께 (기존의 70%)
                 const tone = PAGE_TONES[hash % PAGE_TONES.length];
                 const ribbonColor = ['#C0472F', '#B99B6B', '#5C7A6B', '#7A5C8C'][hash % 4];
@@ -1762,7 +1762,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                       {t.event_tag && (
                         <div className="absolute pointer-events-none" style={{ top: 0, left: 0, fontSize: 8, fontWeight: 700, color: '#F2EAD6', background: '#3A2C18', padding: '1.5px 5px 1.5px 4px', borderRadius: '0 0 5px 0', letterSpacing: '0.1px', maxWidth: '55%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.event_tag}</div>
                       )}
-                      <div className="relative h-full flex items-center justify-between gap-2 pl-3 pr-3.5">
+                      <div className={`relative h-full flex items-center justify-between gap-2 pl-3 pr-3.5 ${t.event_tag ? 'pt-3' : ''}`}>
                         <div className="min-w-0 flex items-baseline gap-1.5">
                           {t.is_public === false && <Lock size={10} style={{ color: '#6B5B3E' }} />}
                           <span className="text-sm font-semibold truncate" style={{ color: '#3A2C18', letterSpacing: '0.2px', textShadow: '0 1px 0 rgba(255,255,255,0.35)' }}>{t.book_title}</span>
