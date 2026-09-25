@@ -48,6 +48,7 @@ const SHARE_REQUEST_BG = '#3A2519';
 const RIBBON_DONE = '#2F7A4D';    // 완독 - 짙은 초록
 const RIBBON_READING = '#C98A2B'; // 읽는 중 - 호박색
 const SHOW_PAGE_IN_GROUP = false;
+const PAGE_INSET = 5; // 책장: 표지보다 페이지 단면이 좌우로 들어간 깊이(px)
 const BOOK_TITLE_FONT = "'Noto Serif KR', 'Nanum Myeongjo', serif"; // 책 제목용 한글 명조
 // 책 제목용 한글 명조 폰트 1회 로드
 if (typeof document !== 'undefined' && !document.getElementById('font-noto-serif-kr')) {
@@ -1765,16 +1766,20 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 const edgeH = Math.max(3, Math.round(barH * 0.112)); // 위아래 표지 두께 (기존의 70%)
                 const tone = PAGE_TONES[hash % PAGE_TONES.length];
                 return (
-                  <div key={t.id} style={{ height: barH, marginLeft: Math.max(2, lengthInset + jitterX), marginRight: Math.max(2, lengthInset - jitterX), transform: `translateY(${microY}px)`, borderRadius: 4, overflow: 'hidden', background: edgeColor, boxShadow: '0 3px 7px rgba(0,0,0,0.45), 0 1px 3px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -1px 0 rgba(0,0,0,0.3)' }}>
+                  <div key={t.id} style={{ height: barH, marginLeft: Math.max(2, lengthInset + jitterX), marginRight: Math.max(2, lengthInset - jitterX), transform: `translateY(${microY}px)`, borderRadius: 4, overflow: 'hidden', filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.45)) drop-shadow(0 1px 1px rgba(0,0,0,0.4))' }}>
                     <div className="relative w-full h-full">
                       {/* 위/아래 - 실제 양장본 표지: 재질감 있는 그라데이션 + 페이지와 맞닿는 경계 그림자 */}
-                      <div className="absolute inset-x-0 top-0 pointer-events-none" style={{ height: edgeH, background: `linear-gradient(180deg, rgba(255,255,255,0.30) 0%, ${edgeColor} 55%, rgba(0,0,0,0.15) 100%)`, boxShadow: 'inset 0 -2px 3px -1px rgba(0,0,0,0.35)' }} />
-                      <div className="absolute inset-x-0 bottom-0 pointer-events-none" style={{ height: edgeH, background: `linear-gradient(0deg, rgba(0,0,0,0.35) 0%, ${edgeColor} 55%, rgba(255,255,255,0.10) 100%)`, boxShadow: 'inset 0 2px 3px -1px rgba(0,0,0,0.35)' }} />
+                      <div className="absolute inset-x-0 top-0 pointer-events-none" style={{ height: edgeH, borderRadius: '4px 4px 2px 2px', background: `linear-gradient(180deg, rgba(255,255,255,0.30) 0%, ${edgeColor} 55%, rgba(0,0,0,0.15) 100%)`, boxShadow: 'inset 0 -2px 3px -1px rgba(0,0,0,0.35)' }} />
+                      <div className="absolute inset-x-0 bottom-0 pointer-events-none" style={{ height: edgeH, borderRadius: '2px 2px 4px 4px', background: `linear-gradient(0deg, rgba(0,0,0,0.35) 0%, ${edgeColor} 55%, rgba(255,255,255,0.10) 100%)`, boxShadow: 'inset 0 2px 3px -1px rgba(0,0,0,0.35)' }} />
                       {/* 가운데 - 종이 페이지 단면: 촘촘한 결 + 은은한 볼륨감 + 종이 노이즈, 표지가 좌우로 1px 살짝 돌출 */}
-                      <div className="absolute pointer-events-none" style={{ top: edgeH, bottom: edgeH, left: 1, right: 1,
+                      <div className="absolute pointer-events-none" style={{ top: edgeH, bottom: edgeH, left: PAGE_INSET, right: PAGE_INSET, borderRadius: 3,
                         background: `linear-gradient(180deg, rgba(0,0,0,0.16) 0%, rgba(0,0,0,0) 18%, rgba(0,0,0,0) 82%, rgba(0,0,0,0.20) 100%),
                           repeating-linear-gradient(180deg, ${tone.light} 0px, ${tone.light} 1.4px, ${tone.dark} 1.4px, ${tone.dark} 2.1px)` }} />
-                      <div className="absolute pointer-events-none" style={{ top: edgeH, bottom: edgeH, left: 1, right: 1, backgroundImage: PAGE_NOISE_BG, backgroundSize: '60px 60px', opacity: 0.05, mixBlendMode: 'multiply' }} />
+                      <div className="absolute pointer-events-none" style={{ top: edgeH, bottom: edgeH, left: PAGE_INSET, right: PAGE_INSET, borderRadius: 3, backgroundImage: PAGE_NOISE_BG, backgroundSize: '60px 60px', opacity: 0.05, mixBlendMode: 'multiply' }} />
+                      {/* 좌우 끝 - 페이지 묶음이 표지 안쪽으로 둥글게 말려 들어가는 음영 (좌우 대칭) */}
+                      <div className="absolute pointer-events-none" style={{ top: edgeH, bottom: edgeH, left: PAGE_INSET, right: PAGE_INSET, borderRadius: 3,
+                        background: 'linear-gradient(90deg, rgba(0,0,0,0.28) 0px, rgba(0,0,0,0.08) 4px, rgba(0,0,0,0) 9px, rgba(0,0,0,0) calc(100% - 9px), rgba(0,0,0,0.08) calc(100% - 4px), rgba(0,0,0,0.28) 100%)',
+                        boxShadow: 'inset 1px 0 0 rgba(255,255,255,0.25), inset -1px 0 0 rgba(255,255,255,0.25)' }} />
                       {/* 오른쪽 끝 - 상태 리본 (완독=초록 / 읽는중=호박색) */}
                       <div className="absolute pointer-events-none" style={{ top: -1, right: 12, width: 9, height: Math.round(barH * 0.62), background: `linear-gradient(90deg, ${ribbonStatusColor} 0%, ${ribbonStatusColor}cc 100%)`, clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 4px), 0 100%)', boxShadow: '1px 1px 2px rgba(0,0,0,0.3)' }} />
                       <div className="relative h-full flex items-center justify-between gap-3 pl-3.5" style={{ paddingRight: 28 }}>
