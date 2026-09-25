@@ -5,7 +5,7 @@ import {
   Crown, Shield, Wallet, User, Plus, Pencil, Trash2, Check, X, Lock, AlertCircle, Mail,
   Megaphone, QrCode, BarChart3, Users, Settings2, Settings, Download, Upload, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Briefcase, Coffee,
   LogIn, LogOut, Cake, PartyPopper, Archive, Paperclip, FileText, Eye, Pin, Gavel, BookOpen, Search,
-  Image as ImageIcon, Trophy, Plane, Gift,
+  Image as ImageIcon, Trophy, Plane, HandHelping,
 } from 'lucide-react';
 
 /* ---------- design tokens (dark) ---------- */
@@ -40,10 +40,13 @@ const LEATHER_PALETTE = [
   { bg: 'linear-gradient(180deg, #7A4444 0%, #663636 45%, #4A2626 100%)', text: '#F5E9E4', line: 'rgba(250,225,215,0.4)' },
 ];
 // 도서 공유함 구분 색상 - 상태 뱃지(대여가능=민트, 요청중/대여중=골드)와 겹치지 않는 색으로 분리
-const SHARE_OFFER_COLOR = '#B8A3E3';   // 빌려줄까요? - 라벤더
-const SHARE_OFFER_BG = '#2A2438';
-const SHARE_REQUEST_COLOR = '#F0A87C'; // 빌려주실수있나요? - 코랄
+const SHARE_OFFER_COLOR = '#8FAD7A';   // 빌려줄까요? - 세이지 그린
+const SHARE_OFFER_BG = '#232C1D';
+const SHARE_REQUEST_COLOR = '#F0A87C'; // 빌려주실 수 있나요? - 코랄
 const SHARE_REQUEST_BG = '#3A2519';
+// 도서 공유함 글쓰기 패널 - 아래 목록과 확실히 구분되도록 카드 안의 별도 박스로 표시
+const SHARE_FORM_BG = '#171510';
+const SHARE_FORM_BORDER = '#3D3826';
 // 책장 상태 리본 색상
 const RIBBON_DONE = '#2F7A4D';    // 완독 - 짙은 초록
 const RIBBON_READING = '#C98A2B'; // 읽는 중 - 호박색
@@ -1308,6 +1311,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   }, [viewingShare?.id]);
 
   // ---------- 책탑 ----------
+  const isSecretary = currentMember?.role === '간사'; // 모임 책장(공개) 등록은 간사만 가능 - 회장·총무는 제외
   const [towerView, setTowerView] = useState('mine'); // 'mine' | 'group'
   const [showTowerAdd, setShowTowerAdd] = useState(false);
   const [towerTitleInput, setTowerTitleInput] = useState('');
@@ -1321,17 +1325,18 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [editingTowerTag, setEditingTowerTag] = useState('');
   const [towerOwnerNameInput, setTowerOwnerNameInput] = useState('');
   const [editingTowerOwnerName, setEditingTowerOwnerName] = useState('');
+  const [towerColorInput, setTowerColorInput] = useState(COVER_EDGE_COLORS[0]); // 내 책장에 등록할 책 표지 색상
   const addManualTowerEntry = async () => {
     if (!currentMember || !towerTitleInput.trim()) return;
     await insertRow('book_tower_entries', {
       id: uid('bt'), member_id: currentMember.id, book_title: towerTitleInput.trim(),
       start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null,
-      color: randomPastel(), source_share_id: null, created_at: new Date().toISOString(),
-      is_public: canManage ? towerPublicInput : false, // 모임 책장 공개는 운영진만 가능 - 일반 회원 글은 항상 내 책장에만
+      color: towerColorInput, source_share_id: null, created_at: new Date().toISOString(),
+      is_public: isSecretary ? towerPublicInput : false, // 모임 책장 공개는 간사만 가능 - 그 외 회원 글은 항상 내 책장에만
       event_tag: towerTagInput.trim() || null,
-      owner_name_override: canManage ? towerOwnerNameInput.trim() : null, // 운영진은 등록자 이름을 직접 입력하거나 비울 수 있음
+      owner_name_override: isSecretary ? towerOwnerNameInput.trim() : null, // 간사는 등록자 이름을 직접 입력하거나 비울 수 있음
     });
-    setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setTowerPublicInput(true); setTowerTagInput(''); setTowerOwnerNameInput(''); setShowTowerAdd(false);
+    setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setTowerPublicInput(true); setTowerTagInput(''); setTowerOwnerNameInput(''); setTowerColorInput(COVER_EDGE_COLORS[Math.floor(Math.random() * COVER_EDGE_COLORS.length)]); setShowTowerAdd(false);
     await reload();
   };
   const saveTowerEdit = async (entry) => {
@@ -1339,9 +1344,9 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
       const { data, error } = await supabase.from('book_tower_entries')
         .update({
           start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null,
-          is_public: canManage ? editingTowerPublic : entry.is_public,
+          is_public: isSecretary ? editingTowerPublic : entry.is_public,
           event_tag: editingTowerTag.trim() || null,
-          owner_name_override: canManage ? editingTowerOwnerName.trim() : entry.owner_name_override,
+          owner_name_override: isSecretary ? editingTowerOwnerName.trim() : entry.owner_name_override,
         })
         .eq('id', entry.id)
         .select();
@@ -1421,10 +1426,11 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           {currentMember && <button onClick={() => setShowShareForm((v) => !v)} className="text-xs rounded-full px-3 py-1.5 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{showShareForm ? '취소' : '글쓰기'}</button>}
         </div>
         {showShareForm && (
-          <div className="space-y-2 mb-3 pb-3" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
+          <div className="rounded-2xl p-3 mb-4 space-y-2" style={{ background: SHARE_FORM_BG, border: `1.5px solid ${SHARE_FORM_BORDER}`, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)' }}>
+            <div className="flex items-center gap-1.5 text-xs font-bold mb-0.5" style={{ color: MUTE }}><Pencil size={11} /> 새 글 작성</div>
             <div className="flex gap-2">
               <button onClick={() => setShareKind('offer')} className="flex-1 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'offer' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'offer' ? BTN_TEXT : NEUTRAL_TEXT }}>빌려줄까요?</button>
-              <button onClick={() => setShareKind('request')} className="flex-1 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'request' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'request' ? BTN_TEXT : NEUTRAL_TEXT }}>빌려주실수있나요?</button>
+              <button onClick={() => setShareKind('request')} className="flex-1 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'request' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'request' ? BTN_TEXT : NEUTRAL_TEXT }}>빌려주실 수 있나요?</button>
             </div>
             <div className="relative">
               <div className="flex gap-2">
@@ -1475,7 +1481,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           </div>
         )}
         {!currentMember && !showShareForm && <p className="text-xs mb-2" style={{ color: MUTE }}>상단에서 본인을 먼저 선택해야 글을 올릴 수 있어요.</p>}
-        <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold" style={{ color: SHARE_OFFER_COLOR }}><Gift size={12} /> 빌려줄까요? ({offers.length})</div>
+        {showShareForm && <div className="text-[10px] font-semibold mb-2" style={{ color: MUTE }}>등록된 글 목록</div>}
+        <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold" style={{ color: SHARE_OFFER_COLOR }}><HandHelping size={13} /> 빌려줄까요? ({offers.length})</div>
         <div className="space-y-1.5 mb-3">
           {offers.length === 0 && <p className="text-xs" style={{ color: MUTE }}>등록된 글이 없어요.</p>}
           {offers.map((s) => {
@@ -1491,7 +1498,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
             );
           })}
         </div>
-        <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold" style={{ color: SHARE_REQUEST_COLOR }}>🙋 빌려주실수있나요? ({requests.length})</div>
+        <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold" style={{ color: SHARE_REQUEST_COLOR }}>🙋 빌려주실 수 있나요? ({requests.length})</div>
         <div className="space-y-1.5">
           {requests.length === 0 && <p className="text-xs" style={{ color: MUTE }}>등록된 글이 없어요.</p>}
           {requests.map((s) => {
@@ -1521,7 +1528,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setViewingShareId(null)}>
             <div className="w-full max-w-sm rounded-2xl border p-5" style={{ background: CARD_BG, borderColor: LINE }} onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: viewingShare.kind === 'offer' ? SHARE_OFFER_BG : SHARE_REQUEST_BG, color: viewingShare.kind === 'offer' ? SHARE_OFFER_COLOR : SHARE_REQUEST_COLOR }}>{viewingShare.kind === 'offer' ? '빌려줄까요?' : '빌려주실수있나요?'}</span>
+                <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: viewingShare.kind === 'offer' ? SHARE_OFFER_BG : SHARE_REQUEST_BG, color: viewingShare.kind === 'offer' ? SHARE_OFFER_COLOR : SHARE_REQUEST_COLOR }}>{viewingShare.kind === 'offer' ? '빌려줄까요?' : '빌려주실 수 있나요?'}</span>
                 <div className="flex items-center gap-2">
                   {canEditPost && !editingShare && (
                     <button onClick={() => { setEditingShare(true); setEditShareTitle(viewingShare.book_title); setEditShareAuthor(viewingShare.book_author || ''); setEditSharePublisher(viewingShare.book_publisher || ''); setEditShareCoverUrl(viewingShare.cover_url || ''); }} aria-label="글 수정"><Pencil size={14} style={{ color: MUTE }} /></button>
@@ -1691,16 +1698,26 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
             </div>
             <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지 (선택)</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} placeholder="예: 128" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
             <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그 (선택)</div><input value={towerTagInput} onChange={(e) => setTowerTagInput(e.target.value)} placeholder="예: 제 1차 독서토론회 도서" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
-            {canManage ? (
-              <>
-                <label className="flex items-center gap-1.5 text-xs" style={{ color: MUTE }}>
-                  <input type="checkbox" checked={towerPublicInput} onChange={(e) => setTowerPublicInput(e.target.checked)} />
-                  모임 책장에도 공개하기
-                </label>
-                <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>등록자 이름 (선택 — 비우면 이름 없이 표시)</div><input value={towerOwnerNameInput} onChange={(e) => setTowerOwnerNameInput(e.target.value)} placeholder="예: 운영진 · 비워두면 이름 없음" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
-              </>
-            ) : (
-              <p className="text-[11px]" style={{ color: MUTE }}>* 모임 책장 공개는 운영진만 가능해요. 이 책은 내 책장에만 기록돼요.</p>
+            <div>
+              <div className="text-[10px] mb-1" style={{ color: MUTE }}>표지 색상</div>
+              <div className="flex flex-wrap gap-1.5">
+                {COVER_EDGE_COLORS.map((c) => (
+                  <button key={c} type="button" onClick={() => setTowerColorInput(c)} aria-label={`표지 색상 ${c}`}
+                    className="rounded-full shrink-0" style={{ width: 24, height: 24, background: c, border: towerColorInput === c ? `2px solid ${BTN_BG}` : `1px solid ${LINE}`, boxShadow: towerColorInput === c ? '0 0 0 2px rgba(242,238,227,0.15)' : 'none' }} />
+                ))}
+              </div>
+            </div>
+            {isSecretary && (
+              <label className="flex items-center gap-1.5 text-xs" style={{ color: MUTE }}>
+                <input type="checkbox" checked={towerPublicInput} onChange={(e) => setTowerPublicInput(e.target.checked)} />
+                모임 책장에도 공개하기
+              </label>
+            )}
+            {isSecretary && towerPublicInput && (
+              <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>등록자 이름 (선택 — 비우면 이름 없이 표시)</div><input value={towerOwnerNameInput} onChange={(e) => setTowerOwnerNameInput(e.target.value)} placeholder="예: 간사 · 비워두면 이름 없음" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+            )}
+            {!isSecretary && (
+              <p className="text-[11px]" style={{ color: MUTE }}>* 모임 책장 공개는 간사만 가능해요. 이 책은 내 책장에만 기록돼요.</p>
             )}
             <PrimaryBtn onClick={addManualTowerEntry} icon={Plus}>추가</PrimaryBtn>
           </div>
@@ -1719,7 +1736,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 const isMine = towerView === 'mine' && currentMember;
                 const isEditing = editingTowerId === t.id;
                 const hash = t.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
-                const edgeColor = COVER_EDGE_COLORS[hash % COVER_EDGE_COLORS.length];
+                const edgeColor = t.color || COVER_EDGE_COLORS[hash % COVER_EDGE_COLORS.length]; // 등록 시 고른 색상 우선, 없으면(기존 항목) 해시 기반 자동 색상
                 const isDone = !!t.finished_date;
                 const ribbonStatusColor = isDone ? RIBBON_DONE : RIBBON_READING;
                 const ribbonLabel = isDone ? '완독' : '읽는 중';
@@ -1743,7 +1760,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                       </div>
                       <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} placeholder="예: 128" className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
                       <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그</div><input value={editingTowerTag} onChange={(e) => setEditingTowerTag(e.target.value)} placeholder="예: 제 1차 독서토론회 도서" className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
-                      {canManage && (
+                      {isSecretary && (
                         <>
                           <label className="flex items-center gap-1.5 text-xs" style={{ color: MUTE }}>
                             <input type="checkbox" checked={editingTowerPublic} onChange={(e) => setEditingTowerPublic(e.target.checked)} />
