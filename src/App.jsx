@@ -1371,6 +1371,14 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [editingTowerColor, setEditingTowerColor] = useState(COVER_EDGE_COLORS[0]); // 수정 시 표지 색상
   const [towerStatusInput, setTowerStatusInput] = useState('reading'); // 완독/읽는 중/잠시 멈춤/읽을 예정
   const [editingTowerStatus, setEditingTowerStatus] = useState('reading');
+  const [towerAuthorInput, setTowerAuthorInput] = useState(''); // 도서 검색으로 채워지는 저자
+  const [towerPublisherInput, setTowerPublisherInput] = useState(''); // 도서 검색으로 채워지는 출판사
+  const [towerCoverUrlInput, setTowerCoverUrlInput] = useState(''); // 도서 검색/수기 등록으로 채워지는 표지 이미지
+  const [towerBookSearchResults, setTowerBookSearchResults] = useState([]);
+  const [towerBookSearchLoading, setTowerBookSearchLoading] = useState(false);
+  const [towerBookSearchOpen, setTowerBookSearchOpen] = useState(false);
+  const [towerCoverUploading, setTowerCoverUploading] = useState(false);
+  const [viewingTowerId, setViewingTowerId] = useState(null); // 책탑 항목 클릭 시 책 정보 조회용
   const addManualTowerEntry = async () => {
     if (!currentMember || !towerTitleInput.trim()) return;
     await insertRow('book_tower_entries', {
@@ -1383,8 +1391,11 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
       note: towerNoteInput.trim() || null, // 비고는 회원 누구나 입력 가능
       note_visible: towerNoteVisibleInput,
       read_status: towerStatusInput,
+      book_author: towerAuthorInput.trim() || null,
+      book_publisher: towerPublisherInput.trim() || null,
+      cover_url: towerCoverUrlInput || null,
     });
-    setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setTowerPublicInput(true); setTowerTagInput(''); setTowerNoteInput(''); setTowerNoteVisibleInput(false); setTowerStatusInput('reading'); setTowerColorInput(COVER_EDGE_COLORS[Math.floor(Math.random() * COVER_EDGE_COLORS.length)]); setShowTowerAdd(false);
+    setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setTowerPublicInput(true); setTowerTagInput(''); setTowerNoteInput(''); setTowerNoteVisibleInput(false); setTowerStatusInput('reading'); setTowerColorInput(COVER_EDGE_COLORS[Math.floor(Math.random() * COVER_EDGE_COLORS.length)]); setTowerAuthorInput(''); setTowerPublisherInput(''); setTowerCoverUrlInput(''); setTowerBookSearchOpen(false); setShowTowerAdd(false);
     await reload();
   };
   const saveTowerEdit = async (entry) => {
@@ -1504,16 +1515,16 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           <div className="rounded-2xl p-3 mb-4 space-y-2" style={{ background: FORM_PANEL_BG, border: `1.5px solid ${FORM_PANEL_BORDER}`, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)' }}>
             <div className="flex items-center gap-1.5 text-xs font-bold mb-0.5" style={{ color: MUTE }}><Pencil size={11} /> 새 글 작성</div>
             <div className="flex gap-2">
-              <button onClick={() => setShareKind('offer')} className="flex-1 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'offer' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'offer' ? BTN_TEXT : NEUTRAL_TEXT }}>빌려줄까요?</button>
-              <button onClick={() => setShareKind('request')} className="flex-1 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'request' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'request' ? BTN_TEXT : NEUTRAL_TEXT }}>빌려주실 수 있나요?</button>
+              <button onClick={() => setShareKind('offer')} className="flex-1 min-w-0 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'offer' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'offer' ? BTN_TEXT : NEUTRAL_TEXT }}>빌려줄까요?</button>
+              <button onClick={() => setShareKind('request')} className="flex-1 min-w-0 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'request' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'request' ? BTN_TEXT : NEUTRAL_TEXT }}>빌려주실 수 있나요?</button>
             </div>
-            <div className="relative">
-              <div className="flex gap-2">
-                <input value={shareTitle} onChange={(e) => { setShareTitle(e.target.value); setShareCoverUrl(''); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); searchBooks(shareTitle, setBookSearchResults, setBookSearchLoading, setBookSearchOpen); } }} placeholder="책 제목 (필수)" className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+            <div className="relative min-w-0">
+              <div className="flex gap-2 min-w-0">
+                <input value={shareTitle} onChange={(e) => { setShareTitle(e.target.value); setShareCoverUrl(''); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); searchBooks(shareTitle, setBookSearchResults, setBookSearchLoading, setBookSearchOpen); } }} placeholder="책 제목 (필수)" className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
                 <button onClick={() => searchBooks(shareTitle, setBookSearchResults, setBookSearchLoading, setBookSearchOpen)} disabled={!shareTitle.trim()} className="shrink-0 rounded-xl px-3 disabled:opacity-40" style={{ background: NEUTRAL_BG }} aria-label="책 검색"><Search size={16} style={{ color: NEUTRAL_TEXT }} /></button>
               </div>
               {bookSearchOpen && (
-                <div className="absolute z-10 left-0 right-0 mt-1 rounded-xl border overflow-hidden" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 260, overflowY: 'auto' }}>
+                <div className="absolute z-10 left-0 right-0 mt-1 rounded-xl border overflow-hidden" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 300, overflowY: 'auto' }}>
                   <div className="flex items-center justify-between px-2 py-1" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
                     <span className="text-[11px]" style={{ color: MUTE }}>{bookSearchLoading ? '검색 중…' : `검색 결과 ${bookSearchResults.length}건`}</span>
                     <button onClick={() => setBookSearchOpen(false)} className="p-1" aria-label="검색 결과 닫기"><X size={12} style={{ color: MUTE }} /></button>
@@ -1525,7 +1536,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                     </div>
                   )}
                   {bookSearchResults.map((r, i) => (
-                    <button key={i} onClick={() => { setShareTitle(r.title); setShareAuthor(r.author); setSharePublisher(r.publisher); setShareCoverUrl(r.cover); setBookSearchOpen(false); }} className="w-full flex items-center gap-2.5 px-2.5 py-2 text-left" style={{ borderBottom: i < bookSearchResults.length - 1 ? `1px solid ${ROW_LINE}` : 'none' }}>
+                    <button key={i} onClick={() => { setShareTitle(r.title); setShareAuthor(r.author); setSharePublisher(r.publisher); setShareCoverUrl(r.cover); setBookSearchOpen(false); }} className="w-full flex items-center gap-2.5 px-2.5 py-2 text-left" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
                       {r.cover ? <img src={r.cover} alt="" className="rounded shrink-0" style={{ width: 32, height: 46, objectFit: 'cover' }} /> : <div className="rounded shrink-0" style={{ width: 32, height: 46, background: NEUTRAL_BG }} />}
                       <div className="min-w-0">
                         <div className="text-xs font-semibold truncate" style={{ color: INK }}>{r.title}</div>
@@ -1533,6 +1544,11 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                       </div>
                     </button>
                   ))}
+                  <label className={`w-full flex items-center gap-2.5 px-2.5 py-2 text-left cursor-pointer ${coverUploading ? 'opacity-60' : ''}`} style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                    <div className="rounded shrink-0 flex items-center justify-center" style={{ width: 32, height: 46, background: NEUTRAL_BG }}><ImageIcon size={14} style={{ color: NEUTRAL_TEXT }} /></div>
+                    <span className="text-xs font-semibold" style={{ color: NEUTRAL_TEXT }}>{coverUploading ? '업로드 중…' : '표지 수기 등록'}</span>
+                    <input type="file" accept="image/*" className="hidden" disabled={coverUploading} onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; uploadCoverImage(f, (url) => { setShareCoverUrl(url); setBookSearchOpen(false); }, setCoverUploading); }} />
+                  </label>
                 </div>
               )}
             </div>
@@ -1543,11 +1559,6 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 <button onClick={() => setShareCoverUrl('')} className="text-[11px] underline" style={{ color: MUTE }}>선택 해제</button>
               </div>
             )}
-            <label className={`flex items-center justify-center gap-1.5 text-xs font-semibold rounded-xl border-2 border-dashed py-2.5 cursor-pointer ${coverUploading ? 'opacity-60' : ''}`} style={{ borderColor: LINE, color: NEUTRAL_TEXT }}>
-              <ImageIcon size={14} />
-              {coverUploading ? '업로드 중…' : '표지 사진 올리기 (구글 이미지 캡처 등)'}
-              <input type="file" accept="image/*" className="hidden" disabled={coverUploading} onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; uploadCoverImage(f, setShareCoverUrl, setCoverUploading); }} />
-            </label>
             <div className="grid grid-cols-2 gap-2">
               <input value={shareAuthor} onChange={(e) => setShareAuthor(e.target.value)} placeholder="저자 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
               <input value={sharePublisher} onChange={(e) => setSharePublisher(e.target.value)} placeholder="출판사 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
@@ -1616,13 +1627,13 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
               </div>
               {editingShare ? (
                 <div className="space-y-2 mb-3">
-                  <div className="relative">
-                    <div className="flex gap-2">
-                      <input value={editShareTitle} onChange={(e) => { setEditShareTitle(e.target.value); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); searchBooks(editShareTitle, setEditBookSearchResults, setEditBookSearchLoading, setEditBookSearchOpen); } }} placeholder="책 제목" className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                  <div className="relative min-w-0">
+                    <div className="flex gap-2 min-w-0">
+                      <input value={editShareTitle} onChange={(e) => { setEditShareTitle(e.target.value); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); searchBooks(editShareTitle, setEditBookSearchResults, setEditBookSearchLoading, setEditBookSearchOpen); } }} placeholder="책 제목" className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
                       <button onClick={() => searchBooks(editShareTitle, setEditBookSearchResults, setEditBookSearchLoading, setEditBookSearchOpen)} disabled={!editShareTitle.trim()} className="shrink-0 rounded-xl px-3 disabled:opacity-40" style={{ background: NEUTRAL_BG }} aria-label="책 검색"><Search size={16} style={{ color: NEUTRAL_TEXT }} /></button>
                     </div>
                     {editBookSearchOpen && (
-                      <div className="absolute z-10 left-0 right-0 mt-1 rounded-xl border overflow-hidden" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 260, overflowY: 'auto' }}>
+                      <div className="absolute z-10 left-0 right-0 mt-1 rounded-xl border overflow-hidden" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 300, overflowY: 'auto' }}>
                         <div className="flex items-center justify-between px-2 py-1" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
                           <span className="text-[11px]" style={{ color: MUTE }}>{editBookSearchLoading ? '검색 중…' : `검색 결과 ${editBookSearchResults.length}건`}</span>
                           <button onClick={() => setEditBookSearchOpen(false)} className="p-1" aria-label="검색 결과 닫기"><X size={12} style={{ color: MUTE }} /></button>
@@ -1634,7 +1645,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                           </div>
                         )}
                         {editBookSearchResults.map((r, i) => (
-                          <button key={i} onClick={() => { setEditShareTitle(r.title); setEditShareAuthor(r.author); setEditSharePublisher(r.publisher); setEditShareCoverUrl(r.cover); setEditBookSearchOpen(false); }} className="w-full flex items-center gap-2.5 px-2.5 py-2 text-left" style={{ borderBottom: i < editBookSearchResults.length - 1 ? `1px solid ${ROW_LINE}` : 'none' }}>
+                          <button key={i} onClick={() => { setEditShareTitle(r.title); setEditShareAuthor(r.author); setEditSharePublisher(r.publisher); setEditShareCoverUrl(r.cover); setEditBookSearchOpen(false); }} className="w-full flex items-center gap-2.5 px-2.5 py-2 text-left" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
                             {r.cover ? <img src={r.cover} alt="" className="rounded shrink-0" style={{ width: 32, height: 46, objectFit: 'cover' }} /> : <div className="rounded shrink-0" style={{ width: 32, height: 46, background: NEUTRAL_BG }} />}
                             <div className="min-w-0">
                               <div className="text-xs font-semibold truncate" style={{ color: INK }}>{r.title}</div>
@@ -1642,6 +1653,11 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                             </div>
                           </button>
                         ))}
+                        <label className={`w-full flex items-center gap-2.5 px-2.5 py-2 text-left cursor-pointer ${editCoverUploading ? 'opacity-60' : ''}`} style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                          <div className="rounded shrink-0 flex items-center justify-center" style={{ width: 32, height: 46, background: NEUTRAL_BG }}><ImageIcon size={14} style={{ color: NEUTRAL_TEXT }} /></div>
+                          <span className="text-xs font-semibold" style={{ color: NEUTRAL_TEXT }}>{editCoverUploading ? '업로드 중…' : '표지 수기 등록'}</span>
+                          <input type="file" accept="image/*" className="hidden" disabled={editCoverUploading} onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; uploadCoverImage(f, (url) => { setEditShareCoverUrl(url); setEditBookSearchOpen(false); }, setEditCoverUploading); }} />
+                        </label>
                       </div>
                     )}
                   </div>
@@ -1652,11 +1668,6 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                       <button onClick={() => setEditShareCoverUrl('')} className="text-[11px] underline" style={{ color: MUTE }}>선택 해제</button>
                     </div>
                   )}
-                  <label className={`flex items-center justify-center gap-1.5 text-xs font-semibold rounded-xl border-2 border-dashed py-2.5 cursor-pointer ${editCoverUploading ? 'opacity-60' : ''}`} style={{ borderColor: LINE, color: NEUTRAL_TEXT }}>
-                    <ImageIcon size={14} />
-                    {editCoverUploading ? '업로드 중…' : '표지 사진 올리기 (구글 이미지 캡처 등)'}
-                    <input type="file" accept="image/*" className="hidden" disabled={editCoverUploading} onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; uploadCoverImage(f, setEditShareCoverUrl, setEditCoverUploading); }} />
-                  </label>
                   <input value={editShareAuthor} onChange={(e) => setEditShareAuthor(e.target.value)} placeholder="저자 (선택)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
                   <input value={editSharePublisher} onChange={(e) => setEditSharePublisher(e.target.value)} placeholder="출판사 (선택)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
                   <div className="flex gap-2">
@@ -1779,7 +1790,51 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 </label>
               )}
             </div>
-            <input value={towerTitleInput} onChange={(e) => setTowerTitleInput(e.target.value)} placeholder="책 제목" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+            <div className="relative min-w-0">
+              <div className="flex gap-2 min-w-0">
+                <input value={towerTitleInput} onChange={(e) => { setTowerTitleInput(e.target.value); setTowerCoverUrlInput(''); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); searchBooks(towerTitleInput, setTowerBookSearchResults, setTowerBookSearchLoading, setTowerBookSearchOpen); } }} placeholder="책 제목" className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+                <button onClick={() => searchBooks(towerTitleInput, setTowerBookSearchResults, setTowerBookSearchLoading, setTowerBookSearchOpen)} disabled={!towerTitleInput.trim()} className="shrink-0 rounded-xl px-3 disabled:opacity-40" style={{ background: NEUTRAL_BG }} aria-label="책 검색"><Search size={16} style={{ color: NEUTRAL_TEXT }} /></button>
+              </div>
+              {towerBookSearchOpen && (
+                <div className="absolute z-10 left-0 right-0 mt-1 rounded-xl border overflow-hidden" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 300, overflowY: 'auto' }}>
+                  <div className="flex items-center justify-between px-2 py-1" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
+                    <span className="text-[11px]" style={{ color: MUTE }}>{towerBookSearchLoading ? '검색 중…' : `검색 결과 ${towerBookSearchResults.length}건`}</span>
+                    <button onClick={() => setTowerBookSearchOpen(false)} className="p-1" aria-label="검색 결과 닫기"><X size={12} style={{ color: MUTE }} /></button>
+                  </div>
+                  {!towerBookSearchLoading && towerBookSearchResults.length === 0 && (
+                    <div className="px-3 py-3 text-xs space-y-2" style={{ color: MUTE }}>
+                      <div>검색 결과가 없어요.</div>
+                      <a href={`https://www.google.com/search?tbm=isch&q=${encodeURIComponent((towerTitleInput || '') + ' 책 표지')}`} target="_blank" rel="noreferrer" className="inline-block underline" style={{ color: NEUTRAL_TEXT }}>구글 이미지에서 표지 찾아보기 →</a>
+                    </div>
+                  )}
+                  {towerBookSearchResults.map((r, i) => (
+                    <button key={i} onClick={() => { setTowerTitleInput(r.title); setTowerAuthorInput(r.author); setTowerPublisherInput(r.publisher); setTowerCoverUrlInput(r.cover); setTowerBookSearchOpen(false); }} className="w-full flex items-center gap-2.5 px-2.5 py-2 text-left" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
+                      {r.cover ? <img src={r.cover} alt="" className="rounded shrink-0" style={{ width: 32, height: 46, objectFit: 'cover' }} /> : <div className="rounded shrink-0" style={{ width: 32, height: 46, background: NEUTRAL_BG }} />}
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold truncate" style={{ color: INK }}>{r.title}</div>
+                        <div className="text-[11px] truncate" style={{ color: MUTE }}>{[r.author, r.publisher].filter(Boolean).join(' · ')}</div>
+                      </div>
+                    </button>
+                  ))}
+                  <label className={`w-full flex items-center gap-2.5 px-2.5 py-2 text-left cursor-pointer ${towerCoverUploading ? 'opacity-60' : ''}`} style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                    <div className="rounded shrink-0 flex items-center justify-center" style={{ width: 32, height: 46, background: NEUTRAL_BG }}><ImageIcon size={14} style={{ color: NEUTRAL_TEXT }} /></div>
+                    <span className="text-xs font-semibold" style={{ color: NEUTRAL_TEXT }}>{towerCoverUploading ? '업로드 중…' : '표지 수기 등록'}</span>
+                    <input type="file" accept="image/*" className="hidden" disabled={towerCoverUploading} onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; uploadCoverImage(f, (url) => { setTowerCoverUrlInput(url); setTowerBookSearchOpen(false); }, setTowerCoverUploading); }} />
+                  </label>
+                </div>
+              )}
+            </div>
+            {towerCoverUrlInput && (
+              <div className="flex items-center gap-2">
+                <img src={towerCoverUrlInput} alt="" className="rounded shadow-sm" style={{ width: 32, height: 46, objectFit: 'cover' }} />
+                <span className="text-[11px]" style={{ color: MUTE }}>표지가 선택됐어요</span>
+                <button onClick={() => setTowerCoverUrlInput('')} className="text-[11px] underline" style={{ color: MUTE }}>선택 해제</button>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <input value={towerAuthorInput} onChange={(e) => setTowerAuthorInput(e.target.value)} placeholder="저자 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+              <input value={towerPublisherInput} onChange={(e) => setTowerPublisherInput(e.target.value)} placeholder="출판사 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>읽기 시작일</div><input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
               <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>다 읽은 날 (선택)</div><input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
@@ -1922,7 +1977,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 const edgeH = Math.max(3, Math.round(barH * 0.112)); // 위아래 표지 두께 (기존의 70%)
                 const tone = PAGE_TONES[hash % PAGE_TONES.length];
                 return (
-                  <div key={t.id} style={{ height: barH, marginLeft: Math.max(2, lengthInset + jitterX), marginRight: Math.max(2, lengthInset - jitterX), transform: `translateY(${microY}px)`, borderRadius: 4, overflow: 'hidden', filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.45)) drop-shadow(0 1px 1px rgba(0,0,0,0.4))' }}>
+                  <div key={t.id} onClick={() => setViewingTowerId(t.id)} role="button" tabIndex={0} style={{ height: barH, marginLeft: Math.max(2, lengthInset + jitterX), marginRight: Math.max(2, lengthInset - jitterX), transform: `translateY(${microY}px)`, borderRadius: 4, overflow: 'hidden', filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.45)) drop-shadow(0 1px 1px rgba(0,0,0,0.4))', cursor: 'pointer' }}>
                     <div className="relative w-full h-full">
                       {/* 위/아래 - 실제 양장본 표지: 재질감 있는 그라데이션 + 페이지와 맞닿는 경계 그림자 */}
                       <div className="absolute inset-x-0 top-0 pointer-events-none" style={{ height: edgeH, borderRadius: '4px 4px 2px 2px', background: `linear-gradient(180deg, rgba(255,255,255,0.30) 0%, ${edgeColor} 55%, rgba(0,0,0,0.15) 100%)`, boxShadow: 'inset 0 -2px 3px -1px rgba(0,0,0,0.35)' }} />
@@ -1967,16 +2022,16 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                           </div>
                           {isMine && (
                             <div className="flex items-center gap-1">
-                              <button onClick={() => startTowerEdit(t)} className="p-0.5" aria-label="책탑 항목 수정"><Pencil size={10} style={{ color: '#6B5B3E' }} /></button>
+                              <button onClick={(e) => { e.stopPropagation(); startTowerEdit(t); }} className="p-0.5" aria-label="책탑 항목 수정"><Pencil size={10} style={{ color: '#6B5B3E' }} /></button>
                               {towerSettingsOpen && (
-                                <button onClick={() => requestDelete(() => removeTowerEntry(t.id), `'${t.book_title}'을(를) 책장에서 없앨까요?`)} className="p-0.5" aria-label="책탑에서 제거"><X size={10} style={{ color: '#6B5B3E' }} /></button>
+                                <button onClick={(e) => { e.stopPropagation(); requestDelete(() => removeTowerEntry(t.id), `'${t.book_title}'을(를) 책장에서 없앨까요?`); }} className="p-0.5" aria-label="책탑에서 제거"><X size={10} style={{ color: '#6B5B3E' }} /></button>
                               )}
                             </div>
                           )}
                           {canReorder && towerSettingsOpen && (
                             <div className="flex flex-col rounded-lg overflow-hidden" style={{ gap: 2, background: '#3A2C18' }}>
-                              <button onClick={() => moveTowerItem(list, t, 'up')} disabled={!canMoveUp} className="flex items-center justify-center" style={{ width: 28, height: 18, opacity: canMoveUp ? 1 : 0.4 }} aria-label="위로 이동"><ChevronUp size={14} style={{ color: '#F2EAD6' }} /></button>
-                              <button onClick={() => moveTowerItem(list, t, 'down')} disabled={!canMoveDown} className="flex items-center justify-center" style={{ width: 28, height: 18, opacity: canMoveDown ? 1 : 0.4 }} aria-label="아래로 이동"><ChevronDown size={14} style={{ color: '#F2EAD6' }} /></button>
+                              <button onClick={(e) => { e.stopPropagation(); moveTowerItem(list, t, 'up'); }} disabled={!canMoveUp} className="flex items-center justify-center" style={{ width: 28, height: 18, opacity: canMoveUp ? 1 : 0.4 }} aria-label="위로 이동"><ChevronUp size={14} style={{ color: '#F2EAD6' }} /></button>
+                              <button onClick={(e) => { e.stopPropagation(); moveTowerItem(list, t, 'down'); }} disabled={!canMoveDown} className="flex items-center justify-center" style={{ width: 28, height: 18, opacity: canMoveDown ? 1 : 0.4 }} aria-label="아래로 이동"><ChevronDown size={14} style={{ color: '#F2EAD6' }} /></button>
                             </div>
                           )}
                         </div>
@@ -1989,6 +2044,49 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           );
         })()}
       </Card>
+
+      {/* ---------- 책탑 항목 상세보기 ---------- */}
+      {viewingTowerId && (() => {
+        const t = bookTowerEntries.find((e) => e.id === viewingTowerId);
+        if (!t) return null;
+        const owner = members.find((m) => m.id === t.member_id);
+        const statusKey = t.read_status || (t.finished_date ? 'done' : 'reading');
+        const statusMeta = readStatusMeta(statusKey);
+        const ownerText = t.owner_name_override != null ? t.owner_name_override : (owner ? dispName(owner.name, isLoggedIn) : '');
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setViewingTowerId(null)}>
+            <div className="w-full max-w-sm rounded-2xl border p-5" style={{ background: CARD_BG, borderColor: LINE, maxHeight: '85vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: statusMeta.color, color: '#F2EEE3' }}>{statusMeta.label}</span>
+                <button onClick={() => setViewingTowerId(null)} className="p-1" aria-label="닫기"><X size={16} style={{ color: MUTE }} /></button>
+              </div>
+              {t.cover_url ? (
+                <div className="flex justify-center mb-3">
+                  <img src={t.cover_url} alt="" className="rounded-lg shadow-md" style={{ height: 200, width: 'auto', maxWidth: '100%', objectFit: 'cover' }} />
+                </div>
+              ) : (
+                <div className="flex justify-center mb-3">
+                  <div className="rounded-lg flex items-center justify-center" style={{ height: 200, width: 140, background: t.color || NEUTRAL_BG }}>
+                    <BookOpen size={28} style={{ color: 'rgba(255,255,255,0.6)' }} />
+                  </div>
+                </div>
+              )}
+              <div className="text-base font-semibold mb-1 text-center" style={{ color: INK }}>{t.book_title}</div>
+              {(t.book_author || t.book_publisher) && (
+                <div className="text-xs text-center mb-3" style={{ color: MUTE }}>{[t.book_author, t.book_publisher].filter(Boolean).join(' · ')}</div>
+              )}
+              <div className="space-y-1.5 text-xs" style={{ color: NEUTRAL_TEXT }}>
+                {ownerText && <div className="flex justify-between"><span style={{ color: MUTE }}>등록자</span><span>{ownerText}</span></div>}
+                {t.event_tag && <div className="flex justify-between"><span style={{ color: MUTE }}>행사/토론회</span><span>{t.event_tag}</span></div>}
+                {t.start_date && <div className="flex justify-between"><span style={{ color: MUTE }}>읽기 시작일</span><span>{fmtDate(t.start_date)}</span></div>}
+                {t.finished_date && <div className="flex justify-between"><span style={{ color: MUTE }}>다 읽은 날</span><span>{fmtDate(t.finished_date)}</span></div>}
+                {t.current_page != null && <div className="flex justify-between"><span style={{ color: MUTE }}>현재 페이지</span><span>{t.current_page}쪽</span></div>}
+                {t.note_visible && t.note && <div className="flex justify-between"><span style={{ color: MUTE }}>비고</span><span>{t.note}</span></div>}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {viewing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)' }} onClick={() => setViewingId(null)}>
