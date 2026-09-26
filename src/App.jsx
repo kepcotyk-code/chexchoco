@@ -5,7 +5,7 @@ import {
   Crown, Shield, Wallet, User, Plus, Pencil, Trash2, Check, X, Lock, AlertCircle, Mail,
   Megaphone, QrCode, BarChart3, Users, Settings2, Settings, Download, Upload, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Briefcase, Coffee,
   LogIn, LogOut, Cake, PartyPopper, Archive, Paperclip, FileText, Eye, Pin, Gavel, BookOpen, Search,
-  Image as ImageIcon, Trophy, Plane,
+  Image as ImageIcon, Trophy, Plane, Library,
 } from 'lucide-react';
 
 /* ---------- design tokens (dark) ---------- */
@@ -66,6 +66,7 @@ const TOWER_BADGE_PALETTE = ['#7C5CC4', '#D97A3D', '#C4544A', '#3E93A0', '#C48A3
 const COVER_EDGE_COLORS = [
   '#8B5E34', '#3E6B69', '#8A6F45', '#472B1D', '#2E4A66', '#3A5A3A', '#3A3A38', '#663636',
   '#5C3A21', '#264653', '#6B2D3C', '#4B4423', '#3D2B56', '#1F4E4A', '#5A3E5C', '#704214',
+  '#B8352E', '#1F5FA8', '#2F8F4E', '#D9A521', // 원색 계열 - 빨강·파랑·초록·노랑
 ];
 // 책마다 미세하게 다른 종이 톤 (같은 크림색이라도 책마다 살짝 다르게)
 const PAGE_TONES = [
@@ -503,7 +504,7 @@ export default function App() {
     { key: 'notice', label: '공지', icon: Megaphone },
     { key: 'qr', label: '출석', icon: QrCode },
     { key: 'dashboard', label: '현황', icon: BarChart3 },
-    { key: 'gallery', label: '서재', icon: ImageIcon },
+    { key: 'gallery', label: '서재', icon: Library },
     { key: 'users', label: '멤버', icon: Users },
   ];
 
@@ -994,10 +995,10 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
         return (
           <Card key={n.id} style={n.pinned ? { borderColor: '#EFC94C', borderWidth: 2 } : {}}>
             <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="flex items-center gap-1.5">
-                  {n.pinned && <Pin size={13} style={{ color: '#EFC94C' }} fill="#EFC94C" />}
-                  <h3 className="font-semibold" style={{ color: INK, fontFamily: "'Fraunces', serif" }}>{n.title}</h3>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  {n.pinned && <Pin size={13} style={{ color: '#EFC94C', flexShrink: 0 }} fill="#EFC94C" />}
+                  <h3 className="font-semibold truncate" style={{ color: INK, fontFamily: "'Fraunces', serif", fontSize: 'clamp(13px, 4vw, 16px)' }}>{n.title}</h3>
                 </div>
                 <div className="text-xs mt-0.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{dispName(n.author_name, isLoggedIn)} · {fmtDate(n.created_at)} {fmtTime(n.created_at)}</div>
               </div>
@@ -1323,6 +1324,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const isSecretary = currentMember?.role === '간사'; // 모임 책장(공개) 등록은 간사만 가능 - 회장·총무는 제외
   const [towerView, setTowerView] = useState('mine'); // 'mine' | 'group'
   const [showTowerAdd, setShowTowerAdd] = useState(false);
+  const [towerSettingsOpen, setTowerSettingsOpen] = useState(false); // 켜져 있을 때만 순서 이동·삭제 버튼이 보임 (평소엔 연필만)
   const [towerTitleInput, setTowerTitleInput] = useState('');
   const [towerStartInput, setTowerStartInput] = useState(todayStr());
   const [towerPageInput, setTowerPageInput] = useState('');
@@ -1392,9 +1394,14 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     const other = list[swapIdx];
     const a = towerEffectiveOrder(entry);
     const b = towerEffectiveOrder(other);
-    await updateRow('book_tower_entries', 'id', entry.id, { sort_order: b });
-    await updateRow('book_tower_entries', 'id', other.id, { sort_order: a });
-    await reload();
+    try {
+      await updateRow('book_tower_entries', 'id', entry.id, { sort_order: b });
+      await updateRow('book_tower_entries', 'id', other.id, { sort_order: a });
+      await reload();
+    } catch (err) {
+      // sort_order 컬럼이 아직 Supabase의 book_tower_entries 테이블에 없으면 여기서 실패함
+      showToast('순서 변경에 실패했어요 — book_tower_entries 테이블에 sort_order 컬럼이 있는지 확인해주세요.', 'error');
+    }
   };
 
   return (
@@ -1712,18 +1719,29 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
       <Card>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: INK }}>📚 북적북적</div>
-          {currentMember && <button onClick={() => setShowTowerAdd((v) => !v)} className="text-xs rounded-full px-3 py-1.5 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{showTowerAdd ? '취소' : '+ 책 추가'}</button>}
+          <div className="flex items-center gap-1.5">
+            {currentMember && <button onClick={() => setShowTowerAdd((v) => !v)} className="text-xs rounded-full px-3 py-1.5 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{showTowerAdd ? '취소' : '+ 책 추가'}</button>}
+            <button onClick={() => setTowerSettingsOpen((v) => !v)} className="p-2 rounded-full" style={{ background: towerSettingsOpen ? BTN_BG : NEUTRAL_BG, color: towerSettingsOpen ? BTN_TEXT : NEUTRAL_TEXT }} aria-label="책탑 설정 (순서 변경·삭제)"><Settings2 size={14} /></button>
+          </div>
         </div>
         {showTowerAdd && (
           <div className="rounded-2xl p-3 mb-3 space-y-2" style={{ background: FORM_PANEL_BG, border: `1.5px solid ${FORM_PANEL_BORDER}`, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)' }}>
-            <div className="flex items-center gap-1.5 text-xs font-bold mb-0.5" style={{ color: MUTE }}><Pencil size={11} /> 새 책 추가</div>
+            <div className="flex items-center justify-between mb-0.5">
+              <div className="flex items-center gap-1.5 text-xs font-bold" style={{ color: MUTE }}><Pencil size={11} /> 새 책 추가</div>
+              {isSecretary && (
+                <label className="flex items-center gap-1.5 text-[11px]" style={{ color: MUTE }}>
+                  <input type="checkbox" checked={towerPublicInput} onChange={(e) => setTowerPublicInput(e.target.checked)} />
+                  모임 책장에도 공개
+                </label>
+              )}
+            </div>
             <input value={towerTitleInput} onChange={(e) => setTowerTitleInput(e.target.value)} placeholder="책 제목" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
             <div className="grid grid-cols-2 gap-2">
               <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>읽기 시작일</div><input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
               <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>다 읽은 날 (선택)</div><input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
             </div>
-            <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지 (선택)</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} placeholder="예: 128" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
-            <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그 (선택)</div><input value={towerTagInput} onChange={(e) => setTowerTagInput(e.target.value)} placeholder="예: 제 1차 독서토론회 도서" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+            <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지 (선택)</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+            <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그 (선택)</div><input value={towerTagInput} onChange={(e) => setTowerTagInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
             <div>
               <div className="text-[10px] mb-1" style={{ color: MUTE }}>표지 색상</div>
               <div className="flex flex-wrap gap-1.5">
@@ -1733,12 +1751,6 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 ))}
               </div>
             </div>
-            {isSecretary && (
-              <label className="flex items-center gap-1.5 text-xs" style={{ color: MUTE }}>
-                <input type="checkbox" checked={towerPublicInput} onChange={(e) => setTowerPublicInput(e.target.checked)} />
-                모임 책장에도 공개하기
-              </label>
-            )}
             {!isSecretary && (
               <p className="text-[11px]" style={{ color: MUTE }}>* 모임 책장 공개는 간사만 가능해요. 이 책은 내 책장에만 기록돼요.</p>
             )}
@@ -1772,7 +1784,15 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 if (isEditing) {
                   return (
                     <div key={t.id} className="rounded-2xl p-3 space-y-2" style={{ background: FORM_PANEL_BG, border: `1.5px solid ${FORM_PANEL_BORDER}`, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)' }}>
-                      <div className="flex items-center gap-1.5 text-xs font-bold" style={{ color: MUTE }}><Pencil size={11} /> 책 정보 수정</div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-xs font-bold" style={{ color: MUTE }}><Pencil size={11} /> 책 정보 수정</div>
+                        {isSecretary && (
+                          <label className="flex items-center gap-1.5 text-[11px]" style={{ color: MUTE }}>
+                            <input type="checkbox" checked={editingTowerPublic} onChange={(e) => setEditingTowerPublic(e.target.checked)} />
+                            모임 책장에 공개
+                          </label>
+                        )}
+                      </div>
                       <div className="text-sm font-bold truncate" style={{ color: INK }}>{t.book_title}</div>
                       <div className="grid grid-cols-2 gap-2">
                         <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>읽기 시작일</div><input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} aria-label="읽기 시작일" /></div>
@@ -1786,8 +1806,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                           </div>
                         </div>
                       </div>
-                      <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} placeholder="예: 128" className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
-                      <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그</div><input value={editingTowerTag} onChange={(e) => setEditingTowerTag(e.target.value)} placeholder="예: 제 1차 독서토론회 도서" className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
+                      <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
+                      <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그</div><input value={editingTowerTag} onChange={(e) => setEditingTowerTag(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
                       <div>
                         <div className="text-[10px] mb-1" style={{ color: MUTE }}>표지 색상</div>
                         <div className="flex flex-wrap gap-1.5">
@@ -1797,12 +1817,6 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                           ))}
                         </div>
                       </div>
-                      {isSecretary && (
-                        <label className="flex items-center gap-1.5 text-xs" style={{ color: MUTE }}>
-                          <input type="checkbox" checked={editingTowerPublic} onChange={(e) => setEditingTowerPublic(e.target.checked)} />
-                          모임 책장에 공개
-                        </label>
-                      )}
                       <div className="flex gap-1.5 items-center pt-1">
                         <button onClick={() => saveTowerEdit(t)} className="flex-1 text-xs rounded-full py-2 font-semibold" style={{ background: '#1E1C16', color: '#F2EEE3' }}>저장</button>
                         <button onClick={() => setEditingTowerId(null)} className="flex-1 text-xs rounded-full py-2 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>취소</button>
@@ -1857,16 +1871,18 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                               <span style={{ fontSize: 9, lineHeight: '10px', color: '#8A6A3F', fontWeight: 600, fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: 'tabular-nums' }} aria-label={`현재 ${t.current_page}페이지`}>{t.current_page}쪽</span>
                             )}
                           </div>
-                          {canReorder && (
-                            <div className="flex flex-col" style={{ gap: 1 }}>
-                              <button onClick={() => moveTowerItem(list, t, 'up')} disabled={!canMoveUp} className="p-0" style={{ opacity: canMoveUp ? 1 : 0.25 }} aria-label="위로 이동"><ChevronUp size={11} style={{ color: '#6B5B3E' }} /></button>
-                              <button onClick={() => moveTowerItem(list, t, 'down')} disabled={!canMoveDown} className="p-0" style={{ opacity: canMoveDown ? 1 : 0.25 }} aria-label="아래로 이동"><ChevronDown size={11} style={{ color: '#6B5B3E' }} /></button>
+                          {canReorder && towerSettingsOpen && (
+                            <div className="flex flex-col rounded-lg overflow-hidden" style={{ gap: 2, background: NEUTRAL_BG }}>
+                              <button onClick={() => moveTowerItem(list, t, 'up')} disabled={!canMoveUp} className="flex items-center justify-center" style={{ width: 28, height: 18, opacity: canMoveUp ? 1 : 0.25 }} aria-label="위로 이동"><ChevronUp size={14} style={{ color: '#6B5B3E' }} /></button>
+                              <button onClick={() => moveTowerItem(list, t, 'down')} disabled={!canMoveDown} className="flex items-center justify-center" style={{ width: 28, height: 18, opacity: canMoveDown ? 1 : 0.25 }} aria-label="아래로 이동"><ChevronDown size={14} style={{ color: '#6B5B3E' }} /></button>
                             </div>
                           )}
                           {isMine && (
                             <div className="flex items-center gap-1">
                               <button onClick={() => startTowerEdit(t)} className="p-0.5" aria-label="책탑 항목 수정"><Pencil size={10} style={{ color: '#6B5B3E' }} /></button>
-                              <button onClick={() => requestDelete(() => removeTowerEntry(t.id), `'${t.book_title}'을(를) 책장에서 없앨까요?`)} className="p-0.5" aria-label="책탑에서 제거"><X size={10} style={{ color: '#6B5B3E' }} /></button>
+                              {towerSettingsOpen && (
+                                <button onClick={() => requestDelete(() => removeTowerEntry(t.id), `'${t.book_title}'을(를) 책장에서 없앨까요?`)} className="p-0.5" aria-label="책탑에서 제거"><X size={10} style={{ color: '#6B5B3E' }} /></button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -2526,7 +2542,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 );
               })}
             </div>
-            <div className="flex flex-nowrap items-center overflow-x-auto" style={{ gap: 'clamp(3px, 1.6vw, 8px)' }}>
+            <div className="flex flex-nowrap items-center overflow-x-auto mt-3" style={{ gap: 'clamp(3px, 1.6vw, 8px)' }}>
               <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: dayTypeMeta('독서일').color }} /> 독서일</span>
               <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: dayTypeMeta('토론회').color }} /> 토론회</span>
               <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'transparent', border: '1.5px solid rgba(229, 72, 77, 0.65)' }} /> 회식일</span>
@@ -2816,7 +2832,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       );
                     })}
                   </div>
-                  <p className="text-[10px] mt-2" style={{ color: MUTE }}>※ 수행 날짜 지정 후 "완료로 확정"까지 눌러야 완료 처리돼요.</p>
+                  <p className="text-[10px] mt-2" style={{ color: MUTE }}>※ 벌칙 확정된 주 금요일까지 수행 예정일을 지정하고, 실제로 수행한 뒤엔 "완료로 확정"을 눌러야 완료 처리돼요.</p>
                 </div>
               )}
             </Card>
@@ -3033,7 +3049,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
                 <div className="flex gap-2 pt-1"><PrimaryBtn onClick={saveEdit} icon={Check}>저장</PrimaryBtn><GhostBtn onClick={() => setEditingId(null)} icon={X}>취소</GhostBtn></div>
               </div>
             ) : (
-              <div className="flex items-center justify-between px-4 py-3">
+              <div className="flex flex-nowrap items-center justify-between px-4 py-3">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <Stamp role={m.role} size={36} tilt={idx % 2 === 0 ? -5 : 4} />
                   <div className="min-w-0 flex-1">
@@ -3055,7 +3071,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
+                <div className="flex items-center gap-1 shrink-0 pl-2 ml-1" style={{ borderLeft: `1px solid ${ROW_LINE}` }}>
                   {canManage && <button onClick={() => startEdit(m)} className="p-2 rounded-lg" style={{ color: MUTE }} aria-label="회원 정보 수정"><Pencil size={16} /></button>}
                   {!canManage && m.id === currentUserId && <button onClick={() => startSelfEdit(m)} className="p-2 rounded-lg" style={{ color: MUTE }} aria-label="내 정보 수정"><Pencil size={16} /></button>}
                   {canManage && <button onClick={() => requestDelete(() => removeMember(m.id), `${m.name}님을 삭제할까요? 관련 기록도 함께 사라져요.`)} className="p-2 rounded-lg" style={{ color: '#F0A87C' }} aria-label="회원 삭제"><Trash2 size={16} /></button>}
