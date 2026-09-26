@@ -305,7 +305,7 @@ const computeWeeklyPenalties = (sessions, checkins, calendarDays, members, absen
 };
 
 /* ---------- Supabase data layer ---------- */
-const TABLES = ['members', 'notices', 'notice_views', 'sessions', 'checkins', 'penalty_completions', 'calendar_days', 'settings', 'photos', 'absence_excuses', 'meeting_locations', 'dues_payments', 'expenses', 'dinner_collections', 'book_shares', 'notifications', 'book_tower_entries', 'birthday_balloons'];
+const TABLES = ['members', 'notices', 'notice_views', 'sessions', 'checkins', 'penalty_completions', 'calendar_days', 'settings', 'photos', 'absence_excuses', 'meeting_locations', 'dues_payments', 'expenses', 'dinner_collections', 'book_shares', 'notifications', 'book_tower_entries', 'birthday_balloons', 'membership_applications', 'membership_votes'];
 
 async function fetchAll(tables = TABLES) {
   // members는 pin 컬럼이 빠진 members_public 뷰에서 조회 (일반 조회 시 PIN이 클라이언트로 전송되지 않도록)
@@ -364,6 +364,9 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [bookTowerEntries, setBookTowerEntries] = useState([]);
   const [birthdayBalloons, setBirthdayBalloons] = useState([]);
+  const [membershipApplications, setMembershipApplications] = useState([]); // 가입 신청 목록
+  const [membershipVotes, setMembershipVotes] = useState([]); // 운영진별 승인 기록 (application_id, member_id)
+  const [showApplyForm, setShowApplyForm] = useState(false); // 상단 "가입신청" 버튼 -> 인원 탭에서 신청서 자동으로 펼침
   const [showNotifications, setShowNotifications] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(() => localStorage.getItem('chexchoco-current-user') || null);
   // 기기 등록: null=조회중, false=미등록, 문자열=등록된 멤버 id (한번 정해지면 앱에서는 절대 못 바꿈 — DB에 update/delete 정책 자체가 없음)
@@ -415,6 +418,8 @@ export default function App() {
       if (data.notifications) setNotifications(data.notifications);
       if (data.book_tower_entries) setBookTowerEntries(data.book_tower_entries);
       if (data.birthday_balloons) setBirthdayBalloons(data.birthday_balloons);
+      if (data.membership_applications) setMembershipApplications(data.membership_applications);
+      if (data.membership_votes) setMembershipVotes(data.membership_votes);
       setError('');
     } catch (e) { setError('데이터를 불러오지 못했어요. 새로고침해 주세요.'); }
     setLoaded(true);
@@ -645,6 +650,9 @@ export default function App() {
                   <Settings size={15} />
                 </button>
               )}
+              {!currentMember && !deviceRegMemberId && (
+                <button onClick={() => { setTab('users'); setShowApplyForm(true); }} className="rounded-full font-semibold whitespace-nowrap" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT, padding: 'clamp(5px, 1.6vw, 6px) clamp(8px, 2.6vw, 12px)', fontSize: 'clamp(10px, 3vw, 12px)' }}>가입신청</button>
+              )}
               {deviceRegMemberId ? (
                 <span className="flex items-center gap-1 rounded-full font-semibold min-w-0" style={{ background: BTN_BG, color: BTN_TEXT, padding: 'clamp(5px, 1.6vw, 6px) clamp(8px, 2.6vw, 12px)', fontSize: 'clamp(10px, 3vw, 12px)' }} title="이 기기는 등록된 사용자 전용이에요. 다른 사람으로 전환할 수 없어요.">
                   <Lock size={11} className="shrink-0" />{currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} /><span className="truncate whitespace-nowrap">{currentMember.name}</span></> : <span className="truncate whitespace-nowrap">등록된 기기</span>}
@@ -817,7 +825,7 @@ export default function App() {
         {tab === 'gallery' && <GalleryScreen photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} requestDelete={requestDelete} showToast={showToast} bookShares={bookShares} bookTowerEntries={bookTowerEntries} />}
         {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} meetingLocations={meetingLocations} />}
         {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} currentMember={currentMember} />}
-        {tab === 'users' && <UsersScreen members={members} sortedMembers={sortedMembers} currentUserId={currentUserId} setIdentity={setIdentity} canManage={canManageUsers} notices={notices} sessions={sessions} checkins={checkins} reload={reload} requestDelete={requestDelete} />}
+        {tab === 'users' && <UsersScreen members={members} sortedMembers={sortedMembers} currentUserId={currentUserId} setIdentity={setIdentity} canManage={canManageUsers} notices={notices} sessions={sessions} checkins={checkins} reload={reload} requestDelete={requestDelete} showToast={showToast} membershipApplications={membershipApplications} membershipVotes={membershipVotes} showApplyForm={showApplyForm} setShowApplyForm={setShowApplyForm} />}
         {tab === 'treasury' && canManageUsers && <TreasuryScreen members={sortedMembers} duesPayments={duesPayments} expenses={expenses} dinnerCollections={dinnerCollections} currentMember={currentMember} reload={reload} requestDelete={requestDelete} showToast={showToast} />}
         {tab === 'admin' && canManageAttendance && <AdminScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} setPenaltyRule={setPenaltyRule} penaltyCompletions={penaltyCompletions} reload={reload} calendarDays={calendarDays} absenceExcuses={absenceExcuses} requestDelete={requestDelete} currentMember={currentMember} weatherOverride={weatherOverride} setWeatherOverride={setWeatherOverride} />}
       </div>
@@ -2990,8 +2998,46 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
 }
 
 /* ---------------- 사용자관리 ---------------- */
-function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canManage, notices, sessions, checkins, reload, requestDelete }) {
+function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canManage, notices, sessions, checkins, reload, requestDelete, showToast, membershipApplications, membershipVotes, showApplyForm, setShowApplyForm }) {
   const isLoggedIn = !!currentUserId;
+  const isSecretary = members.find((m) => m.id === currentUserId)?.role === '간사'; // 신청 진행현황(운영진별 승인 여부)은 간사만 상세히 볼 수 있음
+  const currentManagers = members.filter((m) => MANAGE_ROLES.includes(m.role));
+  const pendingApplications = membershipApplications.filter((a) => a.status !== 'approved' && a.status !== 'rejected');
+  // ---------- 가입 신청 (비로그인 방문자용) ----------
+  const [applyName, setApplyName] = useState(''); const [applyDept, setApplyDept] = useState(''); const [applyJobType, setApplyJobType] = useState('');
+  const [applyBirthday, setApplyBirthday] = useState(''); const [applyGenre, setApplyGenre] = useState(''); const [applyNote, setApplyNote] = useState('');
+  const submitApplication = async () => {
+    if (!applyName.trim()) return;
+    const id = uid('ma');
+    await insertRow('membership_applications', {
+      id, name: applyName.trim(), department: applyDept.trim() || null, job_type: applyJobType.trim() || null,
+      birthday: applyBirthday || null, book_genre: applyGenre.trim() || null, note: applyNote.trim() || null,
+      status: 'pending', created_at: new Date().toISOString(),
+    });
+    await Promise.all(currentManagers.map((m) => insertRow('notifications', { id: uid('nt'), member_id: m.id, message: `${applyName.trim()}님이 가입 신청을 했어요. 확인해주세요.`, link_id: id, created_at: new Date().toISOString() })));
+    setApplyName(''); setApplyDept(''); setApplyJobType(''); setApplyBirthday(''); setApplyGenre(''); setApplyNote('');
+    setShowApplyForm(false);
+    await reload();
+    showToast?.('가입 신청이 접수됐어요. 운영진 전원이 승인하면 가입이 완료돼요.');
+  };
+  // ---------- 가입 신청 승인 (운영진용) ----------
+  const approveApplication = async (app) => {
+    if (!currentUserId) return;
+    await insertRow('membership_votes', { id: uid('mv'), application_id: app.id, member_id: currentUserId, created_at: new Date().toISOString() });
+    const updatedVotes = [...membershipVotes, { application_id: app.id, member_id: currentUserId }];
+    const allApproved = currentManagers.every((m) => updatedVotes.some((v) => v.application_id === app.id && v.member_id === m.id));
+    if (allApproved) {
+      await insertRow('members', { id: uid('m'), name: app.name, role: '회원', birthday: app.birthday || null, department: app.department || null, job_type: app.job_type || null, book_genre: app.book_genre || null, note: app.note || null });
+      await updateRow('membership_applications', 'id', app.id, { status: 'approved' });
+      showToast?.(`${app.name}님의 가입이 완료됐어요!`);
+    }
+    await reload();
+  };
+  const rejectApplication = async (app) => {
+    await supabase.from('membership_votes').delete().eq('application_id', app.id);
+    await deleteRow('membership_applications', 'id', app.id);
+    await reload();
+  };
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState(''); const [newRole, setNewRole] = useState('회원'); const [newBirthday, setNewBirthday] = useState(''); const [newPin, setNewPin] = useState('');
   const [newDept, setNewDept] = useState(''); const [newJobType, setNewJobType] = useState(''); const [newJoinedAt, setNewJoinedAt] = useState(''); const [newGenre, setNewGenre] = useState(''); const [newNote, setNewNote] = useState('');
@@ -3064,6 +3110,69 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
 
   return (
     <div className="space-y-4">
+      {!isLoggedIn && (
+        showApplyForm ? (
+          <Card className="space-y-2">
+            <div className="text-sm font-semibold" style={{ color: INK }}>가입 신청</div>
+            <input value={applyName} onChange={(e) => setApplyName(e.target.value)} placeholder="이름 (필수)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+            <div className="grid grid-cols-2 gap-2">
+              <input value={applyDept} onChange={(e) => setApplyDept(e.target.value)} placeholder="소속 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+              <input value={applyJobType} onChange={(e) => setApplyJobType(e.target.value)} placeholder="직군 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+            </div>
+            <div><label className="text-xs mb-1 flex items-center gap-1" style={{ color: MUTE }}><Cake size={13} /> 생일 (선택)</label><input type="date" value={applyBirthday} onChange={(e) => setApplyBirthday(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+            <input value={applyGenre} onChange={(e) => setApplyGenre(e.target.value)} placeholder="선호 도서 종류 (예: 소설, 자기계발)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+            <input value={applyNote} onChange={(e) => setApplyNote(e.target.value)} placeholder="비고 (선택)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+            <p className="text-[11px]" style={{ color: MUTE }}>* 신청하면 운영진(회장·간사·총무) 전원에게 알림이 가고, 전원이 승인하면 가입이 완료돼요.</p>
+            <div className="flex gap-2"><PrimaryBtn onClick={submitApplication} icon={Check}>신청하기</PrimaryBtn><GhostBtn onClick={() => setShowApplyForm(false)} icon={X}>취소</GhostBtn></div>
+          </Card>
+        ) : (
+          <button onClick={() => setShowApplyForm(true)} className="w-full flex items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed py-3 text-sm font-semibold" style={{ borderColor: LINE, color: MUTE }}>
+            <Plus size={16} /> 가입 신청
+          </button>
+        )
+      )}
+      {canManage && pendingApplications.length > 0 && (
+        <Card>
+          <div className="text-sm font-semibold mb-2" style={{ color: INK }}>가입 신청 현황 ({pendingApplications.length})</div>
+          <div className="space-y-3">
+            {pendingApplications.map((app) => {
+              const votesForApp = membershipVotes.filter((v) => v.application_id === app.id);
+              const approvedByMe = votesForApp.some((v) => v.member_id === currentUserId);
+              return (
+                <div key={app.id} className="rounded-xl p-2.5" style={{ background: NEUTRAL_BG }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold truncate" style={{ color: INK }}>{app.name}</div>
+                      <div className="text-[11px] truncate" style={{ color: MUTE }}>{[app.department, app.job_type, app.book_genre].filter(Boolean).join(' · ') || '입력된 정보 없음'}</div>
+                    </div>
+                    <span className="text-[11px] font-semibold shrink-0" style={{ color: MUTE }}>{votesForApp.length}/{currentManagers.length} 승인</span>
+                  </div>
+                  {isSecretary && (
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {currentManagers.map((m) => {
+                        const voted = votesForApp.some((v) => v.member_id === m.id);
+                        return (
+                          <span key={m.id} className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: voted ? '#12302C' : NEUTRAL_BG, color: voted ? '#7FDCCF' : MUTE, border: voted ? 'none' : `1px solid ${LINE}` }}>
+                            {dispName(m.name, isLoggedIn)} · {voted ? '승인' : '대기'}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div className="flex gap-2 mt-2">
+                    {approvedByMe ? (
+                      <span className="text-xs" style={{ color: MUTE }}>승인 완료 · 다른 운영진을 기다리는 중이에요.</span>
+                    ) : (
+                      <button onClick={() => approveApplication(app)} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: '#12302C', color: '#7FDCCF' }}>승인하기</button>
+                    )}
+                    <button onClick={() => requestDelete(() => rejectApplication(app), `${app.name}님의 가입 신청을 거절할까요?`)} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}>거절</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
       {canManage && (
         <div className="flex gap-2">
           <button onClick={downloadExcel} className="flex-1 min-w-0 flex items-center justify-center gap-1.5 rounded-xl py-2.5 px-2 text-sm font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>
