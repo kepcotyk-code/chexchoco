@@ -1561,7 +1561,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
             );
           })}
         </div>
-        <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold" style={{ color: SHARE_REQUEST_COLOR }}>🙋 빌려주실 수 있나요? ({requests.length})</div>
+        <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold" style={{ color: SHARE_REQUEST_COLOR }}><span style={{ fontSize: 13, lineHeight: 1 }} role="img" aria-label="손 흔드는 사람">🙋</span> 빌려주실 수 있나요? ({requests.length})</div>
         <div className="space-y-1.5">
           {requests.length === 0 && <p className="text-xs" style={{ color: MUTE }}>등록된 글이 없어요.</p>}
           {requests.map((s) => {
@@ -1588,18 +1588,18 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         const isOwner = currentMember?.id === ownerId;
         const canEditPost = currentMember?.id === viewingShare.posted_by || canManage;
         return (
-          <div className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setViewingShareId(null)}>
-            <div className="w-full max-w-sm rounded-2xl border p-5 my-auto" style={{ background: CARD_BG, borderColor: LINE }} onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setViewingShareId(null)}>
+            <div className="w-full max-w-sm rounded-2xl border p-5" style={{ background: CARD_BG, borderColor: LINE, maxHeight: '85vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: viewingShare.kind === 'offer' ? SHARE_OFFER_BG : SHARE_REQUEST_BG, color: viewingShare.kind === 'offer' ? SHARE_OFFER_COLOR : SHARE_REQUEST_COLOR }}>{viewingShare.kind === 'offer' ? '빌려줄까요?' : '빌려주실 수 있나요?'}</span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3.5">
                   {canEditPost && !editingShare && (
-                    <button onClick={() => { setEditingShare(true); setEditShareTitle(viewingShare.book_title); setEditShareAuthor(viewingShare.book_author || ''); setEditSharePublisher(viewingShare.book_publisher || ''); setEditShareCoverUrl(viewingShare.cover_url || ''); }} aria-label="글 수정"><Pencil size={14} style={{ color: MUTE }} /></button>
+                    <button onClick={() => { setEditingShare(true); setEditShareTitle(viewingShare.book_title); setEditShareAuthor(viewingShare.book_author || ''); setEditSharePublisher(viewingShare.book_publisher || ''); setEditShareCoverUrl(viewingShare.cover_url || ''); }} className="p-1" aria-label="글 수정"><Pencil size={14} style={{ color: MUTE }} /></button>
                   )}
                   {canEditPost && !editingShare && (
-                    <button onClick={() => requestDelete(() => deleteBookShare(viewingShare), '이 게시글을 삭제할까요? 대여 기록도 함께 사라져요.')} aria-label="글 삭제"><Trash2 size={14} style={{ color: '#F0A87C' }} /></button>
+                    <button onClick={() => requestDelete(() => deleteBookShare(viewingShare), '이 게시글을 삭제할까요? 대여 기록도 함께 사라져요.')} className="p-1" aria-label="글 삭제"><Trash2 size={14} style={{ color: '#F0A87C' }} /></button>
                   )}
-                  <button onClick={() => setViewingShareId(null)} aria-label="닫기"><X size={16} style={{ color: MUTE }} /></button>
+                  <button onClick={() => setViewingShareId(null)} className="p-1" aria-label="닫기"><X size={16} style={{ color: MUTE }} /></button>
                 </div>
               </div>
               {editingShare ? (
@@ -1925,7 +1925,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                         background: 'linear-gradient(90deg, rgba(0,0,0,0.28) 0px, rgba(0,0,0,0.08) 4px, rgba(0,0,0,0) 9px, rgba(0,0,0,0) calc(100% - 9px), rgba(0,0,0,0.08) calc(100% - 4px), rgba(0,0,0,0.28) 100%)',
                         boxShadow: 'inset 1px 0 0 rgba(255,255,255,0.25), inset -1px 0 0 rgba(255,255,255,0.25)' }} />
                       {/* 오른쪽 끝 - 상태 리본 (완독=버건디 / 읽는 중=포레스트그린 / 잠시 멈춤=카멜 / 읽을 예정=차콜) */}
-                      <div className="absolute pointer-events-none" style={{ top: -1, right: 12, width: 18, height: Math.round(barH * 0.62), background: `linear-gradient(90deg, ${ribbonStatusColor} 0%, ${ribbonStatusColor}cc 100%)`, clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 4px), 0 100%)', boxShadow: '1px 1px 2px rgba(0,0,0,0.3)' }} />
+                      <div className="absolute pointer-events-none" style={{ top: -1, right: 12, width: 16, height: Math.round(barH * 0.62), background: `linear-gradient(90deg, ${ribbonStatusColor} 0%, ${ribbonStatusColor}cc 100%)`, clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 4px), 0 100%)', boxShadow: '1px 1px 2px rgba(0,0,0,0.3)' }} />
                       <div className="relative h-full flex items-center justify-between gap-1.5" style={{ paddingLeft: 18, paddingRight: 38 }}>
                         {/* 왼쪽 - 캡션(행사 태그·비고) 위, 제목·등록자 아래로 한 덩어리 */}
                         <div className="min-w-0 flex flex-col justify-center" style={{ gap: 2 }}>
