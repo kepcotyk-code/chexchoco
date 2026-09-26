@@ -1549,8 +1549,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         const isOwner = currentMember?.id === ownerId;
         const canEditPost = currentMember?.id === viewingShare.posted_by || canManage;
         return (
-          <div className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto" style={{ background: 'rgba(0,0,0,0.7)', paddingTop: '8vh' }} onClick={() => setViewingShareId(null)}>
-            <div className="w-full max-w-sm rounded-2xl border p-5" style={{ background: CARD_BG, borderColor: LINE }} onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setViewingShareId(null)}>
+            <div className="w-full max-w-sm rounded-2xl border p-5 my-auto" style={{ background: CARD_BG, borderColor: LINE }} onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: viewingShare.kind === 'offer' ? SHARE_OFFER_BG : SHARE_REQUEST_BG, color: viewingShare.kind === 'offer' ? SHARE_OFFER_COLOR : SHARE_REQUEST_COLOR }}>{viewingShare.kind === 'offer' ? '빌려줄까요?' : '빌려주실 수 있나요?'}</span>
                 <div className="flex items-center gap-2">
@@ -2093,7 +2093,7 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
           canManage ? (
             <div className="py-4">
               <p className="text-sm mb-3" style={{ color: MUTE }}>오늘 출결이 아직 시작되지 않았어요.</p>
-              <PrimaryBtn onClick={startSession} icon={QrCode}>오늘 출결 시작</PrimaryBtn>
+              <div className="flex justify-center"><PrimaryBtn onClick={startSession} icon={QrCode}>오늘 출결 시작</PrimaryBtn></div>
             </div>
           ) : <p className="text-sm py-6" style={{ color: MUTE }}>아직 오늘 출결이 시작되지 않았어요.<br />간사에게 문의해 주세요.</p>
         ) : (
@@ -2296,29 +2296,15 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     if (i === 0 || wk !== sessionWeekKeys[i - 1]) weekChunkRanges.push([i, i + 1]);
     else weekChunkRanges[weekChunkRanges.length - 1][1] = i + 1;
   });
-  // 각 주 그룹이 이 달의 실제 몇 번째 주(달력 기준)인지 계산 — 모임이 달 중간부터 시작했으면 1주부터가 아니라 실제 주차부터 표기
-  const sundayOf = (dateStr) => { const d = new Date(`${dateStr}T00:00:00`); d.setDate(d.getDate() - d.getDay()); return d; };
-  const firstOfMonthDate = new Date(`${ms}-01T00:00:00`);
-  const firstFullWeekSunday = firstOfMonthDate.getDay() === 0 ? firstOfMonthDate : new Date(firstOfMonthDate.getFullYear(), firstOfMonthDate.getMonth(), firstOfMonthDate.getDate() + (7 - firstOfMonthDate.getDay()));
-  // 이번 달의 첫 완전한 주(일~토)를 1주차로 삼되, 그보다 앞선(=이전 달에서 이어붙여 보여주기만 하는) 주는 0 이하로 나와 별도 표기함 — 그래야 "1주차"가 두 번 겹쳐 보이지 않음
-  const weekOfMonthRaw = (dateStr) => Math.floor(Math.round((sundayOf(dateStr) - firstFullWeekSunday) / 86400000) / 7) + 1;
-  // 주차 헤더 라벨("3주(8.17-20)")과, 그 아래 도트 행이 세로로 정확히 정렬되도록 두 행이 공유할 컬럼 폭을 미리 계산
-  const weekLabels = weekChunkRanges.map(([start, end]) => {
+  // 주차 헤더 라벨("1주차(8.31-9.3)")과, 그 아래 도트 행이 세로로 정확히 정렬되도록 두 행이 공유할 컬럼 폭을 미리 계산
+  // 달력 기준 주차가 아니라, 화면에 보이는 순서대로 1,2,3...으로 매겨서 번호가 겹치는 일이 없게 함
+  const weekLabels = weekChunkRanges.map(([start, end], wi) => {
     const chunk = monthDayList.slice(start, end);
     const d1 = chunk[0].date, d2 = chunk[chunk.length - 1].date;
     const month1 = parseInt(d1.slice(5, 7), 10), day1 = parseInt(d1.slice(8, 10), 10);
     const month2 = parseInt(d2.slice(5, 7), 10), day2 = parseInt(d2.slice(8, 10), 10);
     const range = month1 !== month2 ? `${month1}.${day1}-${month2}.${day2}` : (day1 === day2 ? `${month1}.${day1}` : `${month1}.${day1}-${day2}`);
-    const repDate = chunk.find((d) => d.inCurrentMonth)?.date || d1; // 주차 번호는 실제 이번 달에 속한 날짜 기준으로 계산
-    const rawWeek = weekOfMonthRaw(repDate);
-    // 이번 달 첫 완전한 주보다 앞서 이전 달에서 끌어온 주는 "N주차"가 아니라 "M월 마지막주"로 표기 (진짜 1주차와 번호가 겹치지 않도록)
-    const main = rawWeek >= 1 ? `${rawWeek}주차` : `${month1}월 마지막주`;
-    return { main, sub: `(${range})` };
-  });
-  const weekColWidths = weekLabels.map(({ main, sub }, wi) => {
-    const [start, end] = weekChunkRanges[wi];
-    const dotsWidth = (end - start) * 11 - 2; // 도트(9px)+간격(2px)만큼 실제로 필요한 최소 폭 — 라벨이 짧아도 도트가 늘어나면 이 폭을 확보
-    return Math.max(28, Math.max(main.length, sub.length) * 5.9 + 4, dotsWidth);
+    return { main: `${wi + 1}주차`, sub: `(${range})` };
   });
   // "이번 달" 뷰는 벌칙과 동일하게 주 단위 기준으로 통일 — 월 경계에 걸쳐 끌어온 날짜(예: 8/31)도 포함해서 계산
   const totalDays = monthDayList.filter((d) => d.session).length;
@@ -2500,7 +2486,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const hasWork = absenceExcuses.some((e) => e.date === date && e.reason === '업무');
                 const hasPersonal = absenceExcuses.some((e) => e.date === date && e.reason === '개인일정');
                 const hasDiscussion = types.includes('토론회');
-                const myPenaltyOnDate = currentMember ? penaltyEntries.find((e) => e.member.id === currentMember.id && e.completion?.performed_date === date) : null;
+                const dayPenaltyFolks = penaltyEntries.filter((e) => e.completion?.performed_date === date); // 회원 누구든 이 날짜에 벌칙을 수행하면 커피 아이콘 표기
                 const birthdayFolks = members.filter((m) => m.birthday && mdOf(m.birthday) === date.slice(5, 10));
                 const hasBirthday = birthdayFolks.length > 0;
                 let borderStyle = isToday ? '1.5px solid rgba(242,238,227,0.55)' : selectedDate === date ? `1.5px solid ${textColor}` : '1px solid transparent';
@@ -2509,10 +2495,10 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
                     className="relative aspect-square rounded-lg flex flex-col items-center justify-center text-xs leading-none"
                     style={{ background: bgStyle, color: textColor, border: borderStyle }}>
-                    {(hasDiscussion || hasBirthday || myPenaltyOnDate) && (
+                    {(hasDiscussion || hasBirthday || dayPenaltyFolks.length > 0) && (
                       <span className="absolute top-0.5 flex items-center gap-0.5">
                         {hasDiscussion && <BookOpen size={8} style={{ color: '#D9C24C' }} />}
-                        {myPenaltyOnDate && <Coffee size={8} style={{ color: '#EFC94C', opacity: myPenaltyOnDate.completion?.confirmed ? 1 : 0.55 }} />}
+                        {dayPenaltyFolks.length > 0 && <Coffee size={8} style={{ color: '#EFC94C', opacity: dayPenaltyFolks.some((e) => e.completion?.confirmed) ? 1 : 0.55 }} />}
                         {hasBirthday && (
                           <svg width="9" height="9" viewBox="0 0 24 24" fill="none">
                             <circle cx="7.5" cy="5.2" r="1.3" fill="#F0A87C" />
@@ -2540,15 +2526,15 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 );
               })}
             </div>
-            <div className="flex flex-wrap gap-2 mt-3">
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: dayTypeMeta('독서일').color }} /> 독서일</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: dayTypeMeta('토론회').color }} /> 토론회</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'transparent', border: '1.5px solid rgba(229, 72, 77, 0.65)' }} /> 회식일</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: dayTypeMeta('휴무일').color }} /> 휴무일</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: WEEKEND_TEXT }} /> 금·토·일(제외)</span>
+            <div className="flex flex-nowrap items-center overflow-x-auto" style={{ gap: 'clamp(3px, 1.6vw, 8px)' }}>
+              <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: dayTypeMeta('독서일').color }} /> 독서일</span>
+              <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: dayTypeMeta('토론회').color }} /> 토론회</span>
+              <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'transparent', border: '1.5px solid rgba(229, 72, 77, 0.65)' }} /> 회식일</span>
+              <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: dayTypeMeta('휴무일').color }} /> 휴무일</span>
+              <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><span className="w-2.5 h-2.5 rounded-sm" style={{ background: WEEKEND_TEXT }} /> 금·토·일(제외)</span>
             </div>
-            <div className="flex flex-wrap gap-2 mt-1.5">
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}>
+            <div className="flex flex-nowrap items-center mt-1.5 overflow-x-auto" style={{ gap: 'clamp(3px, 1.6vw, 8px)' }}>
+              <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}>
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
                   <circle cx="7.5" cy="5.2" r="1.3" fill="#F0A87C" />
                   <circle cx="12" cy="4.3" r="1.3" fill="#F0A87C" />
@@ -2561,11 +2547,10 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 </svg>
                 생일
               </span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg> 출장</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Plane size={11} /> 휴가</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Briefcase size={11} style={{ color: '#D9A93A' }} /> 업무</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><Coffee size={11} style={{ color: '#EFC94C' }} /> 내 벌칙 수행일</span>
-              <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTE }}><User size={11} style={{ color: '#7FDCCF' }} /> 개인일정</span>
+              <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg> 출장</span>
+              <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><Plane size={11} /> 휴가</span>
+              <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><Briefcase size={11} style={{ color: '#D9A93A' }} /> 업무</span>
+              <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><User size={11} style={{ color: '#7FDCCF' }} /> 개인일정</span>
             </div>
             {(() => {
               const todayExcuses = absenceExcuses.filter((e) => e.date === todayStr());
@@ -2615,8 +2600,24 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       </div>
                     </div>
                   )}
+                  {(() => {
+                    const penaltyFolksOnDate = penaltyEntries.filter((e) => e.completion?.performed_date === selectedDate);
+                    if (penaltyFolksOnDate.length === 0) return null;
+                    return (
+                      <div className="mb-2.5 p-2.5 rounded-xl" style={{ background: NEUTRAL_BG }}>
+                        <div className="text-xs mb-1.5 flex items-center gap-1" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}><Coffee size={12} style={{ color: '#EFC94C' }} /> {fmtDate(selectedDate)} 벌칙 수행</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {penaltyFolksOnDate.map((e) => (
+                            <span key={`${e.weekKey}_${e.member.id}`} className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ background: e.completion?.confirmed ? '#12302C' : '#3A2E10', color: e.completion?.confirmed ? '#7FDCCF' : '#EFC94C' }}>
+                              <Stamp role={e.member.role} size={16} tilt={0} />{dispName(e.member.name, isLoggedIn)} · {e.completion?.confirmed ? '완료' : '예정'}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {excusedMembers.length > 0 && selectedDate !== todayStr() && (
-                    <div className="mb-3">
+                    <div className="mb-2.5 p-2.5 rounded-xl" style={{ background: NEUTRAL_BG }}>
                       <div className="text-xs mb-1.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(selectedDate)} 참석 불가</div>
                       <div className="flex flex-wrap gap-1.5">
                         {excusedMembers.map((m) => {
@@ -2627,7 +2628,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                     </div>
                   )}
                   {currentMember && (
-                    <div className="mb-3">
+                    <div className="mb-2.5 p-2.5 rounded-xl" style={{ background: NEUTRAL_BG }}>
                       <div className="text-xs mb-1.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>본인 참석 불가 등록</div>
                       {myExcuse ? (
                         <div className="flex items-center gap-2">
@@ -2645,7 +2646,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                     </div>
                   )}
                   {currentMember && penaltyEntries.some((e) => e.member.id === currentMember.id && !isWeekCompleted(e.weekKey, currentMember.id)) && (
-                    <div className="mb-3">
+                    <div className="mb-2.5 p-2.5 rounded-xl" style={{ background: NEUTRAL_BG }}>
                       <div className="text-xs mb-1.5 flex items-center gap-1" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}><Coffee size={12} style={{ color: '#EFC94C' }} /> 본인 벌칙 수행일 지정</div>
                       <div className="space-y-1.5">
                         {penaltyEntries.filter((e) => e.member.id === currentMember.id && !isWeekCompleted(e.weekKey, currentMember.id)).map((e) => {
@@ -2696,22 +2697,15 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: INK }} />휴가</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
             </div>
-            {/* 주차가 많아지는 달에도 절대 두 줄로 줄바꿈되지 않도록, 주차 영역만 각각 독립된 가로 스크롤로 처리 (이름·출석률 줄은 그대로 고정 노출) */}
+            {/* 주차 수가 많은 달에도 화면 폭에 맞춰 칸 너비가 균등하게 줄어들 뿐, 가로 스크롤이나 두 줄 줄바꿈이 생기지 않도록 그리드로 구성 */}
             {weekChunkRanges.length > 0 && (
-              <div className="overflow-x-auto mb-1.5" style={{ WebkitOverflowScrolling: 'touch' }}>
-              <div className="flex items-center" style={{ paddingLeft: 34, width: 'max-content' }}>
+              <div className="grid mb-1.5" style={{ paddingLeft: 34, gridTemplateColumns: `repeat(${weekChunkRanges.length}, minmax(0, 1fr))`, columnGap: 3 }}>
                 {weekChunkRanges.map(([start, end], wi) => (
-                  <React.Fragment key={wi}>
-                    <div className="flex flex-col items-center shrink-0" style={{ width: weekColWidths[wi] }}>
-                      <span className="text-[9px] leading-tight" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi].main}</span>
-                      <span className="text-[9px] leading-tight" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace", whiteSpace: 'nowrap' }}>{weekLabels[wi].sub}</span>
-                    </div>
-                    {wi < weekChunkRanges.length - 1 && (
-                      <span className="shrink-0" style={{ width: 1, height: 11, background: MUTE, opacity: 0.4, transform: 'rotate(22deg)', margin: '0 5px' }} />
-                    )}
-                  </React.Fragment>
+                  <div key={wi} className="min-w-0 flex flex-col items-center" style={{ borderRight: wi < weekChunkRanges.length - 1 ? `1px solid ${ROW_LINE}` : 'none' }}>
+                    <span className="truncate max-w-full" style={{ fontSize: 'clamp(8px, 2.6vw, 10px)', lineHeight: '11px', color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{weekLabels[wi].main}</span>
+                    <span className="truncate max-w-full" style={{ fontSize: 'clamp(7.5px, 2.3vw, 9px)', lineHeight: '10px', color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{weekLabels[wi].sub}</span>
+                  </div>
                 ))}
-              </div>
               </div>
             )}
             <div className="space-y-3">
@@ -2734,11 +2728,9 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{r.denom} · {r.rate}%</span>
                     </div>
                   </div>
-                  <div className="overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
-                  <div className="flex items-center" style={{ paddingLeft: 34, width: 'max-content' }}>
+                  <div className="grid" style={{ paddingLeft: 34, gridTemplateColumns: `repeat(${weekChunkRanges.length}, minmax(0, 1fr))`, columnGap: 3 }}>
                     {weekChunkRanges.map(([start, end], wi) => (
-                      <React.Fragment key={wi}>
-                        <div className="flex items-center justify-center gap-0.5 shrink-0" style={{ width: weekColWidths[wi] }}>
+                      <div key={wi} className="min-w-0 flex items-center justify-center overflow-hidden" style={{ gap: 'clamp(1px, 0.6vw, 3px)', borderRight: wi < weekChunkRanges.length - 1 ? `1px solid ${ROW_LINE}` : 'none' }}>
                           {r.flags.slice(start, end).map((status, i) => {
                             const fromPrevMonth = !monthDayList[start + i].inCurrentMonth;
                             if (status === 'trip') {
@@ -2748,8 +2740,8 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                               return <Plane key={i} size={9} style={{ color: INK, opacity: fromPrevMonth ? 0.6 : 1 }} />;
                             }
                             return (
-                              <span key={i} className="relative rounded-full" style={{
-                                width: 9, height: 9,
+                              <span key={i} className="relative rounded-full shrink-0" style={{
+                                width: 'clamp(6px, 2vw, 9px)', height: 'clamp(6px, 2vw, 9px)',
                                 background: status === 'full' ? '#7FA8D9' : status === 'half' ? 'linear-gradient(90deg, #7FA8D9 50%, transparent 50%)' : status === 'holiday' ? '#E0958C' : 'transparent',
                                 border: status === 'full' || status === 'holiday' ? 'none' : `1.5px solid ${LINE}`,
                               }} title={(status === 'holiday' ? '휴무일' : '') + (fromPrevMonth ? ' (이전 달, 참고용)' : '')}>
@@ -2757,13 +2749,8 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                               </span>
                             );
                           })}
-                        </div>
-                        {wi < weekChunkRanges.length - 1 && (
-                          <span className="shrink-0" style={{ width: 1, height: 11, background: MUTE, opacity: 0.4, transform: 'rotate(22deg)', margin: '0 5px' }} />
-                        )}
-                      </React.Fragment>
+                      </div>
                     ))}
-                  </div>
                   </div>
                 </div>
               ))}
@@ -2829,7 +2816,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       );
                     })}
                   </div>
-                  <p className="text-[10px] mt-2" style={{ color: MUTE }}>날짜만 저장해선 자동으로 완료되지 않아요 — 본인 또는 운영진이 "완료로 확정"을 눌러야 완료 처리돼요. 연필 아이콘을 눌러 수정할 수 있어요.</p>
+                  <p className="text-[10px] mt-2" style={{ color: MUTE }}>※ 수행 날짜 지정 후 "완료로 확정"까지 눌러야 완료 처리돼요.</p>
                 </div>
               )}
             </Card>
