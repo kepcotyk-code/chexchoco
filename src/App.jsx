@@ -57,7 +57,6 @@ const READ_STATUSES = [
 ];
 const readStatusMeta = (key) => READ_STATUSES.find((s) => s.key === key) || READ_STATUSES[1];
 const SHOW_PAGE_IN_GROUP = false;
-const RIBBON_W = 28; // 책탑 상태 리본 가로폭(px) - 리본 안에 상태 글자(완독 등)를 흰색으로 넣을 수 있는 폭
 const PAGE_INSET = 5; // 책장: 표지보다 페이지 단면이 좌우로 들어간 깊이(px)
 const BOOK_TITLE_FONT = "'Gowun Batang', 'Nanum Myeongjo', serif"; // 책 제목용 한글 세리프 - 붓결이 살아있는 서체
 // 책 제목용 한글 명조 폰트 1회 로드
@@ -1420,6 +1419,13 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [towerBookSearchOpen, setTowerBookSearchOpen] = useState(false);
   const [towerCoverUploading, setTowerCoverUploading] = useState(false);
   const [viewingTowerId, setViewingTowerId] = useState(null); // 책탑 항목 클릭 시 책 정보 조회용
+  // 상세보기 창이 열려 있는 동안 뒤 화면이 스크롤되지 않게 고정 (스크롤로 주소창이 움직이며 음영 위치가 틀어지는 것도 방지)
+  useEffect(() => {
+    if (!viewingShareId && !viewingTowerId) return undefined;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [viewingShareId, viewingTowerId]);
   const [towerOwnerMemberId, setTowerOwnerMemberId] = useState(''); // 간사가 모임 명단에서 등록자를 고르면 그 회원 책장에 실제로 등록됨
   const [editingTowerOwnerMemberId, setEditingTowerOwnerMemberId] = useState('');
   const addManualTowerEntry = async () => {
@@ -1665,8 +1671,10 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         const isOwner = currentMember?.id === ownerId;
         const canEditPost = currentMember?.id === viewingShare.posted_by || canManage;
         return (
-          <div className="fixed inset-0 z-50 flex items-start justify-center" style={{ background: 'rgba(0,0,0,0.7)', padding: 8 }} onClick={() => setViewingShareId(null)}>
-            <div className="w-full max-w-sm rounded-2xl border p-4" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 'calc(100dvh - 16px)', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ padding: 12 }} onClick={() => setViewingShareId(null)}>
+            {/* 음영은 화면보다 위아래로 넉넉히 크게 깔아서, 모바일 브라우저 주소창이 움직여도 상단에 음영 없는 틈이 생기지 않게 함 */}
+            <div aria-hidden="true" className="fixed pointer-events-none" style={{ top: '-30vh', bottom: '-30vh', left: 0, right: 0, background: 'rgba(0,0,0,0.7)' }} />
+            <div className="relative w-full max-w-sm rounded-2xl border p-4" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 'calc(100dvh - 24px)', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: viewingShare.kind === 'offer' ? SHARE_OFFER_BG : SHARE_REQUEST_BG, color: viewingShare.kind === 'offer' ? SHARE_OFFER_COLOR : SHARE_REQUEST_COLOR }}>{viewingShare.kind === 'offer' ? '빌려줄까요?' : '빌려주실 수 있나요?'}</span>
                 <div className="flex items-center gap-3.5">
@@ -1976,6 +1984,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 const isDone = statusKey === 'done';
                 const ribbonStatusColor = statusMeta.color;
                 const ribbonLabel = statusMeta.label;
+                // 리본 가로폭 = 한글 글자수 × 9px + 띄어쓰기 + 좌우 여백 (완독 28px, 읽는 중 40px, 잠시 멈춤·읽을 예정 49px)
+                const ribbonW = Math.round(ribbonLabel.replace(/ /g, '').length * 9 + (ribbonLabel.split(' ').length - 1) * 2.5 + 10);
                 // 읽는 중·잠시 멈춤일 때만 페이지를 작은 동그라미로 표시 (모임 책장은 SHOW_PAGE_IN_GROUP 설정 따름)
                 const showPage = (statusKey === 'reading' || statusKey === 'paused') && t.current_page && (towerView === 'mine' || SHOW_PAGE_IN_GROUP);
                 if (isEditing) {
@@ -2056,6 +2066,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 const lengthInset = 6 + (hash % 3) * 4; // 책마다 길이(폭)도 살짝 다르게 - 항상 가운데 기준으로 좁아짐 (제목이 잘리지 않도록 여백을 좁게)
                 const microY = (hash % 3) - 1; // -1~1px, 실제로 쌓았을 때 생기는 미세한 높이 오차
                 const barH = [42, 47, 53, 58][hash % 4] + (t.event_tag ? 8 : 0); // 책마다 두께를 다르게, 태그 있으면 한 줄만큼만 여유
+                const ribbonH = Math.max(Math.round(barH * 0.62), 26); // 리본 세로 길이
                 const edgeH = Math.max(3, Math.round(barH * 0.112)); // 위아래 표지 두께 (기존의 70%)
                 const tone = PAGE_TONES[hash % PAGE_TONES.length];
                 return (
@@ -2074,19 +2085,11 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                         background: 'linear-gradient(90deg, rgba(0,0,0,0.28) 0px, rgba(0,0,0,0.08) 4px, rgba(0,0,0,0) 9px, rgba(0,0,0,0) calc(100% - 9px), rgba(0,0,0,0.08) calc(100% - 4px), rgba(0,0,0,0.28) 100%)',
                         boxShadow: 'inset 1px 0 0 rgba(255,255,255,0.25), inset -1px 0 0 rgba(255,255,255,0.25)' }} />
                       {/* 오른쪽 끝 - 상태 리본 (완독=버건디 / 읽는 중=포레스트그린 / 잠시 멈춤=카멜 / 읽을 예정=차콜) */}
-                      {(() => {
-                        // 리본 안에 상태 글자를 흰색으로 표기 - 두 단어짜리(읽는 중·잠시 멈춤·읽을 예정)는 두 줄로 나눠서 리본 폭을 일정하게 유지
-                        const ribbonLines = ribbonLabel.split(' ');
-                        const ribbonH = Math.max(Math.round(barH * 0.7), ribbonLines.length > 1 ? 33 : 24);
-                        return (
-                          <div className="absolute pointer-events-none flex flex-col items-center" style={{ top: -1, right: 12, width: RIBBON_W, height: ribbonH, paddingTop: 4, background: `linear-gradient(90deg, ${ribbonStatusColor} 0%, ${ribbonStatusColor}dd 100%)`, clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 5px), 0 100%)', boxShadow: '1px 1px 2px rgba(0,0,0,0.3)' }}>
-                            {ribbonLines.map((w, i) => (
-                              <span key={i} style={{ fontSize: 9, lineHeight: '10.5px', fontWeight: 700, color: '#FFFFFF', letterSpacing: '-0.2px', whiteSpace: 'nowrap', textShadow: '0 1px 1px rgba(0,0,0,0.35)' }}>{w}</span>
-                            ))}
-                          </div>
-                        );
-                      })()}
-                      <div className="relative h-full flex items-center justify-between gap-1.5" style={{ paddingLeft: 18, paddingRight: 12 + RIBBON_W + 6 }}>
+                      {/* 오른쪽 끝 - 상태 리본: 글자(완독·읽는 중 등)를 흰색 한 줄로 리본 안에 넣고, 리본 가로폭은 글자 길이에 맞춤 */}
+                      <div className="absolute pointer-events-none flex items-center justify-center" style={{ top: -1, right: 12, width: ribbonW, height: ribbonH, paddingBottom: 5, background: `linear-gradient(90deg, ${ribbonStatusColor} 0%, ${ribbonStatusColor}dd 100%)`, clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 5px), 0 100%)', boxShadow: '1px 1px 2px rgba(0,0,0,0.3)' }}>
+                        <span style={{ fontSize: 9, lineHeight: '10px', fontWeight: 700, color: '#FFFFFF', letterSpacing: '-0.2px', whiteSpace: 'nowrap', textShadow: '0 1px 1px rgba(0,0,0,0.35)', marginTop: 2 }}>{ribbonLabel}</span>
+                      </div>
+                      <div className="relative h-full flex items-center justify-between gap-1.5" style={{ paddingLeft: 18, paddingRight: 12 + ribbonW + 6 }}>
                         {/* 왼쪽 - 캡션(행사 태그·비고) 위, 제목·등록자 아래로 한 덩어리 */}
                         <div className="min-w-0 flex flex-col justify-center" style={{ gap: 2 }}>
                           {(() => {
@@ -2146,8 +2149,9 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         const statusMeta = readStatusMeta(statusKey);
         const ownerText = t.owner_name_override != null ? t.owner_name_override : (owner ? dispName(owner.name, isLoggedIn) : '');
         return (
-          <div className="fixed inset-0 z-50 flex items-start justify-center" style={{ background: 'rgba(0,0,0,0.7)', padding: 8 }} onClick={() => setViewingTowerId(null)}>
-            <div className="w-full max-w-sm rounded-2xl border p-4" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 'calc(100dvh - 16px)', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ padding: 12 }} onClick={() => setViewingTowerId(null)}>
+            <div aria-hidden="true" className="fixed pointer-events-none" style={{ top: '-30vh', bottom: '-30vh', left: 0, right: 0, background: 'rgba(0,0,0,0.7)' }} />
+            <div className="relative w-full max-w-sm rounded-2xl border p-4" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 'calc(100dvh - 24px)', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: statusMeta.color, color: '#F2EEE3' }}>{statusMeta.label}</span>
                 <button onClick={() => setViewingTowerId(null)} className="p-1" aria-label="닫기"><X size={16} style={{ color: MUTE }} /></button>
@@ -3434,31 +3438,34 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
                 <div className="flex gap-2 pt-1"><PrimaryBtn onClick={saveEdit} icon={Check}>저장</PrimaryBtn><GhostBtn onClick={() => setEditingId(null)} icon={X}>취소</GhostBtn></div>
               </div>
             ) : (
-              <div className="flex flex-nowrap items-center justify-between px-4 py-3">
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <Stamp role={m.role} size={36} tilt={idx % 2 === 0 ? -5 : 4} />
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold truncate" style={{ color: INK }}>{dispName(m.name, isLoggedIn)}{m.id === currentUserId && <span className="ml-1.5 text-[11px] font-normal" style={{ color: MUTE }}>(나)</span>}</div>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <RoleChip role={m.role} />
-                      {m.birthday && isLoggedIn && <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtMD(mdOf(m.birthday))}</span>}
-                      {m.has_pin && <Lock size={11} style={{ color: MUTE }} />}
-                    </div>
-                    {isLoggedIn && (m.department || m.job_type || m.joined_at || m.book_genre || m.note) && (
-                      <div className="flex items-center flex-wrap mt-1 text-[11px]" style={{ color: MUTE, columnGap: 8, rowGap: 2 }}>
-                        {(m.department || m.job_type) && <span>{m.department}{m.department && m.job_type ? `(${m.job_type})` : m.job_type}</span>}
-                        {m.joined_at && <span>가입 {fmtDate(m.joined_at)}</span>}
-                        {m.book_genre && <span>{m.book_genre}</span>}
-                        {m.note && <span className="italic">{m.note}</span>}
+              <div className="px-4 py-3">
+                <div className="flex flex-nowrap items-center justify-between">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <Stamp role={m.role} size={36} tilt={idx % 2 === 0 ? -5 : 4} />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold truncate" style={{ color: INK }}>{dispName(m.name, isLoggedIn)}{m.id === currentUserId && <span className="ml-1.5 text-[11px] font-normal" style={{ color: MUTE }}>(나)</span>}</div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <RoleChip role={m.role} />
+                        {m.birthday && isLoggedIn && <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtMD(mdOf(m.birthday))}</span>}
+                        {m.has_pin && <Lock size={11} style={{ color: MUTE }} />}
                       </div>
-                    )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0 pl-2 ml-1" style={{ borderLeft: `1px solid ${ROW_LINE}` }}>
+                    {canManage && <button onClick={() => startEdit(m)} className="p-2 rounded-lg" style={{ color: MUTE }} aria-label="회원 정보 수정"><Pencil size={16} /></button>}
+                    {!canManage && m.id === currentUserId && <button onClick={() => startSelfEdit(m)} className="p-2 rounded-lg" style={{ color: MUTE }} aria-label="내 정보 수정"><Pencil size={16} /></button>}
+                    {canManage && <button onClick={() => requestDelete(() => removeMember(m.id), `${m.name}님을 삭제할까요? 관련 기록도 함께 사라져요.`)} className="p-2 rounded-lg" style={{ color: '#F0A87C' }} aria-label="회원 삭제"><Trash2 size={16} /></button>}
                   </div>
                 </div>
-                <div className="flex items-center gap-1 shrink-0 pl-2 ml-1" style={{ borderLeft: `1px solid ${ROW_LINE}` }}>
-                  {canManage && <button onClick={() => startEdit(m)} className="p-2 rounded-lg" style={{ color: MUTE }} aria-label="회원 정보 수정"><Pencil size={16} /></button>}
-                  {!canManage && m.id === currentUserId && <button onClick={() => startSelfEdit(m)} className="p-2 rounded-lg" style={{ color: MUTE }} aria-label="내 정보 수정"><Pencil size={16} /></button>}
-                  {canManage && <button onClick={() => requestDelete(() => removeMember(m.id), `${m.name}님을 삭제할까요? 관련 기록도 함께 사라져요.`)} className="p-2 rounded-lg" style={{ color: '#F0A87C' }} aria-label="회원 삭제"><Trash2 size={16} /></button>}
-                </div>
+                {/* 부서·가입일·장르는 오른쪽 수정/삭제 버튼 영역과 상관없이 카드 전체 폭을 써서 한 줄로 표시 (좁은 화면에선 글자가 조금 작아짐) */}
+                {isLoggedIn && (m.department || m.job_type || m.joined_at || m.book_genre || m.note) && (
+                  <div className="flex items-center whitespace-nowrap overflow-hidden mt-1" style={{ color: MUTE, paddingLeft: 48, columnGap: 8, fontSize: 'clamp(9.5px, 2.9vw, 11px)' }}>
+                    {(m.department || m.job_type) && <span className="shrink-0">{m.department}{m.department && m.job_type ? `(${m.job_type})` : m.job_type}</span>}
+                    {m.joined_at && <span className="shrink-0">가입 {fmtDate(m.joined_at)}</span>}
+                    {m.book_genre && <span className="truncate min-w-0">{m.book_genre}</span>}
+                    {m.note && <span className="italic truncate min-w-0">{m.note}</span>}
+                  </div>
+                )}
               </div>
             )}
           </div>
