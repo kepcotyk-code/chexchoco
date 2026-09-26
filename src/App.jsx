@@ -613,6 +613,23 @@ export default function App() {
     }));
   }, [effectMode]);
 
+  // 상단 고정 헤더(KEPCO READING CLUB + 책스초코) 높이를 재서, 카테고리 탭이 그 바로 아래에 붙어 고정되도록 함
+  const headerRef = React.useRef(null);
+  const [headerH, setHeaderH] = useState(0);
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return undefined;
+    const update = () => setHeaderH(el.offsetHeight);
+    update();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', update);
+      return () => window.removeEventListener('resize', update);
+    }
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [loaded]);
+
   if (!loaded) {
     return <div className="min-h-screen flex items-center justify-center" style={{ background: PAPER_BG }}>
       <div className="text-sm" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>불러오는 중…</div>
@@ -663,7 +680,8 @@ export default function App() {
         </div>
       )}
       <div className="max-w-3xl mx-auto px-4 pt-6 pb-24">
-        <div className="mb-6">
+        {/* 최상단(KEPCO READING CLUB 줄 + 책스초코 제목)은 스크롤해도 항상 화면 위에 고정 */}
+        <div ref={headerRef} className="sticky -mx-4 px-4" style={{ top: 0, zIndex: 40, background: PAPER_BG, paddingTop: 8, paddingBottom: 12, marginTop: -8, marginBottom: 12 }}>
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[11px] tracking-[0.2em] uppercase" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>KEPCO Reading Club</span>
             <div className="flex items-center gap-1.5">
@@ -843,7 +861,9 @@ export default function App() {
         )}
 
         {/* 카테고리 탭 5개를 항상 한 줄에 고정 — 좁은 화면 기준으로 여유 있게 맞추고, 화면이 넓어질수록 지금 크기(패딩14px·폰트14px·아이콘15px)까지 자연스럽게 커짐 */}
-        <div className="flex mb-4" style={{ gap: 4 }}>
+        {/* 카테고리 탭 - 아래로 스크롤하면 썸네일 사진은 헤더 뒤로 사라지고, 탭은 헤더 바로 아래에 붙어서 고정됨. 맨 위로 올리면 사진이 다시 보임 */}
+        <div className="sticky -mx-4 px-4 mb-4" style={{ top: headerH, zIndex: 39, background: PAPER_BG, paddingTop: 2, paddingBottom: 8 }}>
+        <div className="flex" style={{ gap: 4 }}>
           {TABS.map((t) => {
             const Icon = t.icon; const active = tab === t.key;
             return (
@@ -858,6 +878,7 @@ export default function App() {
               </button>
             );
           })}
+        </div>
         </div>
 
         {tab === 'notice' && <NoticeScreen notices={notices} noticeViews={noticeViews} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} requestDelete={requestDelete} birthdayBalloons={birthdayBalloons} />}
@@ -1671,10 +1692,10 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         const isOwner = currentMember?.id === ownerId;
         const canEditPost = currentMember?.id === viewingShare.posted_by || canManage;
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ padding: 12 }} onClick={() => setViewingShareId(null)}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ padding: '8px 12px calc(8px + 6vh)' }} onClick={() => setViewingShareId(null)}>
             {/* 음영은 화면보다 위아래로 넉넉히 크게 깔아서, 모바일 브라우저 주소창이 움직여도 상단에 음영 없는 틈이 생기지 않게 함 */}
             <div aria-hidden="true" className="fixed pointer-events-none" style={{ top: '-30vh', bottom: '-30vh', left: 0, right: 0, background: 'rgba(0,0,0,0.7)' }} />
-            <div className="relative w-full max-w-sm rounded-2xl border p-4" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 'calc(100dvh - 24px)', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+            <div className="relative w-full max-w-sm rounded-2xl border p-4" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 'calc(100dvh - 16px - 6vh)', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: viewingShare.kind === 'offer' ? SHARE_OFFER_BG : SHARE_REQUEST_BG, color: viewingShare.kind === 'offer' ? SHARE_OFFER_COLOR : SHARE_REQUEST_COLOR }}>{viewingShare.kind === 'offer' ? '빌려줄까요?' : '빌려주실 수 있나요?'}</span>
                 <div className="flex items-center gap-3.5">
@@ -2149,9 +2170,9 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         const statusMeta = readStatusMeta(statusKey);
         const ownerText = t.owner_name_override != null ? t.owner_name_override : (owner ? dispName(owner.name, isLoggedIn) : '');
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ padding: 12 }} onClick={() => setViewingTowerId(null)}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ padding: '8px 12px calc(8px + 6vh)' }} onClick={() => setViewingTowerId(null)}>
             <div aria-hidden="true" className="fixed pointer-events-none" style={{ top: '-30vh', bottom: '-30vh', left: 0, right: 0, background: 'rgba(0,0,0,0.7)' }} />
-            <div className="relative w-full max-w-sm rounded-2xl border p-4" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 'calc(100dvh - 24px)', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+            <div className="relative w-full max-w-sm rounded-2xl border p-4" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 'calc(100dvh - 16px - 6vh)', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: statusMeta.color, color: '#F2EEE3' }}>{statusMeta.label}</span>
                 <button onClick={() => setViewingTowerId(null)} className="p-1" aria-label="닫기"><X size={16} style={{ color: MUTE }} /></button>
