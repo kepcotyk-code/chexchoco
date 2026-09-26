@@ -57,6 +57,7 @@ const READ_STATUSES = [
 ];
 const readStatusMeta = (key) => READ_STATUSES.find((s) => s.key === key) || READ_STATUSES[1];
 const SHOW_PAGE_IN_GROUP = false;
+const TOWER_PREVIEW_COUNT = 10; // 북적북적 목록에서 처음에 보여줄 책 수 (나머지는 '더보기')
 const PAGE_INSET = 5; // 책장: 표지보다 페이지 단면이 좌우로 들어간 깊이(px)
 const BOOK_TITLE_FONT = "'Gowun Batang', 'Nanum Myeongjo', serif"; // 책 제목용 한글 세리프 - 붓결이 살아있는 서체
 // 책 제목용 한글 명조 폰트 1회 로드
@@ -67,11 +68,20 @@ if (typeof document !== 'undefined' && !document.getElementById('font-gowun-bata
   l.href = 'https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@700&display=swap';
   document.head.appendChild(l);
 }
-// 입력칸 등을 탭했을 때 모바일 브라우저가 자동으로 화면을 확대하지 않도록, 기기 폭에 맞춰 화면이 꽉 차게 뷰포트를 고정
+// 기기 폭에 맞춰 화면이 꽉 차게 뷰포트 설정 - 손가락 두 개로 벌려서 확대하는 건 허용
+// (탭했을 때 저절로 확대되는 현상은 아래 전역 스타일의 touch-action / iOS 입력칸 16px 처리로 막음)
 if (typeof document !== 'undefined') {
   let vp = document.querySelector('meta[name="viewport"]');
   if (!vp) { vp = document.createElement('meta'); vp.name = 'viewport'; document.head.appendChild(vp); }
-  vp.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
+  vp.content = 'width=device-width, initial-scale=1, viewport-fit=cover';
+  if (!document.getElementById('chexchoco-zoom-style')) {
+    const st = document.createElement('style');
+    st.id = 'chexchoco-zoom-style';
+    // touch-action: manipulation → 두 번 탭 확대는 막고, 두 손가락 확대(핀치)는 그대로 허용
+    // iOS 사파리는 글자 16px 미만 입력칸을 누르면 자동 확대하므로, iOS에서만 입력칸 글자를 16px로 맞춤
+    st.textContent = 'html{touch-action:manipulation;}@supports (-webkit-touch-callout: none){input,select,textarea{font-size:16px !important;}}';
+    document.head.appendChild(st);
+  }
 } // 모임 책장에서 남의 진행 페이지 노출 여부 (true면 공개)
 const TOWER_BADGE_PALETTE = ['#7C5CC4', '#D97A3D', '#C4544A', '#3E93A0', '#C48A3E'];
 // 정확한 우측 90도 측면(옆에서 본 책 두께 단면)용 - 표지 단면에 쓰이는 단색
@@ -346,17 +356,28 @@ const computeWeeklyPenalties = (sessions, checkins, calendarDays, members, absen
 /* ---------- Supabase data layer ---------- */
 const TABLES = ['members', 'notices', 'notice_views', 'sessions', 'checkins', 'penalty_completions', 'calendar_days', 'settings', 'photos', 'absence_excuses', 'meeting_locations', 'dues_payments', 'expenses', 'dinner_collections', 'book_shares', 'notifications', 'book_tower_entries', 'birthday_balloons', 'membership_applications', 'membership_votes'];
 
-async function fetchAll(tables = TABLES) {
+async function fetchAll(tables = TABLES, myMemberId = null) {
   // members는 pin 컬럼이 빠진 members_public 뷰에서 조회 (일반 조회 시 PIN이 클라이언트로 전송되지 않도록)
-  const results = await Promise.all(tables.map((t) => supabase.from(t === 'members' ? 'members_public' : t).select('*')));
+  // notifications는 로그인한 본인 것만 받아옴 (다른 회원 알림은 내려받지 않음, 비로그인이면 아예 조회 안 함)
+  const results = await Promise.all(tables.map((t) => {
+    if (t === 'notifications') {
+      if (!myMemberId) return Promise.resolve({ data: [] });
+      return supabase.from('notifications').select('*').eq('member_id', myMemberId);
+    }
+    return supabase.from(t === 'members' ? 'members_public' : t).select('*');
+  }));
   const out = {};
   tables.forEach((t, i) => { out[t] = results[i].data || []; });
   return out;
 }
-// PIN 검증 전용 — 필요한 순간에만, 그 멤버 한 명의 pin만 좁게 조회해서 비교 (평소 목록 조회엔 PIN이 포함되지 않음)
+// PIN 검증 — Supabase 함수(verify_member_pin)가 서버 안에서 비교하고 맞는지 여부(true/false)만 돌려줌.
+// PIN 값 자체는 브라우저로 절대 넘어오지 않음. (함수를 아직 만들기 전이면 예전 방식으로 잠시 대체)
 async function verifyPin(memberId, input) {
-  const { data } = await supabase.from('members').select('pin').eq('id', memberId).maybeSingle();
-  const actual = data?.pin || null;
+  const { data, error } = await supabase.rpc('verify_member_pin', { p_member_id: String(memberId), p_pin: input || '' });
+  if (!error && typeof data === 'boolean') return data;
+  const { data: row, error: readErr } = await supabase.from('members').select('pin').eq('id', memberId).maybeSingle();
+  if (readErr) return false; // 확인할 방법이 없으면 통과시키지 않음 (안전한 쪽으로)
+  const actual = row?.pin || null;
   if (!actual) return true; // PIN 미설정 멤버는 항상 통과
   return input === actual;
 }
@@ -411,7 +432,32 @@ export default function App() {
   // 기기 등록: null=조회중, false=미등록, 문자열=등록된 멤버 id (한번 정해지면 앱에서는 절대 못 바꿈 — DB에 update/delete 정책 자체가 없음)
   const [deviceRegMemberId, setDeviceRegMemberId] = useState(null);
   const [registerOfferMember, setRegisterOfferMember] = useState(null); // 방금 로그인한 멤버 — "이 기기 등록할까요?" 제안용
-  const [tab, setTab] = useState('notice');
+  // 현재 탭을 주소(#gallery 등)에 기억 - 새로고침해도 보던 탭 유지, 폰 뒤로가기 누르면 이전 탭으로 돌아감
+  const TAB_KEYS = ['notice', 'qr', 'dashboard', 'gallery', 'users', 'treasury', 'admin'];
+  const tabFromHash = () => { const h = window.location.hash.replace('#', ''); return TAB_KEYS.includes(h) ? h : null; };
+  const [tab, setTab] = useState(() => tabFromHash() || 'notice');
+  useEffect(() => {
+    const current = window.location.hash.replace('#', '');
+    if (current === tab) return;
+    if (!current) window.history.replaceState(null, '', '#' + tab); // 첫 진입은 기록을 쌓지 않음
+    else window.history.pushState(null, '', '#' + tab);
+  }, [tab]);
+  useEffect(() => {
+    const onPop = () => setTab(tabFromHash() || 'notice');
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+  // 아래로 스크롤하면 상단 '책스초코' 제목을 작게 줄여서 콘텐츠 보는 공간을 넓힘 (맨 위 근처로 오면 다시 크게)
+  const [compactHeader, setCompactHeader] = useState(false);
+  useEffect(() => {
+    const onScroll = () => {
+      const y = window.scrollY;
+      setCompactHeader((prev) => (prev ? y > 20 : y > 90)); // 경계에서 깜빡이지 않도록 줄일 때/키울 때 기준을 다르게 둠
+    };
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [modalSelectedId, setModalSelectedId] = useState('');
   const [modalPinInput, setModalPinInput] = useState('');
@@ -436,9 +482,13 @@ export default function App() {
     return () => window.removeEventListener('unhandledrejection', handler);
   }, []);
 
+  const currentUserIdRef = React.useRef(currentUserId);
+  currentUserIdRef.current = currentUserId;
+  const lastLoadedAtRef = React.useRef(0);
   const reload = async (tables) => {
     try {
-      const data = await fetchAll(tables);
+      const data = await fetchAll(tables, currentUserIdRef.current);
+      if (!tables) lastLoadedAtRef.current = Date.now();
       if (data.members) setMembers(data.members);
       if (data.notices) setNotices(data.notices);
       if (data.notice_views) setNoticeViews(data.notice_views);
@@ -464,6 +514,21 @@ export default function App() {
     setLoaded(true);
   };
   useEffect(() => { reload(); }, []);
+  // 로그인/로그아웃(또는 기기 등록으로 자동 인식)되면 그 사람 알림만 다시 받아옴
+  const firstUserEffectRef = React.useRef(true);
+  useEffect(() => {
+    if (firstUserEffectRef.current) { firstUserEffectRef.current = false; return; }
+    if (currentUserId) reload(['notifications']); else setNotifications([]);
+  }, [currentUserId]);
+  // 다른 앱에 갔다가 돌아오거나 화면을 다시 켜면, 마지막으로 불러온 지 30초가 지났을 때 최신 데이터로 자동 갱신
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && Date.now() - lastLoadedAtRef.current > 30 * 1000) reload();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => { document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('focus', onVisible); };
+  }, []);
   // 기기 등록 여부 확인 — 등록돼 있으면 로그인 절차 없이 자동으로 그 멤버로 인식
   useEffect(() => {
     const deviceId = getDeviceId();
@@ -484,10 +549,10 @@ export default function App() {
   }, []);
 
   const penaltyRule = settings.find((s) => s.key === 'penaltyRule')?.value || '';
-  const setPenaltyRule = async (v) => { await upsertRow('settings', { key: 'penaltyRule', value: v }, 'key'); reload(); };
+  const setPenaltyRule = async (v) => { await upsertRow('settings', { key: 'penaltyRule', value: v }, 'key'); reload(['settings']); };
   // 화면 효과(꽃가루/비/눈) 수동 설정 — 'auto'면 날씨·생일에 따라 자동 결정, 그 외엔 간사가 고른 값을 그대로 씀
   const weatherOverride = settings.find((s) => s.key === 'weatherOverride')?.value || 'auto';
-  const setWeatherOverride = async (v) => { await upsertRow('settings', { key: 'weatherOverride', value: v }, 'key'); reload(); };
+  const setWeatherOverride = async (v) => { await upsertRow('settings', { key: 'weatherOverride', value: v }, 'key'); reload(['settings']); };
 
   const setIdentity = (id) => {
     if (id) localStorage.setItem('chexchoco-current-user', id); else localStorage.removeItem('chexchoco-current-user');
@@ -519,12 +584,12 @@ export default function App() {
     if (!n.read_at) await updateRow('notifications', 'id', n.id, { read_at: new Date().toISOString() });
     setShowNotifications(false);
     setTab('gallery');
-    await reload();
+    await reload(['notifications']);
   };
   const markAllNotificationsRead = async () => {
     const unread = myNotifications.filter((n) => !n.read_at);
     for (const n of unread) await updateRow('notifications', 'id', n.id, { read_at: new Date().toISOString() });
-    if (unread.length) await reload();
+    if (unread.length) await reload(['notifications']);
   };
 
   // 삭제 시 실수 방지용 재확인(로그인 PIN) — PIN이 설정된 계정이면 PIN 입력, 아니면 한 번 더 확인만
@@ -724,7 +789,7 @@ export default function App() {
               )}
             </div>
           </div>
-          <h1 className="text-center text-4xl font-semibold mt-3" style={{ fontFamily: "'Fraunces', serif", color: INK }}>책스초코</h1>
+          <h1 className="text-center font-semibold" style={{ fontFamily: "'Fraunces', serif", color: INK, fontSize: compactHeader ? 22 : 36, lineHeight: compactHeader ? '28px' : '40px', marginTop: compactHeader ? 2 : 12, transition: 'font-size 0.2s ease, line-height 0.2s ease, margin-top 0.2s ease' }}>책스초코</h1>
         </div>
 
         {recentPhotos.length > 0 && (
@@ -732,13 +797,18 @@ export default function App() {
             <div className="grid grid-cols-6 gap-1.5">
               {recentPhotos.map((p) => (
                 <button key={p.id} onClick={() => setTab('gallery')} className="aspect-square rounded-lg overflow-hidden" style={{ background: NEUTRAL_BG }}>
-                  <img src={publicUrl('photos', p.file_path)} className="w-full h-full object-cover" alt="" loading="lazy" />
+                  <PhotoThumb filePath={p.file_path} />
                 </button>
               ))}
             </div>
           </div>
         )}
 
+        {currentMember && MANAGE_ROLES.includes(currentMember.role) && !currentMember.has_pin && (
+          <button onClick={() => setTab('users')} className="w-full mb-4 flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-sm text-left" style={{ background: '#3A2213', color: '#F0A87C' }}>
+            <Lock size={16} className="shrink-0" />운영진 계정은 PIN 설정이 필요해요. 인원 탭에서 내 정보를 수정해 PIN 4자리를 등록해주세요.
+          </button>
+        )}
         {error && (
           <div className="mb-4 flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-sm" style={{ background: '#3A2213', color: '#F0A87C' }}>
             <AlertCircle size={16} className="shrink-0" />{error}
@@ -826,7 +896,7 @@ export default function App() {
           </div>
         )}
         {pendingDelete && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={cancelDelete}>
+          <div className="fixed inset-0 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)', zIndex: 70 }} onClick={cancelDelete}>
             <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl border p-5" style={{ background: CARD_BG, borderColor: LINE }}>
               <div className="flex items-center justify-between mb-4">
                 <div className="text-sm font-semibold flex items-center gap-1.5" style={{ color: INK }}><Trash2 size={16} style={{ color: '#F0A87C' }} /> 삭제 확인</div>
@@ -963,18 +1033,18 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
       } else {
         await insertRow('notices', { id, title: title.trim(), content: content.trim(), author_name: currentMember?.name || '익명', created_at: new Date().toISOString(), pinned, sort_order: Date.now(), ...fileMeta });
       }
-      await reload();
+      await reload(['notices']);
       setTitle(''); setContent(''); setShowForm(false); setEditingId(null); setAttachedFile(null); setPinned(false);
     } catch (e) { setFileError('저장에 실패했어요.'); }
     finally { setSubmitting(false); }
   };
   const startEdit = (n) => { setEditingId(n.id); setTitle(n.title); setContent(n.content); setPinned(!!n.pinned); setAttachedFile(null); setFileError(''); setShowForm(true); };
-  const remove = async (id) => { await deleteRow('notices', 'id', id); await deleteRow('notice_views', 'notice_id', id); await reload(); };
+  const remove = async (id) => { await deleteRow('notices', 'id', id); await deleteRow('notice_views', 'notice_id', id); await reload(['notices', 'notice_views']); };
 
   const openAttachment = async (n) => {
     if (currentMember && !noticeViews.some((v) => v.notice_id === n.id && v.member_id === currentMember.id)) {
       await insertRow('notice_views', { id: uid('v'), notice_id: n.id, member_id: currentMember.id, member_name: currentMember.name, viewed_at: new Date().toISOString() });
-      reload();
+      reload(['notice_views']);
     }
     window.open(publicUrl('notice-files', `${n.id}.${extFromType(n.file_type)}`), '_blank');
   };
@@ -989,7 +1059,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
     const bOrder = b.sort_order ?? new Date(b.created_at).getTime();
     await updateRow('notices', 'id', a.id, { sort_order: bOrder });
     await updateRow('notices', 'id', b.id, { sort_order: aOrder });
-    await reload();
+    await reload(['notices']);
   };
 
   return (
@@ -1128,7 +1198,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
 
 /* ---------------- 포토로그 ---------------- */
 const MAX_PHOTO_BYTES = 6 * 1024 * 1024;
-function compressImage(file) {
+function compressImage(file, maxDimArg = 1600, quality = 0.78) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('read failed'));
@@ -1136,7 +1206,7 @@ function compressImage(file) {
       const img = new window.Image();
       img.onerror = () => reject(new Error('decode failed'));
       img.onload = () => {
-        const maxDim = 1600;
+        const maxDim = maxDimArg;
         let { width, height } = img;
         if (width > maxDim || height > maxDim) {
           if (width > height) { height = Math.round((height * maxDim) / width); width = maxDim; }
@@ -1145,12 +1215,32 @@ function compressImage(file) {
         const canvas = document.createElement('canvas');
         canvas.width = width; canvas.height = height;
         canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-        canvas.toBlob((blob) => { if (!blob) { reject(new Error('blob failed')); return; } resolve(blob); }, 'image/jpeg', 0.78);
+        canvas.toBlob((blob) => { if (!blob) { reject(new Error('blob failed')); return; } resolve(blob); }, 'image/jpeg', quality);
       };
       img.src = e.target.result;
     };
     reader.readAsDataURL(file);
   });
+}
+// 사진 목록용 작은 썸네일(가로세로 최대 400px) - 원본(최대 1600px) 대신 목록에서 써서 로딩을 가볍게 함
+const THUMB_DIR = 'thumbs/';
+const thumbHealTried = new Set(); // 썸네일이 없는 예전 사진은 한 번만 자동으로 썸네일을 만들어 올림
+async function healMissingThumb(filePath) {
+  if (thumbHealTried.has(filePath)) return;
+  thumbHealTried.add(filePath);
+  try {
+    const res = await fetch(publicUrl('photos', filePath));
+    if (!res.ok) return;
+    const small = await compressImage(await res.blob(), 400, 0.72);
+    await supabase.storage.from('photos').upload(THUMB_DIR + filePath, small, { contentType: 'image/jpeg' });
+  } catch (e) { /* 썸네일 생성 실패해도 원본으로 계속 보여주므로 무시 */ }
+}
+function PhotoThumb({ filePath, className = 'w-full h-full object-cover' }) {
+  const [useFull, setUseFull] = useState(false);
+  return (
+    <img src={publicUrl('photos', useFull ? filePath : THUMB_DIR + filePath)} className={className} alt="" loading="lazy" decoding="async"
+      onError={() => { if (!useFull) { setUseFull(true); healMissingThumb(filePath); } }} />
+  );
 }
 function GalleryScreen({ photos, currentMember, canManage, reload, members, sessions, checkins, requestDelete, showToast, bookShares, bookTowerEntries }) {
   const [error, setError] = useState('');
@@ -1177,15 +1267,20 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
       const path = `${id}.jpg`;
       const { error: upErr } = await supabase.storage.from('photos').upload(path, blob, { contentType: 'image/jpeg' });
       if (upErr) throw upErr;
+      // 목록용 썸네일도 함께 저장 (실패해도 원본으로 보여주므로 업로드 자체는 계속 진행)
+      try {
+        const thumb = await compressImage(file, 400, 0.72);
+        await supabase.storage.from('photos').upload(THUMB_DIR + path, thumb, { contentType: 'image/jpeg' });
+      } catch (thumbErr) { /* 무시 */ }
       await insertRow('photos', { id, uploader_id: currentMember.id, uploader_name: currentMember.name, file_path: path, mime_type: 'image/jpeg', created_at: new Date().toISOString() });
-      await reload();
+      await reload(['photos']);
     } catch (e) { setError('업로드에 실패했어요.'); }
     finally { setUploading(false); }
   };
   const removePhoto = async (p) => {
-    try { await supabase.storage.from('photos').remove([p.file_path]); } catch (e) {}
+    try { await supabase.storage.from('photos').remove([p.file_path, THUMB_DIR + p.file_path]); } catch (e) {}
     await deleteRow('photos', 'id', p.id);
-    await reload();
+    await reload(['photos']);
     setViewingId(null);
   };
 
@@ -1219,13 +1314,13 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     if (!viewing || !dateInput) return;
     const time = viewing.created_at.slice(11); // 기존 시각(HH:mm:ss.sssZ)은 그대로 유지
     await updateRow('photos', 'id', viewing.id, { created_at: `${dateInput}T${time}` });
-    await reload();
+    await reload(['photos']);
     setEditingDate(false);
   };
   const saveCaption = async () => {
     if (!viewing) return;
     await updateRow('photos', 'id', viewing.id, { caption: captionInput.trim() });
-    await reload();
+    await reload(['photos']);
     setEditingCaption(false);
   };
 
@@ -1315,26 +1410,26 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
       status: 'open', created_at: new Date().toISOString(),
     });
     setShareTitle(''); setShareAuthor(''); setSharePublisher(''); setShareCoverUrl(''); setBookSearchResults([]); setBookSearchOpen(false); setShowShareForm(false);
-    await reload();
+    await reload(['book_shares']);
   };
   const saveShareEdit = async (share) => {
     if (!editShareTitle.trim()) return;
     await updateRow('book_shares', 'id', share.id, { book_title: editShareTitle.trim(), book_author: editShareAuthor.trim() || null, book_publisher: editSharePublisher.trim() || null, cover_url: editShareCoverUrl || null });
     setCoverCache((prev) => { const next = { ...prev }; delete next[share.id]; return next; });
     setEditingShare(false);
-    await reload();
+    await reload(['book_shares']);
   };
   // 1단계: 요청하기 — 아직 확정 아님, 글쓴이가 확인 후 확정해야 함
   const requestShare = async (share) => {
     if (!currentMember) return;
     await updateRow('book_shares', 'id', share.id, { status: 'requested', matched_by: currentMember.id });
     await notify(share.posted_by, `${currentMember.name}님이 [${share.book_title}] ${share.kind === 'offer' ? '제공' : '요청'}에 응답했어요. 확인 후 확정해주세요.`, share.id);
-    await reload();
+    await reload(['book_shares', 'notifications']);
   };
   // 요청 취소 — 글쓴이가 다시 대기 상태로 되돌림 (다른 사람이 다시 요청할 수 있도록)
   const cancelRequest = async (share) => {
     await updateRow('book_shares', 'id', share.id, { status: 'open', matched_by: null });
-    await reload();
+    await reload(['book_shares']);
   };
   // 2단계: 확정 — 이때 대여일/반납기한이 정해짐
   const confirmMatch = async (share) => {
@@ -1343,18 +1438,18 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     const dueStr = `${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())}`;
     await updateRow('book_shares', 'id', share.id, { status: 'matched', borrowed_at: today, due_date: dueStr });
     await notify(share.matched_by, `[${share.book_title}] 대여가 확정됐어요. 반납기한: ${dueStr}`, share.id);
-    await reload();
+    await reload(['book_shares', 'notifications']);
   };
   const updateDueDate = async (share, newDate) => {
     await updateRow('book_shares', 'id', share.id, { due_date: newDate });
-    await reload();
+    await reload(['book_shares']);
   };
   const updateBorrowedDate = async (share, newDate) => {
     const due = new Date(`${newDate}T00:00:00`); due.setDate(due.getDate() + 14);
     const dueStr = `${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())}`;
     await updateRow('book_shares', 'id', share.id, { borrowed_at: newDate, due_date: dueStr });
     setDueDateInput('');
-    await reload();
+    await reload(['book_shares']);
   };
   const randomPastel = () => {
     // 레퍼런스처럼 채도 낮은 차분한 톤(크림, 모브, 브라운, 더스티핑크 등)
@@ -1372,12 +1467,12 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     await updateRow('book_shares', 'id', share.id, { status: 'returned', returned_at: today });
     await insertRow('book_tower_entries', { id: uid('bt'), member_id: borrowerId, book_title: share.book_title, start_date: share.borrowed_at, finished_date: today, current_page: null, color: randomPastel(), source_share_id: share.id, created_at: new Date().toISOString() });
     await notify(borrowerId, `[${share.book_title}] 반납 완료 처리됐어요. 내 책탑에 추가됐어요.`, share.id);
-    await reload();
+    await reload(['book_shares', 'book_tower_entries', 'notifications']);
   };
   const deleteBookShare = async (share) => {
     await deleteRow('book_shares', 'id', share.id);
     setViewingShareId(null);
-    await reload();
+    await reload(['book_shares']);
   };
   const shareStatusInfo = (s) => {
     if (s.status === 'open') return { label: s.kind === 'offer' ? '대여가능' : '대기중', style: { background: '#12302C', color: '#7FDCCF' } };
@@ -1440,6 +1535,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [towerBookSearchOpen, setTowerBookSearchOpen] = useState(false);
   const [towerCoverUploading, setTowerCoverUploading] = useState(false);
   const [viewingTowerId, setViewingTowerId] = useState(null); // 책탑 항목 클릭 시 책 정보 조회용
+  const [showAllTower, setShowAllTower] = useState(false); // 북적북적 목록 '더보기' 펼침 여부
   // 상세보기 창이 열려 있는 동안 뒤 화면이 스크롤되지 않게 고정 (스크롤로 주소창이 움직이며 음영 위치가 틀어지는 것도 방지)
   useEffect(() => {
     if (!viewingShareId && !viewingTowerId) return undefined;
@@ -1468,7 +1564,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
       cover_url: towerCoverUrlInput || null,
     });
     setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setTowerPublicInput(true); setTowerTagInput(''); setTowerNoteInput(''); setTowerNoteVisibleInput(false); setTowerStatusInput('reading'); setTowerColorInput(COVER_EDGE_COLORS[Math.floor(Math.random() * COVER_EDGE_COLORS.length)]); setTowerAuthorInput(''); setTowerPublisherInput(''); setTowerCoverUrlInput(''); setTowerBookSearchOpen(false); setTowerOwnerMemberId(''); setShowTowerAdd(false);
-    await reload();
+    await reload(['book_tower_entries']);
   };
   const saveTowerEdit = async (entry) => {
     try {
@@ -1490,7 +1586,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
       if (error) throw error;
       if (!data || data.length === 0) throw new Error('저장 권한이 없거나 항목을 찾지 못했어요 (관리자에게 문의해주세요).');
       setEditingTowerId(null);
-      await reload();
+      await reload(['book_tower_entries']);
     } catch (e) {
       showToast?.('저장에 실패했어요: ' + (e?.message || '알 수 없는 오류'), 'error');
     }
@@ -1509,7 +1605,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     setEditingTowerStatus(entry.read_status || (entry.finished_date ? 'done' : 'reading'));
     setEditingTowerOwnerMemberId(''); // 비워두면 현재 등록자 그대로 유지 - 명단에서 새로 고를 때만 옮겨감
   };
-  const removeTowerEntry = async (entryId) => { await deleteRow('book_tower_entries', 'id', entryId); await reload(); };
+  const removeTowerEntry = async (entryId) => { await deleteRow('book_tower_entries', 'id', entryId); await reload(['book_tower_entries']); };
   const towerSortKey = (t) => t.finished_date || t.start_date || t.created_at.slice(0, 10);
   // 순서를 손으로 바꾼 적이 있으면 sort_order를, 없으면 날짜를 기준으로 삼음 (둘 다 밀리초 단위 숫자라 섞여도 자연스럽게 정렬됨)
   const towerEffectiveOrder = (t) => t.sort_order != null ? t.sort_order : (new Date(towerSortKey(t)).getTime() || 0);
@@ -1528,13 +1624,87 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     try {
       await updateRow('book_tower_entries', 'id', entry.id, { sort_order: b });
       await updateRow('book_tower_entries', 'id', other.id, { sort_order: a });
-      await reload();
+      await reload(['book_tower_entries']);
     } catch (err) {
       // sort_order 컬럼이 아직 Supabase의 book_tower_entries 테이블에 없으면 여기서 실패함
       showToast('순서 변경에 실패했어요 — book_tower_entries 테이블에 sort_order 컬럼이 있는지 확인해주세요.', 'error');
     }
   };
 
+  // 북적북적 책 정보 수정 폼 - 책을 눌러 여는 상세보기 창 안에서 보여줌
+  const renderTowerEditForm = (t) => (
+        <div className="rounded-2xl p-3 space-y-2" style={{ background: FORM_PANEL_BG, border: `1.5px solid ${FORM_PANEL_BORDER}`, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)' }}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs font-bold" style={{ color: MUTE }}><Pencil size={11} /> 책 정보 수정</div>
+            {isSecretary && (
+              <label className="flex items-center gap-1.5 text-[11px]" style={{ color: MUTE }}>
+                <input type="checkbox" checked={editingTowerPublic} onChange={(e) => setEditingTowerPublic(e.target.checked)} />
+                모임 책장에 공개
+              </label>
+            )}
+          </div>
+          <div className="text-sm font-bold truncate" style={{ color: INK }}>{t.book_title}</div>
+          <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))' }}>
+            <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>시작일</div><input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 outline-none" style={{ ...inputStyle, fontSize: 'clamp(12px, 3.4vw, 13px)' }} aria-label="시작일" /></div>
+            <div>
+              <div className="text-[10px] mb-1" style={{ color: MUTE }}>완료일</div>
+              <div className="flex gap-1 items-center">
+                <input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 outline-none flex-1 min-w-0" style={{ ...inputStyle, fontSize: 'clamp(12px, 3.4vw, 13px)' }} aria-label="완료일" />
+                {towerFinishedInput && (
+                  <button onClick={() => setTowerFinishedInput('')} className="shrink-0 p-1.5" aria-label="완료일 지우기"><X size={13} style={{ color: MUTE }} /></button>
+                )}
+              </div>
+            </div>
+          </div>
+          <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
+          {isSecretary && (
+            <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그</div><input value={editingTowerTag} onChange={(e) => setEditingTowerTag(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
+          )}
+          <div>
+            <div className="text-[10px] mb-1" style={{ color: MUTE }}>비고</div>
+            <input value={editingTowerNote} onChange={(e) => setEditingTowerNote(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} />
+            <label className="flex items-center gap-1.5 mt-1.5 text-[11px]" style={{ color: MUTE }}>
+              <input type="checkbox" checked={editingTowerNoteVisible} onChange={(e) => setEditingTowerNoteVisible(e.target.checked)} />
+              책탑 목록에도 비고 보이기(미체크 시 속성값만 저장)
+            </label>
+          </div>
+          <div>
+            <div className="text-[10px] mb-1" style={{ color: MUTE }}>표지 색상</div>
+            <div className="flex flex-wrap gap-1.5">
+              {COVER_EDGE_COLORS.map((c) => (
+                <button key={c} type="button" onClick={() => setEditingTowerColor(c)} aria-label={`표지 색상 ${c}`}
+                  className="rounded-full shrink-0" style={{ width: 22, height: 22, background: c, border: editingTowerColor === c ? `2px solid ${BTN_BG}` : `1px solid ${LINE}`, boxShadow: editingTowerColor === c ? '0 0 0 2px rgba(242,238,227,0.15)' : 'none' }} />
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] mb-1" style={{ color: MUTE }}>읽기 상태</div>
+            <div className="flex flex-wrap gap-1.5">
+              {READ_STATUSES.map((s) => (
+                <button key={s.key} type="button" onClick={() => setEditingTowerStatus(s.key)}
+                  className="rounded-full px-2.5 py-1.5 text-xs font-semibold"
+                  style={{ background: s.color, color: '#F2EEE3', opacity: editingTowerStatus === s.key ? 1 : 0.4, border: editingTowerStatus === s.key ? '2px solid #F2EEE3' : '2px solid transparent' }}>
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {isSecretary && (
+            <div>
+              <div className="text-[10px] mb-1" style={{ color: MUTE }}>등록자 (회원 명단에서 지정)</div>
+              <select value={editingTowerOwnerMemberId} onChange={(e) => setEditingTowerOwnerMemberId(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle}>
+                <option value="">그대로 유지</option>
+                {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+          )}
+          <div className="flex gap-1.5 items-center pt-1">
+            <button onClick={() => saveTowerEdit(t)} className="flex-1 text-xs rounded-full py-2 font-semibold" style={{ background: '#1E1C16', color: '#F2EEE3' }}>저장</button>
+            <button onClick={() => setEditingTowerId(null)} className="flex-1 text-xs rounded-full py-2 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>취소</button>
+          </div>
+        </div>
+
+  );
   return (
     <div className="space-y-4">
       <Card>
@@ -1566,7 +1736,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
             <div className="grid grid-cols-3 gap-2">
               {pagedPhotos.map((p) => (
                 <button key={p.id} onClick={() => { setViewingId(p.id); setEditingDate(false); setEditingCaption(false); }} className="relative aspect-square rounded-lg overflow-hidden" style={{ background: NEUTRAL_BG }}>
-                  <img src={publicUrl('photos', p.file_path)} className="w-full h-full object-cover" alt="" loading="lazy" />
+                  <PhotoThumb filePath={p.file_path} />
                   {p.caption && <div className="absolute top-1 right-1.5" style={{ color: 'rgba(255,255,255,0.85)', textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}><FileText size={12} /></div>}
                   <div className="absolute bottom-1 left-1.5 right-1.5 flex items-center justify-between gap-1 font-medium" style={{ color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 2px rgba(0,0,0,0.6)', fontFamily: "'IBM Plex Mono', monospace" }}>
                     <span className="shrink-0" style={{ fontSize: 'clamp(6.5px, 2.4vw, 10px)' }}>{p.created_at.slice(2, 10).replace(/-/g, '.')}</span>
@@ -1775,7 +1945,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                           uploadCoverImage(f, async (url) => {
                             await updateRow('book_shares', 'id', viewingShare.id, { cover_url: url });
                             setCoverCache((prev) => ({ ...prev, [viewingShare.id]: url }));
-                            await reload();
+                            await reload(['book_shares']);
                           }, setDetailCoverUploading);
                         }} />
                       </label>
@@ -1859,7 +2029,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: INK }}>📚 북적북적</div>
           <div className="flex items-center gap-1.5">
             {currentMember && <button onClick={() => { setShowTowerAdd((v) => !v); setEditingTowerId(null); }} className="text-xs rounded-full px-3 py-1.5 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{showTowerAdd ? '취소' : '+ 책 추가'}</button>}
-            <button onClick={() => setTowerSettingsOpen((v) => !v)} className="p-2 rounded-full" style={{ background: towerSettingsOpen ? BTN_BG : NEUTRAL_BG, color: towerSettingsOpen ? BTN_TEXT : NEUTRAL_TEXT }} aria-label="책탑 설정 (순서 변경·삭제)"><Settings2 size={14} /></button>
+            <button onClick={() => setTowerSettingsOpen((v) => !v)} className="p-2 rounded-full" style={{ background: towerSettingsOpen ? BTN_BG : NEUTRAL_BG, color: towerSettingsOpen ? BTN_TEXT : NEUTRAL_TEXT }} aria-label="책탑 순서 변경"><Settings2 size={14} /></button>
           </div>
         </div>
         {showTowerAdd && (
@@ -1986,17 +2156,19 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         {(() => {
           const list = towerView === 'mine' ? myTower : groupTower;
           if (list.length === 0) return <p className="text-xs text-center py-6" style={{ color: MUTE }}>아직 쌓인 책이 없어요.</p>;
+          // 최근 10권만 먼저 보여주고, 나머지(오래된 책)는 '더보기'로 펼침 - 목록 안에 스크롤이 겹치지 않게 함
+          const hiddenCount = showAllTower ? 0 : Math.max(0, list.length - TOWER_PREVIEW_COUNT);
+          const visibleList = list.slice(hiddenCount);
           return (
-            // 책 정보 수정 중에는 목록 높이 제한을 풀어서, 수정창이 목록 안에서 스크롤되지 않고 전체 크기로 펼쳐지게 함
-            <div className={`flex flex-col-reverse gap-1.5 pr-1 ${list.some((x) => x.id === editingTowerId) ? '' : 'max-h-[28rem] overflow-y-auto'}`}>
-              {list.map((t, idx) => {
+            <>
+            <div className="flex flex-col-reverse gap-1.5 pr-1">
+              {visibleList.map((t, vIdx) => {
+                const idx = hiddenCount + vIdx; // 전체 목록 기준 위치 (순서 이동 계산용)
                 const owner = towerView === 'group' ? members.find((m) => m.id === t.member_id) : null;
                 const isMine = towerView === 'mine' && currentMember;
-                const canEditThis = isMine || (towerView === 'group' && isSecretary); // 내 책장은 본인이, 모임 책장은 간사도 수정 가능
                 const canReorder = towerView === 'mine' ? !!isMine : isSecretary; // 내 책장은 본인이, 모임 책장은 간사만 순서 변경 가능
                 const canMoveUp = canReorder && idx < list.length - 1; // 배열 뒤쪽일수록 화면 위쪽에 쌓이므로 '위로'는 다음 인덱스와 교체
                 const canMoveDown = canReorder && idx > 0;
-                const isEditing = editingTowerId === t.id;
                 const hash = t.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
                 const edgeColor = t.color || COVER_EDGE_COLORS[hash % COVER_EDGE_COLORS.length]; // 등록 시 고른 색상 우선, 없으면(기존 항목) 해시 기반 자동 색상
                 // 기존 데이터(read_status 없음)는 완독일 있으면 완독, 없으면 읽는 중으로 취급
@@ -2009,80 +2181,6 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 const ribbonW = Math.round(ribbonLabel.replace(/ /g, '').length * 9 + (ribbonLabel.split(' ').length - 1) * 2.5 + 10);
                 // 읽는 중·잠시 멈춤일 때만 페이지를 작은 동그라미로 표시 (모임 책장은 SHOW_PAGE_IN_GROUP 설정 따름)
                 const showPage = (statusKey === 'reading' || statusKey === 'paused') && t.current_page && (towerView === 'mine' || SHOW_PAGE_IN_GROUP);
-                if (isEditing) {
-                  return (
-                    <div key={t.id} className="rounded-2xl p-3 space-y-2" style={{ background: FORM_PANEL_BG, border: `1.5px solid ${FORM_PANEL_BORDER}`, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)' }}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 text-xs font-bold" style={{ color: MUTE }}><Pencil size={11} /> 책 정보 수정</div>
-                        {isSecretary && (
-                          <label className="flex items-center gap-1.5 text-[11px]" style={{ color: MUTE }}>
-                            <input type="checkbox" checked={editingTowerPublic} onChange={(e) => setEditingTowerPublic(e.target.checked)} />
-                            모임 책장에 공개
-                          </label>
-                        )}
-                      </div>
-                      <div className="text-sm font-bold truncate" style={{ color: INK }}>{t.book_title}</div>
-                      <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))' }}>
-                        <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>시작일</div><input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 outline-none" style={{ ...inputStyle, fontSize: 'clamp(12px, 3.4vw, 13px)' }} aria-label="시작일" /></div>
-                        <div>
-                          <div className="text-[10px] mb-1" style={{ color: MUTE }}>완료일</div>
-                          <div className="flex gap-1 items-center">
-                            <input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 outline-none flex-1 min-w-0" style={{ ...inputStyle, fontSize: 'clamp(12px, 3.4vw, 13px)' }} aria-label="완료일" />
-                            {towerFinishedInput && (
-                              <button onClick={() => setTowerFinishedInput('')} className="shrink-0 p-1.5" aria-label="완료일 지우기"><X size={13} style={{ color: MUTE }} /></button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
-                      {isSecretary && (
-                        <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그</div><input value={editingTowerTag} onChange={(e) => setEditingTowerTag(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
-                      )}
-                      <div>
-                        <div className="text-[10px] mb-1" style={{ color: MUTE }}>비고</div>
-                        <input value={editingTowerNote} onChange={(e) => setEditingTowerNote(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} />
-                        <label className="flex items-center gap-1.5 mt-1.5 text-[11px]" style={{ color: MUTE }}>
-                          <input type="checkbox" checked={editingTowerNoteVisible} onChange={(e) => setEditingTowerNoteVisible(e.target.checked)} />
-                          책탑 목록에도 비고 보이기(미체크 시 속성값만 저장)
-                        </label>
-                      </div>
-                      <div>
-                        <div className="text-[10px] mb-1" style={{ color: MUTE }}>표지 색상</div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {COVER_EDGE_COLORS.map((c) => (
-                            <button key={c} type="button" onClick={() => setEditingTowerColor(c)} aria-label={`표지 색상 ${c}`}
-                              className="rounded-full shrink-0" style={{ width: 22, height: 22, background: c, border: editingTowerColor === c ? `2px solid ${BTN_BG}` : `1px solid ${LINE}`, boxShadow: editingTowerColor === c ? '0 0 0 2px rgba(242,238,227,0.15)' : 'none' }} />
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] mb-1" style={{ color: MUTE }}>읽기 상태</div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {READ_STATUSES.map((s) => (
-                            <button key={s.key} type="button" onClick={() => setEditingTowerStatus(s.key)}
-                              className="rounded-full px-2.5 py-1.5 text-xs font-semibold"
-                              style={{ background: s.color, color: '#F2EEE3', opacity: editingTowerStatus === s.key ? 1 : 0.4, border: editingTowerStatus === s.key ? '2px solid #F2EEE3' : '2px solid transparent' }}>
-                              {s.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      {isSecretary && (
-                        <div>
-                          <div className="text-[10px] mb-1" style={{ color: MUTE }}>등록자 (회원 명단에서 지정)</div>
-                          <select value={editingTowerOwnerMemberId} onChange={(e) => setEditingTowerOwnerMemberId(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle}>
-                            <option value="">그대로 유지</option>
-                            {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                          </select>
-                        </div>
-                      )}
-                      <div className="flex gap-1.5 items-center pt-1">
-                        <button onClick={() => saveTowerEdit(t)} className="flex-1 text-xs rounded-full py-2 font-semibold" style={{ background: '#1E1C16', color: '#F2EEE3' }}>저장</button>
-                        <button onClick={() => setEditingTowerId(null)} className="flex-1 text-xs rounded-full py-2 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>취소</button>
-                      </div>
-                    </div>
-                  );
-                }
                 const jitterX = ((hash % 7) - 3) * 5; // 중심에서 좌우로 살짝씩만 어긋나게 (쌓인 더미의 중심은 유지)
                 const lengthInset = 6 + (hash % 3) * 4; // 책마다 길이(폭)도 살짝 다르게 - 항상 가운데 기준으로 좁아짐 (제목이 잘리지 않도록 여백을 좁게)
                 const microY = (hash % 3) - 1; // -1~1px, 실제로 쌓았을 때 생기는 미세한 높이 오차
@@ -2117,7 +2215,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                             const noteText = t.note_visible && t.note ? t.note : '';
                             const captionParts = [t.event_tag, noteText].filter(Boolean);
                             if (captionParts.length === 0) return null;
-                            return <span className="truncate" style={{ fontSize: 9, lineHeight: '11px', fontWeight: 600, color: '#9C7B4A', letterSpacing: '0.15px' }}>{captionParts.join(' · ')}</span>;
+                            return <span className="truncate" style={{ fontSize: 9, lineHeight: '11px', fontWeight: 600, color: '#6E5226', letterSpacing: '0.15px' }}>{captionParts.join(' · ')}</span>;
                           })()}
                           <div className="min-w-0 flex items-baseline gap-1">
                             <span className="truncate min-w-0" style={{ fontFamily: BOOK_TITLE_FONT, fontSize: 13.5, fontWeight: 700, lineHeight: '17px', color: '#2A2015', letterSpacing: '0px', textShadow: '0 1px 0 rgba(255,255,255,0.3)' }}>{t.book_title}</span>
@@ -2125,7 +2223,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                             {(() => {
                               const ownerText = t.owner_name_override != null ? t.owner_name_override : (owner ? dispName(owner.name, isLoggedIn) : '');
                               if (!ownerText) return null;
-                              return <span className="text-[10px] truncate min-w-0" style={{ color: '#8A7355', fontWeight: 500 }}>{ownerText}</span>;
+                              return <span className="text-[10px] truncate min-w-0" style={{ color: '#5E4A30', fontWeight: 500 }}>{ownerText}</span>;
                             })()}
                           </div>
                         </div>
@@ -2133,21 +2231,13 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                           {/* 상태 글자는 리본 안에 흰색으로 표기 - 여기엔 읽는 중·잠시 멈춤일 때 쪽수만 표시 */}
                           <div className="flex flex-col items-end" style={{ gap: 1 }}>
                             {showPage && (
-                              <span style={{ fontSize: 9, lineHeight: '10px', color: '#8A6A3F', fontWeight: 600, fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: 'tabular-nums' }} aria-label={`현재 ${t.current_page}페이지`}>{t.current_page}쪽</span>
+                              <span style={{ fontSize: 9, lineHeight: '10px', color: '#6B4E2A', fontWeight: 600, fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: 'tabular-nums' }} aria-label={`현재 ${t.current_page}페이지`}>{t.current_page}쪽</span>
                             )}
                           </div>
-                          {canEditThis && (
-                            <div className="flex items-center gap-1">
-                              <button onClick={(e) => { e.stopPropagation(); startTowerEdit(t); }} className="p-0.5" aria-label="책탑 항목 수정"><Pencil size={10} style={{ color: '#6B5B3E' }} /></button>
-                              {towerSettingsOpen && (
-                                <button onClick={(e) => { e.stopPropagation(); requestDelete(() => removeTowerEntry(t.id), `'${t.book_title}'을(를) 책장에서 없앨까요?`); }} className="p-0.5" aria-label="책탑에서 제거"><X size={10} style={{ color: '#6B5B3E' }} /></button>
-                              )}
-                            </div>
-                          )}
                           {canReorder && towerSettingsOpen && (
                             <div className="flex flex-col rounded-lg overflow-hidden" style={{ gap: 2, background: '#3A2C18' }}>
-                              <button onClick={(e) => { e.stopPropagation(); moveTowerItem(list, t, 'up'); }} disabled={!canMoveUp} className="flex items-center justify-center" style={{ width: 28, height: 18, opacity: canMoveUp ? 1 : 0.4 }} aria-label="위로 이동"><ChevronUp size={14} style={{ color: '#F2EAD6' }} /></button>
-                              <button onClick={(e) => { e.stopPropagation(); moveTowerItem(list, t, 'down'); }} disabled={!canMoveDown} className="flex items-center justify-center" style={{ width: 28, height: 18, opacity: canMoveDown ? 1 : 0.4 }} aria-label="아래로 이동"><ChevronDown size={14} style={{ color: '#F2EAD6' }} /></button>
+                              <button onClick={(e) => { e.stopPropagation(); moveTowerItem(list, t, 'up'); }} disabled={!canMoveUp} className="flex items-center justify-center" style={{ width: 34, height: 19, opacity: canMoveUp ? 1 : 0.4 }} aria-label="위로 이동"><ChevronUp size={14} style={{ color: '#F2EAD6' }} /></button>
+                              <button onClick={(e) => { e.stopPropagation(); moveTowerItem(list, t, 'down'); }} disabled={!canMoveDown} className="flex items-center justify-center" style={{ width: 34, height: 19, opacity: canMoveDown ? 1 : 0.4 }} aria-label="아래로 이동"><ChevronDown size={14} style={{ color: '#F2EAD6' }} /></button>
                             </div>
                           )}
                         </div>
@@ -2157,6 +2247,12 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 );
               })}
             </div>
+            {list.length > TOWER_PREVIEW_COUNT && (
+              <button onClick={() => setShowAllTower((v) => !v)} className="w-full mt-2 rounded-xl py-2 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>
+                {showAllTower ? '최근 10권만 보기' : `이전 책 ${hiddenCount}권 더보기`}
+              </button>
+            )}
+            </>
           );
         })()}
       </Card>
@@ -2169,37 +2265,55 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         const statusKey = t.read_status || (t.finished_date ? 'done' : 'reading');
         const statusMeta = readStatusMeta(statusKey);
         const ownerText = t.owner_name_override != null ? t.owner_name_override : (owner ? dispName(owner.name, isLoggedIn) : '');
+        const isOwnEntry = !!currentMember && t.member_id === currentMember.id;
+        const canEditEntry = isOwnEntry || isSecretary; // 본인 책, 또는 간사는 모든 책 수정·삭제 가능
+        const editingHere = editingTowerId === t.id;
+        const closeTowerModal = () => { setViewingTowerId(null); setEditingTowerId(null); };
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ padding: '8px 12px calc(8px + 6vh)' }} onClick={() => setViewingTowerId(null)}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ padding: '8px 12px calc(8px + 6vh)' }} onClick={() => { if (!editingHere) closeTowerModal(); }}>
             <div aria-hidden="true" className="fixed pointer-events-none" style={{ top: '-30vh', bottom: '-30vh', left: 0, right: 0, background: 'rgba(0,0,0,0.7)' }} />
             <div className="relative w-full max-w-sm rounded-2xl border p-4" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 'calc(100dvh - 16px - 6vh)', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: statusMeta.color, color: '#F2EEE3' }}>{statusMeta.label}</span>
-                <button onClick={() => setViewingTowerId(null)} className="p-1" aria-label="닫기"><X size={16} style={{ color: MUTE }} /></button>
-              </div>
-              {t.cover_url ? (
-                <div className="flex justify-center mb-3">
-                  <img src={t.cover_url} alt="" className="rounded-lg shadow-md" style={{ height: 'min(408px, 52dvh)', width: 'auto', maxWidth: '100%', objectFit: 'contain' }} />
+                <div className="flex items-center gap-3.5">
+                  {canEditEntry && !editingHere && (
+                    <button onClick={() => startTowerEdit(t)} className="p-1" aria-label="책 정보 수정"><Pencil size={14} style={{ color: MUTE }} /></button>
+                  )}
+                  {canEditEntry && !editingHere && (
+                    <button onClick={() => requestDelete(async () => { await removeTowerEntry(t.id); setViewingTowerId(null); }, `'${t.book_title}'을(를) 책장에서 없앨까요?`)} className="p-1" aria-label="책 삭제"><Trash2 size={14} style={{ color: '#F0A87C' }} /></button>
+                  )}
+                  <button onClick={closeTowerModal} className="p-1" aria-label="닫기"><X size={16} style={{ color: MUTE }} /></button>
                 </div>
-              ) : (
-                <div className="flex justify-center mb-3">
-                  <div className="rounded-lg flex items-center justify-center shadow-md" style={{ height: 'min(408px, 52dvh)', aspectRatio: '278 / 408', background: t.color || NEUTRAL_BG }}>
-                    <BookOpen size={36} style={{ color: 'rgba(255,255,255,0.6)' }} />
+              </div>
+              {editingHere ? renderTowerEditForm(t) : (
+                <>
+                  {t.cover_url ? (
+                    <div className="flex justify-center mb-3">
+                      <img src={t.cover_url} alt="" className="rounded-lg shadow-md" style={{ height: 'min(408px, 52dvh)', width: 'auto', maxWidth: '100%', objectFit: 'contain' }} />
+                    </div>
+                  ) : (
+                    <div className="flex justify-center mb-3">
+                      <div className="rounded-lg flex items-center justify-center shadow-md" style={{ height: 'min(408px, 52dvh)', aspectRatio: '278 / 408', background: t.color || NEUTRAL_BG }}>
+                        <BookOpen size={36} style={{ color: 'rgba(255,255,255,0.6)' }} />
+                      </div>
+                    </div>
+                  )}
+                  <div className="text-base font-semibold mb-1" style={{ color: INK }}>{t.book_title}</div>
+                  {(t.book_author || t.book_publisher) && (
+                    <div className="text-xs" style={{ color: MUTE }}>{[t.book_author, t.book_publisher].filter(Boolean).join(' · ')}</div>
+                  )}
+                  <div className="space-y-1.5 text-xs mt-3" style={{ color: NEUTRAL_TEXT }}>
+                    {ownerText && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>등록자</span><span className="text-right">{ownerText}</span></div>}
+                    {t.event_tag && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>행사/토론회</span><span className="text-right">{t.event_tag}</span></div>}
+                    {t.start_date && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>시작일</span><span>{fmtDate(t.start_date)}</span></div>}
+                    {t.finished_date && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>완료일</span><span>{fmtDate(t.finished_date)}</span></div>}
+                    {/* 현재 페이지는 본인 책이거나 모임 공개 설정일 때만 표시 */}
+                    {t.current_page != null && (isOwnEntry || SHOW_PAGE_IN_GROUP) && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>현재 페이지</span><span>{t.current_page}쪽</span></div>}
+                    {/* 비고는 '목록에도 보이기'를 켰거나, 본인·간사가 볼 때 표시 */}
+                    {t.note && (t.note_visible || canEditEntry) && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>비고</span><span className="text-right">{t.note}</span></div>}
                   </div>
-                </div>
+                </>
               )}
-              <div className="text-base font-semibold mb-1" style={{ color: INK }}>{t.book_title}</div>
-              {(t.book_author || t.book_publisher) && (
-                <div className="text-xs mb-3" style={{ color: MUTE }}>{[t.book_author, t.book_publisher].filter(Boolean).join(' · ')}</div>
-              )}
-              <div className="space-y-1.5 text-xs" style={{ color: NEUTRAL_TEXT }}>
-                {ownerText && <div className="flex justify-between"><span style={{ color: MUTE }}>등록자</span><span>{ownerText}</span></div>}
-                {t.event_tag && <div className="flex justify-between"><span style={{ color: MUTE }}>행사/토론회</span><span>{t.event_tag}</span></div>}
-                {t.start_date && <div className="flex justify-between"><span style={{ color: MUTE }}>시작일</span><span>{fmtDate(t.start_date)}</span></div>}
-                {t.finished_date && <div className="flex justify-between"><span style={{ color: MUTE }}>완료일</span><span>{fmtDate(t.finished_date)}</span></div>}
-                {t.current_page != null && <div className="flex justify-between"><span style={{ color: MUTE }}>현재 페이지</span><span>{t.current_page}쪽</span></div>}
-                {t.note_visible && t.note && <div className="flex justify-between"><span style={{ color: MUTE }}>비고</span><span>{t.note}</span></div>}
-              </div>
             </div>
           </div>
         );
@@ -2574,18 +2688,18 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     const existing = penaltyCompletions.find((p) => p.session_id === weekKey && p.member_id === memberId);
     if (existing) await updateRow('penalty_completions', 'id', existing.id, { performed_date: performedDate });
     else await insertRow('penalty_completions', { id: uid('p'), session_id: weekKey, member_id: memberId, completed_at: new Date().toISOString(), performed_date: performedDate, confirmed: false });
-    await reload();
+    await reload(['penalty_completions']);
   };
   // 완료 확정/취소 — 본인 또는 운영진이 명시적으로 눌러야만 바뀜
   const setPenaltyConfirmed = async (weekKey, memberId, confirmed) => {
     const existing = penaltyCompletions.find((p) => p.session_id === weekKey && p.member_id === memberId);
     if (existing) await updateRow('penalty_completions', 'id', existing.id, { confirmed });
     else await insertRow('penalty_completions', { id: uid('p'), session_id: weekKey, member_id: memberId, completed_at: new Date().toISOString(), performed_date: todayStr(), confirmed });
-    await reload();
+    await reload(['penalty_completions']);
   };
   const clearPenaltyDate = async (weekKey, memberId) => {
     const existing = penaltyCompletions.find((p) => p.session_id === weekKey && p.member_id === memberId);
-    if (existing) { await deleteRow('penalty_completions', 'id', existing.id); await reload(); }
+    if (existing) { await deleteRow('penalty_completions', 'id', existing.id); await reload(['penalty_completions']); }
   };
   const ms = monthStr(cursor);
   const sessionsInMonth = sessions.filter((s) => s.date.startsWith(ms) && s.date <= todayStr());
@@ -2761,7 +2875,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
         await insertRow('sessions', { id: uid('s'), date, created_at: new Date().toISOString() });
       }
     }
-    await reload();
+    await reload(['calendar_days', 'sessions']);
   };
 
   return (
@@ -2906,12 +3020,12 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               const setMyExcuseForDate = async (reason) => {
                 if (!currentMember) return;
                 await insertRow('absence_excuses', { id: uid('ae'), date: selectedDate, member_id: currentMember.id, reason });
-                await reload();
+                await reload(['absence_excuses']);
               };
               const clearMyExcuseForDate = async () => {
                 if (!myExcuse) return;
                 await deleteRow('absence_excuses', 'id', myExcuse.id);
-                await reload();
+                await reload(['absence_excuses']);
               };
               return (
                 <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
@@ -3244,7 +3358,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
     await Promise.all(currentManagers.map((m) => insertRow('notifications', { id: uid('nt'), member_id: m.id, message: `${applyName.trim()}님이 가입 신청을 했어요. 확인해주세요.`, link_id: id, created_at: new Date().toISOString() })));
     setApplyName(''); setApplyDept(''); setApplyJobType(''); setApplyBirthday(''); setApplyGenre(''); setApplyNote('');
     setShowApplyForm(false);
-    await reload();
+    await reload(['membership_applications', 'notifications']);
     showToast?.('가입 신청이 접수됐어요. 운영진 전원이 승인하면 가입이 완료돼요.');
   };
   // ---------- 가입 신청 승인 (운영진용) ----------
@@ -3258,12 +3372,12 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
       await updateRow('membership_applications', 'id', app.id, { status: 'approved' });
       showToast?.(`${app.name}님의 가입이 완료됐어요!`);
     }
-    await reload();
+    await reload(['members', 'membership_applications', 'membership_votes']);
   };
   const rejectApplication = async (app) => {
     await supabase.from('membership_votes').delete().eq('application_id', app.id);
     await deleteRow('membership_applications', 'id', app.id);
-    await reload();
+    await reload(['membership_applications', 'membership_votes']);
   };
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState(''); const [newRole, setNewRole] = useState('회원'); const [newBirthday, setNewBirthday] = useState(''); const [newPin, setNewPin] = useState('');
@@ -3278,11 +3392,12 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
   const handleAdd = async () => {
     if (!newName.trim()) return;
     if (newPin && !/^\d{4}$/.test(newPin)) return;
+    if (MANAGE_ROLES.includes(newRole) && !newPin) { showToast?.('회장·간사·총무는 PIN(4자리)을 꼭 설정해야 해요.', 'error'); return; }
     const id = uid('m');
     const isFirst = members.length === 0;
     await insertRow('members', { id, name: newName.trim(), role: newRole, birthday: newBirthday || null, pin: newPin || null, department: newDept || null, job_type: newJobType || null, joined_at: newJoinedAt || null, book_genre: newGenre || null, note: newNote || null });
     if (isFirst) setIdentity(id);
-    await reload();
+    await reload(['members']);
     setNewName(''); setNewRole('회원'); setNewBirthday(''); setNewPin(''); setNewDept(''); setNewJobType(''); setNewJoinedAt(''); setNewGenre(''); setNewNote(''); setShowAddForm(false);
   };
   // PIN은 목록 조회에 안 실려 있어서(m.has_pin만 boolean으로 존재), 수정 시작 시 실제 값은 프리필하지 않음 — 빈 칸=기존 값 유지, 입력하면 새 값으로 교체
@@ -3290,6 +3405,11 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
   const startSelfEdit = (m) => { setEditingId(m.id); setEditMode('self'); setEditBirthday(m.birthday || ''); setEditPin(''); setClearPin(false); setEditDept(m.department || ''); setEditJobType(m.job_type || ''); setEditJoinedAt(m.joined_at || ''); setEditGenre(m.book_genre || ''); setEditNote(m.note || ''); };
   const saveEdit = async () => {
     if (editPin && !/^\d{4}$/.test(editPin)) return;
+    // 운영진(회장·간사·총무)은 PIN 필수 - 새 PIN을 넣거나, 기존 PIN이 있고 지우지 않는 경우만 저장
+    const editingMember = members.find((x) => x.id === editingId);
+    const roleAfter = editMode === 'full' ? editRole : editingMember?.role;
+    const willHavePin = editPin ? true : (editingMember?.has_pin && !clearPin);
+    if (MANAGE_ROLES.includes(roleAfter) && !willHavePin) { showToast?.('회장·간사·총무는 PIN(4자리)을 꼭 설정해야 해요.', 'error'); return; }
     const pinPatch = clearPin ? { pin: null } : editPin ? { pin: editPin } : {}; // 빈 칸이면 pin 필드 자체를 patch에서 빼서 기존 값 그대로 유지
     if (editMode === 'full') {
       if (!editName.trim()) return;
@@ -3297,16 +3417,14 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
     } else {
       await updateRow('members', 'id', editingId, { birthday: editBirthday || null, department: editDept || null, job_type: editJobType || null, book_genre: editGenre || null, ...pinPatch });
     }
-    await reload();
+    await reload(['members']);
     setEditingId(null);
   };
   const removeMember = async (id) => { await deleteRow('members', 'id', id); await reload(); if (currentUserId === id) setIdentity(null); };
 
   const downloadExcel = async () => {
-    // PIN은 목록 상태에 없으므로, 다운로드하는 이 순간에만 실제 members 테이블에서 좁게 조회 (관리자가 명시적으로 요청했을 때만 전송됨)
-    const { data: withPins } = await supabase.from('members').select('id,pin');
-    const pinById = Object.fromEntries((withPins || []).map((r) => [r.id, r.pin]));
-    const data = sortedMembers.map((m) => ({ 이름: m.name, 직급: m.role, 소속: m.department || '', 직군: m.job_type || '', 생일: m.birthday || '', 가입일자: m.joined_at || '', 선호도서: m.book_genre || '', 비고: m.note || '', PIN: pinById[m.id] || '' }));
+    // 보안상 PIN은 브라우저에서 읽을 수 없게 막아뒀으므로 명단 파일에는 PIN을 넣지 않음 (PIN 칸은 업로드 양식용으로 비워서 유지)
+    const data = sortedMembers.map((m) => ({ 이름: m.name, 직급: m.role, 소속: m.department || '', 직군: m.job_type || '', 생일: m.birthday || '', 가입일자: m.joined_at || '', 선호도서: m.book_genre || '', 비고: m.note || '', PIN: '' }));
     const ws = XLSX.utils.json_to_sheet(data); const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '멤버명단'); XLSX.writeFile(wb, `책스초코_멤버명단_${todayStr()}.xlsx`);
   };
@@ -3329,7 +3447,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
           book_genre: r['선호 도서 종류'] || r['선호도서'] ? String(r['선호 도서 종류'] || r['선호도서']) : null,
           note: r['비고'] ? String(r['비고']) : null,
         }));
-        if (additions.length) { await supabase.from('members').insert(additions); await reload(); }
+        if (additions.length) { await supabase.from('members').insert(additions); await reload(['members']); }
       } catch (err) {}
     };
     reader.readAsBinaryString(file); e.target.value = '';
@@ -3549,7 +3667,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
       const amt = parseInt(defaultAmount, 10) || 0;
       await insertRow('dues_payments', { id: uid('dp'), member_id: memberId, month: monthKey, amount: amt, paid: true, paid_at: new Date().toISOString() });
     }
-    await reload();
+    await reload(['dues_payments']);
   };
   const totalDuesThisMonth = duesForMonth.filter((d) => d.paid).reduce((sum, d) => sum + Number(d.amount), 0);
 
@@ -3567,7 +3685,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
     const existing = getDues(memberId);
     if (existing) { if (Number(existing.amount) !== amt) await updateRow('dues_payments', 'id', existing.id, { amount: amt }); }
     else await insertRow('dues_payments', { id: uid('dp'), member_id: memberId, month: monthKey, amount: amt, paid: false, paid_at: null });
-    await reload();
+    await reload(['dues_payments']);
     setAmountEdits((prev) => { const next = { ...prev }; delete next[memberId]; return next; });
   };
 
@@ -3585,7 +3703,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
       if (existing) await updateRow('dues_payments', 'id', existing.id, { paid: true, paid_at: new Date().toISOString() });
       else await insertRow('dues_payments', { id: uid('dp'), member_id: m.id, month: monthKey, amount: amt, paid: true, paid_at: new Date().toISOString() });
     }
-    await reload();
+    await reload(['dues_payments']);
     showToast?.('일괄 납부 처리했어요.', 'success');
   };
 
@@ -3597,11 +3715,11 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
   const addExpense = async () => {
     if (!expDesc.trim() || !expAmount) return;
     await insertRow('expenses', { id: uid('ex'), date: expDate, description: expDesc.trim(), amount: parseInt(expAmount, 10) || 0, recorded_by: currentMember?.name || '', created_at: new Date().toISOString() });
-    await reload();
+    await reload(['expenses', 'dinner_collections']);
     setExpDesc(''); setExpAmount('');
     showToast?.('지출 내역을 등록했어요.', 'success');
   };
-  const removeExpense = async (id) => { await deleteRow('expenses', 'id', id); await reload(); };
+  const removeExpense = async (id) => { await deleteRow('expenses', 'id', id); await reload(['expenses', 'dinner_collections']); };
 
   // 회식비 정산 — 특정 날짜에 1차/2차/... 금액을 발생할 때마다 등록 (식당명은 "회식 N차 · 식당명" 형태로 저장)
   const [dinnerDate, setDinnerDate] = useState(todayStr());
@@ -3614,7 +3732,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
   const addDinnerRound = async () => {
     if (!dinnerAmount) return;
     await insertRow('expenses', { id: uid('ex'), date: dinnerDate, description: `회식 ${nextDinnerRound}차`, amount: parseInt(dinnerAmount, 10) || 0, recorded_by: currentMember?.name || '', created_at: new Date().toISOString() });
-    await reload();
+    await reload(['expenses', 'dinner_collections']);
     setDinnerAmount('');
     showToast?.(`회식 ${nextDinnerRound}차를 등록했어요.`, 'success');
   };
@@ -3633,7 +3751,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
     const roundNum = m ? m[1] : '';
     const newDesc = `회식 ${roundNum}차` + (val.trim() ? ` · ${val.trim()}` : '');
     if (newDesc !== e.description) await updateRow('expenses', 'id', e.id, { description: newDesc });
-    await reload();
+    await reload(['expenses', 'dinner_collections']);
     setRestaurantEdits((prev) => { const next = { ...prev }; delete next[e.id]; return next; });
   };
 
@@ -3704,14 +3822,14 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
       if (prev) { if (Number(prev.amount) !== amt) await updateRow('dinner_collections', 'id', prev.id, { amount: amt }); }
       else await insertRow('dinner_collections', { id: uid('dc'), expense_id: e.id, member_id: mid, amount: amt, paid: false, paid_at: null });
     }
-    if (!opts.skipReload) await reload();
+    if (!opts.skipReload) await reload(['dinner_collections']);
   };
   const generateAllCollections = async () => {
     for (const s of dinnerSettlements) {
       const e = dinnerExpenses.find((x) => x.id === s.id);
       if (e) await generateCollections(e, s, { skipReload: true });
     }
-    await reload();
+    await reload(['dinner_collections']);
   };
   // 한 멤버가 여러 차수에 걸쳐 낼 금액을 한 번에 완납/미납 처리
   const toggleMemberAllPaid = async (memberId) => {
@@ -3720,7 +3838,7 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
     const allPaid = memberCollections.every((c) => c.paid);
     const newPaid = !allPaid;
     for (const c of memberCollections) { if (c.paid !== newPaid) await updateRow('dinner_collections', 'id', c.id, { paid: newPaid, paid_at: newPaid ? new Date().toISOString() : null }); }
-    await reload();
+    await reload(['dinner_collections']);
   };
 
   const [dinnerActionMsg, setDinnerActionMsg] = useState('');
@@ -4096,7 +4214,7 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
     const inIso = new Date(`${date}T${manualIn}`).toISOString();
     const outIso = manualOut ? new Date(`${date}T${manualOut}`).toISOString() : null;
     await insertRow('checkins', { id: uid('c'), session_id: s.id, member_id: manualMemberId, check_in_at: inIso, check_out_at: outIso });
-    await reload();
+    await reload(['checkins', 'sessions']);
     setManualMemberId(''); setManualIn(''); setManualOut('');
   };
   const toggleManualSelect = (id) => setManualSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
@@ -4111,7 +4229,7 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
       if (existing) await updateRow('checkins', 'id', existing.id, { check_in_at: inIso, check_out_at: outIso });
       else await insertRow('checkins', { id: uid('c'), session_id: s.id, member_id: id, check_in_at: inIso, check_out_at: outIso });
     }
-    await reload();
+    await reload(['checkins', 'sessions']);
     setManualSelectedIds([]); setManualIn(''); setManualOut('');
   };
   const updateCheckin = async (id, field, timeVal) => { if (!timeVal) return; await updateRow('checkins', 'id', id, { [field]: new Date(`${date}T${timeVal}`).toISOString() }); await reload(['checkins']); };
@@ -4122,16 +4240,16 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
     const existing = absenceExcuses.find((e) => e.date === date && e.member_id === memberId);
     if (existing) await deleteRow('absence_excuses', 'id', existing.id);
     await insertRow('absence_excuses', { id: uid('ae'), date, member_id: memberId, reason });
-    await reload();
+    await reload(['absence_excuses']);
   };
-  const removeExcuse = async (id) => { await deleteRow('absence_excuses', 'id', id); await reload(); };
+  const removeExcuse = async (id) => { await deleteRow('absence_excuses', 'id', id); await reload(['absence_excuses']); };
   const isWeekCompleted = (wk, memberId) => penaltyCompletions.some((p) => p.session_id === wk && p.member_id === memberId && p.confirmed);
   const toggleWeekCompletion = async (wk, memberId, performedDate) => {
     const existing = penaltyCompletions.find((p) => p.session_id === wk && p.member_id === memberId);
     if (existing?.confirmed) await updateRow('penalty_completions', 'id', existing.id, { confirmed: false }); // 완료 취소 (기록은 남김)
     else if (existing) await updateRow('penalty_completions', 'id', existing.id, { confirmed: true, performed_date: performedDate || existing.performed_date || todayStr() }); // 예정 상태였던 걸 확정으로 전환
     else await insertRow('penalty_completions', { id: uid('p'), session_id: wk, member_id: memberId, completed_at: new Date().toISOString(), performed_date: performedDate || todayStr(), confirmed: true }); // 완전히 새로 생성+확정
-    await reload();
+    await reload(['penalty_completions']);
   };
   const [performDateInputs, setPerformDateInputs] = useState({}); // { `${wk}_${memberId}`: 'YYYY-MM-DD' } — 완료 처리 전 날짜 선택용
   const weeksWithTargets = weeklyPenalties.filter((w) => w.results.some((r) => r.missedAll));
