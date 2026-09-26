@@ -1139,6 +1139,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
 
   // 캡션 / 게시자 / 그날 참석자 이름으로 검색
   const [searchQuery, setSearchQuery] = useState('');
+  const [photoSearchOpen, setPhotoSearchOpen] = useState(false); // 돋보기 아이콘을 눌러야 검색창이 펼쳐짐
   const q = searchQuery.trim().toLowerCase();
   const filtered = !q ? sorted : sorted.filter((p) => {
     if ((p.caption || '').toLowerCase().includes(q)) return true;
@@ -1379,6 +1380,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [towerBookSearchOpen, setTowerBookSearchOpen] = useState(false);
   const [towerCoverUploading, setTowerCoverUploading] = useState(false);
   const [viewingTowerId, setViewingTowerId] = useState(null); // 책탑 항목 클릭 시 책 정보 조회용
+  const [towerOwnerNameInput, setTowerOwnerNameInput] = useState(''); // 간사만 입력 가능 - 등록자 이름을 다르게 표시
+  const [editingTowerOwnerName, setEditingTowerOwnerName] = useState('');
   const addManualTowerEntry = async () => {
     if (!currentMember || !towerTitleInput.trim()) return;
     await insertRow('book_tower_entries', {
@@ -1387,7 +1390,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
       color: towerColorInput, source_share_id: null, created_at: new Date().toISOString(), sort_order: Date.now(),
       is_public: isSecretary ? towerPublicInput : false, // 모임 책장 공개는 간사만 가능 - 그 외 회원 글은 항상 내 책장에만
       event_tag: isSecretary ? (towerTagInput.trim() || null) : null, // 행사/토론회 태그는 간사만 입력 가능
-      owner_name_override: null,
+      owner_name_override: isSecretary ? (towerOwnerNameInput.trim() || null) : null, // 등록자 이름 표시는 간사만 지정 가능
       note: towerNoteInput.trim() || null, // 비고는 회원 누구나 입력 가능
       note_visible: towerNoteVisibleInput,
       read_status: towerStatusInput,
@@ -1395,7 +1398,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
       book_publisher: towerPublisherInput.trim() || null,
       cover_url: towerCoverUrlInput || null,
     });
-    setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setTowerPublicInput(true); setTowerTagInput(''); setTowerNoteInput(''); setTowerNoteVisibleInput(false); setTowerStatusInput('reading'); setTowerColorInput(COVER_EDGE_COLORS[Math.floor(Math.random() * COVER_EDGE_COLORS.length)]); setTowerAuthorInput(''); setTowerPublisherInput(''); setTowerCoverUrlInput(''); setTowerBookSearchOpen(false); setShowTowerAdd(false);
+    setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setTowerPublicInput(true); setTowerTagInput(''); setTowerNoteInput(''); setTowerNoteVisibleInput(false); setTowerStatusInput('reading'); setTowerColorInput(COVER_EDGE_COLORS[Math.floor(Math.random() * COVER_EDGE_COLORS.length)]); setTowerAuthorInput(''); setTowerPublisherInput(''); setTowerCoverUrlInput(''); setTowerBookSearchOpen(false); setTowerOwnerNameInput(''); setShowTowerAdd(false);
     await reload();
   };
   const saveTowerEdit = async (entry) => {
@@ -1405,7 +1408,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null,
           is_public: isSecretary ? editingTowerPublic : entry.is_public,
           event_tag: isSecretary ? (editingTowerTag.trim() || null) : entry.event_tag, // 행사/토론회 태그는 간사만 수정 가능
-          owner_name_override: entry.owner_name_override,
+          owner_name_override: isSecretary ? (editingTowerOwnerName.trim() || null) : entry.owner_name_override, // 등록자 이름 표시는 간사만 수정 가능
           color: editingTowerColor,
           note: editingTowerNote.trim() || null,
           note_visible: editingTowerNoteVisible,
@@ -1432,6 +1435,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     setEditingTowerNote(entry.note || '');
     setEditingTowerNoteVisible(!!entry.note_visible);
     setEditingTowerStatus(entry.read_status || (entry.finished_date ? 'done' : 'reading'));
+    setEditingTowerOwnerName(entry.owner_name_override || '');
   };
   const removeTowerEntry = async (entryId) => { await deleteRow('book_tower_entries', 'id', entryId); await reload(); };
   const towerSortKey = (t) => t.finished_date || t.start_date || t.created_at.slice(0, 10);
@@ -1462,7 +1466,12 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   return (
     <div className="space-y-4">
       <Card>
-        <div className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: INK }}><ImageIcon size={16} style={{ color: '#7FDCCF' }} /> 사진첩</div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: INK }}><ImageIcon size={16} style={{ color: '#7FDCCF' }} /> 사진</div>
+          {photos.length > 0 && (
+            <button onClick={() => setPhotoSearchOpen((v) => !v)} className="p-2 rounded-full" style={{ background: photoSearchOpen ? BTN_BG : NEUTRAL_BG, color: photoSearchOpen ? BTN_TEXT : NEUTRAL_TEXT }} aria-label="사진 검색"><Search size={14} /></button>
+          )}
+        </div>
         <div>
           <label className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 px-4 text-sm font-semibold cursor-pointer w-full"
             style={{ background: currentMember ? NEUTRAL_BG : ROW_LINE, color: currentMember ? NEUTRAL_TEXT : MUTE, opacity: uploading ? 0.6 : 1 }}>
@@ -1472,8 +1481,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           {!currentMember && <p className="text-xs mt-1.5" style={{ color: MUTE }}>상단에서 본인을 먼저 선택해야 업로드할 수 있어요.</p>}
           {error && <p className="text-xs mt-1.5" style={{ color: '#F0A87C' }}>{error}</p>}
         </div>
-        {photos.length > 0 && (
-          <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="캡션, 게시자, 참석자 이름으로 검색"
+        {photos.length > 0 && photoSearchOpen && (
+          <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="캡션, 게시자, 참석자 이름으로 검색" autoFocus
             className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none mt-3" style={inputStyle} />
         )}
         <div className="mt-3">
@@ -1487,9 +1496,9 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 <button key={p.id} onClick={() => { setViewingId(p.id); setEditingDate(false); setEditingCaption(false); }} className="relative aspect-square rounded-lg overflow-hidden" style={{ background: NEUTRAL_BG }}>
                   <img src={publicUrl('photos', p.file_path)} className="w-full h-full object-cover" alt="" loading="lazy" />
                   {p.caption && <div className="absolute top-1 right-1.5" style={{ color: 'rgba(255,255,255,0.85)', textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}><FileText size={12} /></div>}
-                  <div className="absolute bottom-1 left-1.5 right-1.5 flex items-center justify-between text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 2px rgba(0,0,0,0.6)', fontFamily: "'IBM Plex Mono', monospace" }}>
-                    <span>{p.created_at.slice(0, 10)}</span>
-                    <span className="truncate ml-1">{dispName(p.uploader_name, isLoggedIn)}</span>
+                  <div className="absolute bottom-1 left-1.5 right-1.5 flex items-center justify-between gap-1 font-medium" style={{ color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 2px rgba(0,0,0,0.6)', fontFamily: "'IBM Plex Mono', monospace" }}>
+                    <span className="shrink-0" style={{ fontSize: 'clamp(7px, 2.6vw, 10px)' }}>{p.created_at.slice(5, 10).replace('-', '.')}</span>
+                    <span className="truncate min-w-0" style={{ fontSize: 'clamp(7px, 2.6vw, 10px)' }}>{dispName(p.uploader_name, isLoggedIn)}</span>
                   </div>
                 </button>
               ))}
@@ -1843,6 +1852,9 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
             {isSecretary && (
               <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그 (선택)</div><input value={towerTagInput} onChange={(e) => setTowerTagInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
             )}
+            {isSecretary && (
+              <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>등록자 이름 (선택 · 비워두면 본인 이름)</div><input value={towerOwnerNameInput} onChange={(e) => setTowerOwnerNameInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+            )}
             <div>
               <div className="text-[10px] mb-1" style={{ color: MUTE }}>비고 (선택)</div>
               <input value={towerNoteInput} onChange={(e) => setTowerNoteInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
@@ -1933,6 +1945,9 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                       <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
                       {isSecretary && (
                         <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그</div><input value={editingTowerTag} onChange={(e) => setEditingTowerTag(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
+                      )}
+                      {isSecretary && (
+                        <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>등록자 이름 (비워두면 본인 이름)</div><input value={editingTowerOwnerName} onChange={(e) => setEditingTowerOwnerName(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
                       )}
                       <div>
                         <div className="text-[10px] mb-1" style={{ color: MUTE }}>비고</div>
@@ -2986,11 +3001,11 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       const draft = penaltyDateDrafts[rowKey] ?? e.completion?.performed_date ?? todayStr();
                       return (
                         <div key={rowKey} className="text-xs">
-                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="grid items-center gap-2" style={{ gridTemplateColumns: '1fr auto' }}>
                             <div className="flex items-center gap-2 min-w-0">
                               <Stamp role={e.member.role} size={20} tilt={0} />
                               <span className="truncate" style={{ color: INK }}>{dispName(e.member.name, isLoggedIn)}</span>
-                              <span style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{e.weekLabel}</span>
+                              <span className="shrink-0" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{e.weekLabel}</span>
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0">
                               {confirmed ? (
@@ -3352,13 +3367,9 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
                       {m.birthday && isLoggedIn && <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtMD(mdOf(m.birthday))}</span>}
                       {m.has_pin && <Lock size={11} style={{ color: MUTE }} />}
                     </div>
-                    {isLoggedIn && (m.department || m.job_type) && (
-                      <div className="truncate mt-1 text-[11px]" style={{ color: MUTE }}>
-                        {m.department}{m.department && m.job_type ? `(${m.job_type})` : m.job_type}
-                      </div>
-                    )}
-                    {isLoggedIn && (m.joined_at || m.book_genre || m.note) && (
-                      <div className="flex items-center gap-2 flex-wrap mt-0.5 text-[11px]" style={{ color: MUTE }}>
+                    {isLoggedIn && (m.department || m.job_type || m.joined_at || m.book_genre || m.note) && (
+                      <div className="flex items-center flex-wrap mt-1 text-[11px]" style={{ color: MUTE, columnGap: 8, rowGap: 2 }}>
+                        {(m.department || m.job_type) && <span>{m.department}{m.department && m.job_type ? `(${m.job_type})` : m.job_type}</span>}
                         {m.joined_at && <span>가입 {fmtDate(m.joined_at)}</span>}
                         {m.book_genre && <span>{m.book_genre}</span>}
                         {m.note && <span className="italic">{m.note}</span>}
