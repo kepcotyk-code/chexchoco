@@ -75,6 +75,39 @@ const COVER_EDGE_COLORS = [
   '#B8352E', '#1F5FA8', '#2F8F4E', '#D9A521', // 원색 계열 - 빨강·파랑·초록·노랑
   '#3E2723', '#4E5B31', '#7A4B8C', '#8C5E2A', '#2C5F5F', '#6E1F1F', '#3A4E7A', '#5C6B23', '#8A3E5C', '#264A2E',
 ];
+// 표지 이미지를 넣으면 실제 표지 색과 가장 가까운 색을 COVER_EDGE_COLORS 중에서 골라주는 유틸
+const hexToRgb = (hex) => { const h = hex.replace('#', ''); return [parseInt(h.substr(0, 2), 16), parseInt(h.substr(2, 2), 16), parseInt(h.substr(4, 2), 16)]; };
+const nearestCoverColor = ([r, g, b]) => {
+  let best = COVER_EDGE_COLORS[0], bestDist = Infinity;
+  for (const c of COVER_EDGE_COLORS) {
+    const [cr, cg, cb] = hexToRgb(c);
+    const d = (cr - r) ** 2 + (cg - g) ** 2 + (cb - b) ** 2;
+    if (d < bestDist) { bestDist = d; best = c; }
+  }
+  return best;
+};
+// 표지 이미지의 평균 색상을 뽑아서 COVER_EDGE_COLORS 중 가장 비슷한 색을 돌려줌 (다른 도메인 이미지라 캔버스 읽기가 막히면 null)
+const pickCoverColorFromImage = (url) => new Promise((resolve) => {
+  if (!url || typeof document === 'undefined') { resolve(null); return; }
+  try {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const w = (canvas.width = 24), h = (canvas.height = 24);
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        const data = ctx.getImageData(0, 0, w, h).data;
+        let r = 0, g = 0, b = 0, n = 0;
+        for (let i = 0; i < data.length; i += 4) { r += data[i]; g += data[i + 1]; b += data[i + 2]; n++; }
+        resolve(n ? nearestCoverColor([Math.round(r / n), Math.round(g / n), Math.round(b / n)]) : null);
+      } catch (e) { resolve(null); } // 이미지 서버가 CORS를 막아 캔버스를 못 읽는 경우 - 조용히 건너뜀
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  } catch (e) { resolve(null); }
+});
 // 책마다 미세하게 다른 종이 톤 (같은 크림색이라도 책마다 살짝 다르게)
 const PAGE_TONES = [
   { light: '#F3EBD8', dark: '#E7DCC1' },
@@ -1380,17 +1413,21 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [towerBookSearchOpen, setTowerBookSearchOpen] = useState(false);
   const [towerCoverUploading, setTowerCoverUploading] = useState(false);
   const [viewingTowerId, setViewingTowerId] = useState(null); // 책탑 항목 클릭 시 책 정보 조회용
-  const [towerOwnerNameInput, setTowerOwnerNameInput] = useState(''); // 간사만 입력 가능 - 등록자 이름을 다르게 표시
+  const [towerOwnerNameInput, setTowerOwnerNameInput] = useState(''); // 간사만 입력 가능 - 등록자 이름을 수기로 다르게 표시
   const [editingTowerOwnerName, setEditingTowerOwnerName] = useState('');
+  const [towerOwnerMemberId, setTowerOwnerMemberId] = useState(''); // 모임 명단에서 등록자를 고르면 그 회원 책장에 실제로 등록됨
+  const [editingTowerOwnerMemberId, setEditingTowerOwnerMemberId] = useState('');
   const addManualTowerEntry = async () => {
     if (!currentMember || !towerTitleInput.trim()) return;
+    const pickedOwner = isSecretary && towerOwnerMemberId ? members.find((m) => m.id === towerOwnerMemberId) : null;
     await insertRow('book_tower_entries', {
-      id: uid('bt'), member_id: currentMember.id, book_title: towerTitleInput.trim(),
+      id: uid('bt'), member_id: pickedOwner ? pickedOwner.id : currentMember.id, book_title: towerTitleInput.trim(),
       start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null,
       color: towerColorInput, source_share_id: null, created_at: new Date().toISOString(), sort_order: Date.now(),
       is_public: isSecretary ? towerPublicInput : false, // 모임 책장 공개는 간사만 가능 - 그 외 회원 글은 항상 내 책장에만
       event_tag: isSecretary ? (towerTagInput.trim() || null) : null, // 행사/토론회 태그는 간사만 입력 가능
-      owner_name_override: isSecretary ? (towerOwnerNameInput.trim() || null) : null, // 등록자 이름 표시는 간사만 지정 가능
+      // 등록자 표시는 간사만 지정 가능 - 명단에서 고르면 그 회원 책장에 실제로 등록되고(member_id), 수기 입력이면 이름만 다르게 표시(owner_name_override)
+      owner_name_override: isSecretary && !pickedOwner ? (towerOwnerNameInput.trim() || null) : null,
       note: towerNoteInput.trim() || null, // 비고는 회원 누구나 입력 가능
       note_visible: towerNoteVisibleInput,
       read_status: towerStatusInput,
@@ -1398,17 +1435,19 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
       book_publisher: towerPublisherInput.trim() || null,
       cover_url: towerCoverUrlInput || null,
     });
-    setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setTowerPublicInput(true); setTowerTagInput(''); setTowerNoteInput(''); setTowerNoteVisibleInput(false); setTowerStatusInput('reading'); setTowerColorInput(COVER_EDGE_COLORS[Math.floor(Math.random() * COVER_EDGE_COLORS.length)]); setTowerAuthorInput(''); setTowerPublisherInput(''); setTowerCoverUrlInput(''); setTowerBookSearchOpen(false); setTowerOwnerNameInput(''); setShowTowerAdd(false);
+    setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setTowerPublicInput(true); setTowerTagInput(''); setTowerNoteInput(''); setTowerNoteVisibleInput(false); setTowerStatusInput('reading'); setTowerColorInput(COVER_EDGE_COLORS[Math.floor(Math.random() * COVER_EDGE_COLORS.length)]); setTowerAuthorInput(''); setTowerPublisherInput(''); setTowerCoverUrlInput(''); setTowerBookSearchOpen(false); setTowerOwnerNameInput(''); setTowerOwnerMemberId(''); setShowTowerAdd(false);
     await reload();
   };
   const saveTowerEdit = async (entry) => {
     try {
+      const pickedOwner = isSecretary && editingTowerOwnerMemberId ? members.find((m) => m.id === editingTowerOwnerMemberId) : null;
       const { data, error } = await supabase.from('book_tower_entries')
         .update({
           start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null,
           is_public: isSecretary ? editingTowerPublic : entry.is_public,
           event_tag: isSecretary ? (editingTowerTag.trim() || null) : entry.event_tag, // 행사/토론회 태그는 간사만 수정 가능
-          owner_name_override: isSecretary ? (editingTowerOwnerName.trim() || null) : entry.owner_name_override, // 등록자 이름 표시는 간사만 수정 가능
+          member_id: pickedOwner ? pickedOwner.id : entry.member_id, // 명단에서 등록자를 새로 고르면 그 회원 책장으로 옮겨감
+          owner_name_override: isSecretary ? (pickedOwner ? null : (editingTowerOwnerName.trim() || null)) : entry.owner_name_override, // 등록자 이름 표시는 간사만 수정 가능
           color: editingTowerColor,
           note: editingTowerNote.trim() || null,
           note_visible: editingTowerNoteVisible,
@@ -1436,6 +1475,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     setEditingTowerNoteVisible(!!entry.note_visible);
     setEditingTowerStatus(entry.read_status || (entry.finished_date ? 'done' : 'reading'));
     setEditingTowerOwnerName(entry.owner_name_override || '');
+    setEditingTowerOwnerMemberId(''); // 비워두면 현재 등록자 그대로 유지 - 명단에서 새로 고를 때만 옮겨감
   };
   const removeTowerEntry = async (entryId) => { await deleteRow('book_tower_entries', 'id', entryId); await reload(); };
   const towerSortKey = (t) => t.finished_date || t.start_date || t.created_at.slice(0, 10);
@@ -1497,8 +1537,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                   <img src={publicUrl('photos', p.file_path)} className="w-full h-full object-cover" alt="" loading="lazy" />
                   {p.caption && <div className="absolute top-1 right-1.5" style={{ color: 'rgba(255,255,255,0.85)', textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}><FileText size={12} /></div>}
                   <div className="absolute bottom-1 left-1.5 right-1.5 flex items-center justify-between gap-1 font-medium" style={{ color: 'rgba(255,255,255,0.75)', textShadow: '0 1px 2px rgba(0,0,0,0.6)', fontFamily: "'IBM Plex Mono', monospace" }}>
-                    <span className="shrink-0" style={{ fontSize: 'clamp(7px, 2.6vw, 10px)' }}>{p.created_at.slice(5, 10).replace('-', '.')}</span>
-                    <span className="truncate min-w-0" style={{ fontSize: 'clamp(7px, 2.6vw, 10px)' }}>{dispName(p.uploader_name, isLoggedIn)}</span>
+                    <span className="shrink-0" style={{ fontSize: 'clamp(6.5px, 2.4vw, 10px)' }}>{p.created_at.slice(2, 10).replace(/-/g, '.')}</span>
+                    <span className="truncate min-w-0" style={{ fontSize: 'clamp(6.5px, 2.4vw, 10px)' }}>{dispName(p.uploader_name, isLoggedIn)}</span>
                   </div>
                 </button>
               ))}
@@ -1817,7 +1857,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                     </div>
                   )}
                   {towerBookSearchResults.map((r, i) => (
-                    <button key={i} onClick={() => { setTowerTitleInput(r.title); setTowerAuthorInput(r.author); setTowerPublisherInput(r.publisher); setTowerCoverUrlInput(r.cover); setTowerBookSearchOpen(false); }} className="w-full flex items-center gap-2.5 px-2.5 py-2 text-left" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
+                    <button key={i} onClick={() => { setTowerTitleInput(r.title); setTowerAuthorInput(r.author); setTowerPublisherInput(r.publisher); setTowerCoverUrlInput(r.cover); setTowerBookSearchOpen(false); if (r.cover) pickCoverColorFromImage(r.cover).then((c) => { if (c) setTowerColorInput(c); }); }} className="w-full flex items-center gap-2.5 px-2.5 py-2 text-left" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
                       {r.cover ? <img src={r.cover} alt="" className="rounded shrink-0" style={{ width: 32, height: 46, objectFit: 'cover' }} /> : <div className="rounded shrink-0" style={{ width: 32, height: 46, background: NEUTRAL_BG }} />}
                       <div className="min-w-0">
                         <div className="text-xs font-semibold truncate" style={{ color: INK }}>{r.title}</div>
@@ -1828,7 +1868,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                   <label className={`w-full flex items-center gap-2.5 px-2.5 py-2 text-left cursor-pointer ${towerCoverUploading ? 'opacity-60' : ''}`} style={{ borderTop: `1px solid ${ROW_LINE}` }}>
                     <div className="rounded shrink-0 flex items-center justify-center" style={{ width: 32, height: 46, background: NEUTRAL_BG }}><ImageIcon size={14} style={{ color: NEUTRAL_TEXT }} /></div>
                     <span className="text-xs font-semibold" style={{ color: NEUTRAL_TEXT }}>{towerCoverUploading ? '업로드 중…' : '표지 수기 등록'}</span>
-                    <input type="file" accept="image/*" className="hidden" disabled={towerCoverUploading} onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; uploadCoverImage(f, (url) => { setTowerCoverUrlInput(url); setTowerBookSearchOpen(false); }, setTowerCoverUploading); }} />
+                    <input type="file" accept="image/*" className="hidden" disabled={towerCoverUploading} onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; uploadCoverImage(f, (url) => { setTowerCoverUrlInput(url); setTowerBookSearchOpen(false); if (url) pickCoverColorFromImage(url).then((c) => { if (c) setTowerColorInput(c); }); }, setTowerCoverUploading); }} />
                   </label>
                 </div>
               )}
@@ -1845,15 +1885,20 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
               <input value={towerPublisherInput} onChange={(e) => setTowerPublisherInput(e.target.value)} placeholder="출판사 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>읽기 시작일</div><input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
-              <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>다 읽은 날 (선택)</div><input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+              <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>시작일</div><input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+              <div>
+                <div className="text-[10px] mb-1" style={{ color: MUTE }}>완료일 (선택)</div>
+                <div className="flex gap-1 items-center">
+                  <input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none flex-1 min-w-0" style={inputStyle} />
+                  {towerFinishedInput && (
+                    <button onClick={() => setTowerFinishedInput('')} className="shrink-0 p-1.5" aria-label="완료일 지우기"><X size={13} style={{ color: MUTE }} /></button>
+                  )}
+                </div>
+              </div>
             </div>
             <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지 (선택)</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
             {isSecretary && (
               <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그 (선택)</div><input value={towerTagInput} onChange={(e) => setTowerTagInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
-            )}
-            {isSecretary && (
-              <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>등록자 이름 (선택 · 비워두면 본인 이름)</div><input value={towerOwnerNameInput} onChange={(e) => setTowerOwnerNameInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
             )}
             <div>
               <div className="text-[10px] mb-1" style={{ color: MUTE }}>비고 (선택)</div>
@@ -1886,6 +1931,18 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
             </div>
             {!isSecretary && (
               <p className="text-[11px]" style={{ color: MUTE }}>* 모임 책장 공개는 간사만 가능해요. 이 책은 내 책장에만 기록돼요.</p>
+            )}
+            {isSecretary && (
+              <div>
+                <div className="text-[10px] mb-1" style={{ color: MUTE }}>등록자 (선택)</div>
+                <select value={towerOwnerMemberId} onChange={(e) => { setTowerOwnerMemberId(e.target.value); if (e.target.value) setTowerOwnerNameInput(''); }} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle}>
+                  <option value="">직접 입력 / 본인</option>
+                  {members.map((m) => <option key={m.id} value={m.id}>{m.name} - 명단에서 선택 (그 회원 책장에 등록돼요)</option>)}
+                </select>
+                {!towerOwnerMemberId && (
+                  <input value={towerOwnerNameInput} onChange={(e) => setTowerOwnerNameInput(e.target.value)} placeholder="등록자 이름 수기 입력 (비워두면 본인 이름으로 표시)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none mt-1.5" style={inputStyle} />
+                )}
+              </div>
             )}
             <PrimaryBtn onClick={addManualTowerEntry} icon={Plus}>추가</PrimaryBtn>
           </div>
@@ -1931,13 +1988,13 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                       </div>
                       <div className="text-sm font-bold truncate" style={{ color: INK }}>{t.book_title}</div>
                       <div className="grid grid-cols-2 gap-2">
-                        <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>읽기 시작일</div><input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} aria-label="읽기 시작일" /></div>
+                        <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>시작일</div><input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} aria-label="시작일" /></div>
                         <div>
-                          <div className="text-[10px] mb-1" style={{ color: MUTE }}>다 읽은 날</div>
+                          <div className="text-[10px] mb-1" style={{ color: MUTE }}>완료일</div>
                           <div className="flex gap-1 items-center">
-                            <input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none flex-1 min-w-0" style={inputStyle} aria-label="다 읽은 날" />
+                            <input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none flex-1 min-w-0" style={inputStyle} aria-label="완료일" />
                             {towerFinishedInput && (
-                              <button onClick={() => setTowerFinishedInput('')} className="shrink-0 p-1.5" aria-label="다 읽은 날 지우기"><X size={13} style={{ color: MUTE }} /></button>
+                              <button onClick={() => setTowerFinishedInput('')} className="shrink-0 p-1.5" aria-label="완료일 지우기"><X size={13} style={{ color: MUTE }} /></button>
                             )}
                           </div>
                         </div>
@@ -1945,9 +2002,6 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                       <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
                       {isSecretary && (
                         <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그</div><input value={editingTowerTag} onChange={(e) => setEditingTowerTag(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
-                      )}
-                      {isSecretary && (
-                        <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>등록자 이름 (비워두면 본인 이름)</div><input value={editingTowerOwnerName} onChange={(e) => setEditingTowerOwnerName(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
                       )}
                       <div>
                         <div className="text-[10px] mb-1" style={{ color: MUTE }}>비고</div>
@@ -1978,6 +2032,18 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                           ))}
                         </div>
                       </div>
+                      {isSecretary && (
+                        <div>
+                          <div className="text-[10px] mb-1" style={{ color: MUTE }}>등록자</div>
+                          <select value={editingTowerOwnerMemberId} onChange={(e) => { setEditingTowerOwnerMemberId(e.target.value); if (e.target.value) setEditingTowerOwnerName(''); }} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle}>
+                            <option value="">그대로 유지 / 직접 입력</option>
+                            {members.map((m) => <option key={m.id} value={m.id}>{m.name} - 명단에서 선택 (그 회원 책장으로 옮겨져요)</option>)}
+                          </select>
+                          {!editingTowerOwnerMemberId && (
+                            <input value={editingTowerOwnerName} onChange={(e) => setEditingTowerOwnerName(e.target.value)} placeholder="등록자 이름 수기 입력 (비워두면 본인 이름)" className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none mt-1.5" style={inputStyle} />
+                          )}
+                        </div>
+                      )}
                       <div className="flex gap-1.5 items-center pt-1">
                         <button onClick={() => saveTowerEdit(t)} className="flex-1 text-xs rounded-full py-2 font-semibold" style={{ background: '#1E1C16', color: '#F2EEE3' }}>저장</button>
                         <button onClick={() => setEditingTowerId(null)} className="flex-1 text-xs rounded-full py-2 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>취소</button>
@@ -2093,8 +2159,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
               <div className="space-y-1.5 text-xs" style={{ color: NEUTRAL_TEXT }}>
                 {ownerText && <div className="flex justify-between"><span style={{ color: MUTE }}>등록자</span><span>{ownerText}</span></div>}
                 {t.event_tag && <div className="flex justify-between"><span style={{ color: MUTE }}>행사/토론회</span><span>{t.event_tag}</span></div>}
-                {t.start_date && <div className="flex justify-between"><span style={{ color: MUTE }}>읽기 시작일</span><span>{fmtDate(t.start_date)}</span></div>}
-                {t.finished_date && <div className="flex justify-between"><span style={{ color: MUTE }}>다 읽은 날</span><span>{fmtDate(t.finished_date)}</span></div>}
+                {t.start_date && <div className="flex justify-between"><span style={{ color: MUTE }}>시작일</span><span>{fmtDate(t.start_date)}</span></div>}
+                {t.finished_date && <div className="flex justify-between"><span style={{ color: MUTE }}>완료일</span><span>{fmtDate(t.finished_date)}</span></div>}
                 {t.current_page != null && <div className="flex justify-between"><span style={{ color: MUTE }}>현재 페이지</span><span>{t.current_page}쪽</span></div>}
                 {t.note_visible && t.note && <div className="flex justify-between"><span style={{ color: MUTE }}>비고</span><span>{t.note}</span></div>}
               </div>
