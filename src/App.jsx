@@ -644,8 +644,9 @@ export default function App() {
               ) : (
                 <button onClick={() => (currentMember ? logout() : openLogin())}
                   className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold"
+                  aria-label={currentMember ? '로그아웃' : '로그인'}
                   style={{ background: currentMember ? BTN_BG : NEUTRAL_BG, color: currentMember ? BTN_TEXT : NEUTRAL_TEXT }}>
-                  {currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} />{currentMember.name}님 · 로그아웃</> : <>로그인</>}
+                  {currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} />{currentMember.name}님</> : <>로그인</>}
                 </button>
               )}
             </div>
@@ -786,14 +787,19 @@ export default function App() {
           </div>
         )}
 
-        <div className="flex gap-1.5 mb-4 overflow-x-auto pb-1">
+        {/* 카테고리 탭 5개를 항상 한 줄에 고정 — 화면이 넓으면 지금 크기 그대로, 좁아지면 아이콘 간격·글자 크기가 자동으로 줄어들어 가로 스크롤 없이 항상 한 화면에 다 보임 */}
+        <div className="flex mb-4" style={{ gap: 'clamp(3px, 1.6vw, 6px)' }}>
           {TABS.map((t) => {
             const Icon = t.icon; const active = tab === t.key;
             return (
               <button key={t.key} onClick={() => setTab(t.key)}
-                className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold whitespace-nowrap shrink-0"
-                style={{ background: active ? BTN_BG : CARD_BG, color: active ? BTN_TEXT : MUTE, border: `1px solid ${active ? BTN_BG : LINE}` }}>
-                <Icon size={15} />{t.label}
+                className="flex-1 min-w-0 flex items-center justify-center rounded-full font-semibold"
+                style={{
+                  background: active ? BTN_BG : CARD_BG, color: active ? BTN_TEXT : MUTE, border: `1px solid ${active ? BTN_BG : LINE}`,
+                  gap: 'clamp(2px, 2vw, 6px)', padding: 'clamp(6px, 2.4vw, 8px) clamp(2px, 4vw, 14px)', fontSize: 'clamp(10px, 4vw, 14px)',
+                }}>
+                <Icon size={15} className="shrink-0" />
+                <span className="truncate">{t.label}</span>
               </button>
             );
           })}
@@ -2293,7 +2299,8 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   const sundayOf = (dateStr) => { const d = new Date(`${dateStr}T00:00:00`); d.setDate(d.getDate() - d.getDay()); return d; };
   const firstOfMonthDate = new Date(`${ms}-01T00:00:00`);
   const firstFullWeekSunday = firstOfMonthDate.getDay() === 0 ? firstOfMonthDate : new Date(firstOfMonthDate.getFullYear(), firstOfMonthDate.getMonth(), firstOfMonthDate.getDate() + (7 - firstOfMonthDate.getDay()));
-  const weekOfMonth = (dateStr) => Math.max(1, Math.floor(Math.round((sundayOf(dateStr) - firstFullWeekSunday) / 86400000) / 7) + 1);
+  // 이번 달의 첫 완전한 주(일~토)를 1주차로 삼되, 그보다 앞선(=이전 달에서 이어붙여 보여주기만 하는) 주는 0 이하로 나와 별도 표기함 — 그래야 "1주차"가 두 번 겹쳐 보이지 않음
+  const weekOfMonthRaw = (dateStr) => Math.floor(Math.round((sundayOf(dateStr) - firstFullWeekSunday) / 86400000) / 7) + 1;
   // 주차 헤더 라벨("3주(8.17-20)")과, 그 아래 도트 행이 세로로 정확히 정렬되도록 두 행이 공유할 컬럼 폭을 미리 계산
   const weekLabels = weekChunkRanges.map(([start, end]) => {
     const chunk = monthDayList.slice(start, end);
@@ -2302,7 +2309,10 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     const month2 = parseInt(d2.slice(5, 7), 10), day2 = parseInt(d2.slice(8, 10), 10);
     const range = month1 !== month2 ? `${month1}.${day1}-${month2}.${day2}` : (day1 === day2 ? `${month1}.${day1}` : `${month1}.${day1}-${day2}`);
     const repDate = chunk.find((d) => d.inCurrentMonth)?.date || d1; // 주차 번호는 실제 이번 달에 속한 날짜 기준으로 계산
-    return { main: `${weekOfMonth(repDate)}주차`, sub: `(${range})` };
+    const rawWeek = weekOfMonthRaw(repDate);
+    // 이번 달 첫 완전한 주보다 앞서 이전 달에서 끌어온 주는 "N주차"가 아니라 "M월 마지막주"로 표기 (진짜 1주차와 번호가 겹치지 않도록)
+    const main = rawWeek >= 1 ? `${rawWeek}주차` : `${month1}월 마지막주`;
+    return { main, sub: `(${range})` };
   });
   const weekColWidths = weekLabels.map(({ main, sub }, wi) => {
     const [start, end] = weekChunkRanges[wi];
