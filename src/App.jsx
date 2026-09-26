@@ -57,6 +57,7 @@ const READ_STATUSES = [
 ];
 const readStatusMeta = (key) => READ_STATUSES.find((s) => s.key === key) || READ_STATUSES[1];
 const SHOW_PAGE_IN_GROUP = false;
+const RIBBON_W = 28; // 책탑 상태 리본 가로폭(px) - 리본 안에 상태 글자(완독 등)를 흰색으로 넣을 수 있는 폭
 const PAGE_INSET = 5; // 책장: 표지보다 페이지 단면이 좌우로 들어간 깊이(px)
 const BOOK_TITLE_FONT = "'Gowun Batang', 'Nanum Myeongjo', serif"; // 책 제목용 한글 세리프 - 붓결이 살아있는 서체
 // 책 제목용 한글 명조 폰트 1회 로드
@@ -1664,8 +1665,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         const isOwner = currentMember?.id === ownerId;
         const canEditPost = currentMember?.id === viewingShare.posted_by || canManage;
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setViewingShareId(null)}>
-            <div className="w-full max-w-sm rounded-2xl border p-5" style={{ background: CARD_BG, borderColor: LINE, height: '90vh', maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-start justify-center" style={{ background: 'rgba(0,0,0,0.7)', padding: 8 }} onClick={() => setViewingShareId(null)}>
+            <div className="w-full max-w-sm rounded-2xl border p-4" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 'calc(100dvh - 16px)', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: viewingShare.kind === 'offer' ? SHARE_OFFER_BG : SHARE_REQUEST_BG, color: viewingShare.kind === 'offer' ? SHARE_OFFER_COLOR : SHARE_REQUEST_COLOR }}>{viewingShare.kind === 'offer' ? '빌려줄까요?' : '빌려주실 수 있나요?'}</span>
                 <div className="flex items-center gap-3.5">
@@ -1732,7 +1733,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 <>
                   {coverCache[viewingShare.id] && coverCache[viewingShare.id] !== 'none' && coverCache[viewingShare.id] !== 'loading' && (
                     <div className="flex justify-center mb-3">
-                      <img src={coverCache[viewingShare.id]} alt="" className="rounded-lg shadow-md" style={{ height: 408, width: 'auto', maxWidth: '100%' }} />
+                      <img src={coverCache[viewingShare.id]} alt="" className="rounded-lg shadow-md" style={{ height: 'min(408px, 52dvh)', width: 'auto', maxWidth: '100%', objectFit: 'contain' }} />
                     </div>
                   )}
                   {coverCache[viewingShare.id] === 'none' && canEditPost && (
@@ -1753,7 +1754,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                   )}
                   {coverCache[viewingShare.id] === 'loading' && (
                     <div className="flex justify-center mb-3">
-                      <div className="rounded-lg animate-pulse" style={{ height: 408, width: 278, background: NEUTRAL_BG }} />
+                      <div className="rounded-lg animate-pulse" style={{ height: 'min(408px, 52dvh)', aspectRatio: '278 / 408', background: NEUTRAL_BG }} />
                     </div>
                   )}
                   <div className="text-base font-semibold mb-2" style={{ color: INK }}>{viewingShare.book_title}</div>
@@ -1957,7 +1958,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           const list = towerView === 'mine' ? myTower : groupTower;
           if (list.length === 0) return <p className="text-xs text-center py-6" style={{ color: MUTE }}>아직 쌓인 책이 없어요.</p>;
           return (
-            <div className="flex flex-col-reverse gap-1.5 max-h-[28rem] overflow-y-auto pr-1">
+            // 책 정보 수정 중에는 목록 높이 제한을 풀어서, 수정창이 목록 안에서 스크롤되지 않고 전체 크기로 펼쳐지게 함
+            <div className={`flex flex-col-reverse gap-1.5 pr-1 ${list.some((x) => x.id === editingTowerId) ? '' : 'max-h-[28rem] overflow-y-auto'}`}>
               {list.map((t, idx) => {
                 const owner = towerView === 'group' ? members.find((m) => m.id === t.member_id) : null;
                 const isMine = towerView === 'mine' && currentMember;
@@ -2072,8 +2074,19 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                         background: 'linear-gradient(90deg, rgba(0,0,0,0.28) 0px, rgba(0,0,0,0.08) 4px, rgba(0,0,0,0) 9px, rgba(0,0,0,0) calc(100% - 9px), rgba(0,0,0,0.08) calc(100% - 4px), rgba(0,0,0,0.28) 100%)',
                         boxShadow: 'inset 1px 0 0 rgba(255,255,255,0.25), inset -1px 0 0 rgba(255,255,255,0.25)' }} />
                       {/* 오른쪽 끝 - 상태 리본 (완독=버건디 / 읽는 중=포레스트그린 / 잠시 멈춤=카멜 / 읽을 예정=차콜) */}
-                      <div className="absolute pointer-events-none" style={{ top: -1, right: 12, width: 16, height: Math.round(barH * 0.62), background: `linear-gradient(90deg, ${ribbonStatusColor} 0%, ${ribbonStatusColor}cc 100%)`, clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 4px), 0 100%)', boxShadow: '1px 1px 2px rgba(0,0,0,0.3)' }} />
-                      <div className="relative h-full flex items-center justify-between gap-1.5" style={{ paddingLeft: 18, paddingRight: 38 }}>
+                      {(() => {
+                        // 리본 안에 상태 글자를 흰색으로 표기 - 두 단어짜리(읽는 중·잠시 멈춤·읽을 예정)는 두 줄로 나눠서 리본 폭을 일정하게 유지
+                        const ribbonLines = ribbonLabel.split(' ');
+                        const ribbonH = Math.max(Math.round(barH * 0.7), ribbonLines.length > 1 ? 33 : 24);
+                        return (
+                          <div className="absolute pointer-events-none flex flex-col items-center" style={{ top: -1, right: 12, width: RIBBON_W, height: ribbonH, paddingTop: 4, background: `linear-gradient(90deg, ${ribbonStatusColor} 0%, ${ribbonStatusColor}dd 100%)`, clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 5px), 0 100%)', boxShadow: '1px 1px 2px rgba(0,0,0,0.3)' }}>
+                            {ribbonLines.map((w, i) => (
+                              <span key={i} style={{ fontSize: 9, lineHeight: '10.5px', fontWeight: 700, color: '#FFFFFF', letterSpacing: '-0.2px', whiteSpace: 'nowrap', textShadow: '0 1px 1px rgba(0,0,0,0.35)' }}>{w}</span>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                      <div className="relative h-full flex items-center justify-between gap-1.5" style={{ paddingLeft: 18, paddingRight: 12 + RIBBON_W + 6 }}>
                         {/* 왼쪽 - 캡션(행사 태그·비고) 위, 제목·등록자 아래로 한 덩어리 */}
                         <div className="min-w-0 flex flex-col justify-center" style={{ gap: 2 }}>
                           {(() => {
@@ -2093,9 +2106,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
-                          {/* 상태 - 읽는 중이면 쪽수를 바로 아래 줄에, 완독이면 한 줄만. 글자색은 리본색이 아니라 제목과 동일한 잉크색 */}
+                          {/* 상태 글자는 리본 안에 흰색으로 표기 - 여기엔 읽는 중·잠시 멈춤일 때 쪽수만 표시 */}
                           <div className="flex flex-col items-end" style={{ gap: 1 }}>
-                            <span style={{ fontSize: 10, lineHeight: '11px', fontWeight: 700, color: '#2A2015', letterSpacing: '0.1px' }}>{ribbonLabel}</span>
                             {showPage && (
                               <span style={{ fontSize: 9, lineHeight: '10px', color: '#8A6A3F', fontWeight: 600, fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: 'tabular-nums' }} aria-label={`현재 ${t.current_page}페이지`}>{t.current_page}쪽</span>
                             )}
@@ -2134,26 +2146,26 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         const statusMeta = readStatusMeta(statusKey);
         const ownerText = t.owner_name_override != null ? t.owner_name_override : (owner ? dispName(owner.name, isLoggedIn) : '');
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setViewingTowerId(null)}>
-            <div className="w-full max-w-sm rounded-2xl border p-5" style={{ background: CARD_BG, borderColor: LINE, maxHeight: '85vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-start justify-center" style={{ background: 'rgba(0,0,0,0.7)', padding: 8 }} onClick={() => setViewingTowerId(null)}>
+            <div className="w-full max-w-sm rounded-2xl border p-4" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 'calc(100dvh - 16px)', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: statusMeta.color, color: '#F2EEE3' }}>{statusMeta.label}</span>
                 <button onClick={() => setViewingTowerId(null)} className="p-1" aria-label="닫기"><X size={16} style={{ color: MUTE }} /></button>
               </div>
               {t.cover_url ? (
                 <div className="flex justify-center mb-3">
-                  <img src={t.cover_url} alt="" className="rounded-lg shadow-md" style={{ height: 200, width: 'auto', maxWidth: '100%', objectFit: 'cover' }} />
+                  <img src={t.cover_url} alt="" className="rounded-lg shadow-md" style={{ height: 'min(408px, 52dvh)', width: 'auto', maxWidth: '100%', objectFit: 'contain' }} />
                 </div>
               ) : (
                 <div className="flex justify-center mb-3">
-                  <div className="rounded-lg flex items-center justify-center" style={{ height: 200, width: 140, background: t.color || NEUTRAL_BG }}>
-                    <BookOpen size={28} style={{ color: 'rgba(255,255,255,0.6)' }} />
+                  <div className="rounded-lg flex items-center justify-center shadow-md" style={{ height: 'min(408px, 52dvh)', aspectRatio: '278 / 408', background: t.color || NEUTRAL_BG }}>
+                    <BookOpen size={36} style={{ color: 'rgba(255,255,255,0.6)' }} />
                   </div>
                 </div>
               )}
-              <div className="text-base font-semibold mb-1 text-center" style={{ color: INK }}>{t.book_title}</div>
+              <div className="text-base font-semibold mb-1" style={{ color: INK }}>{t.book_title}</div>
               {(t.book_author || t.book_publisher) && (
-                <div className="text-xs text-center mb-3" style={{ color: MUTE }}>{[t.book_author, t.book_publisher].filter(Boolean).join(' · ')}</div>
+                <div className="text-xs mb-3" style={{ color: MUTE }}>{[t.book_author, t.book_publisher].filter(Boolean).join(' · ')}</div>
               )}
               <div className="space-y-1.5 text-xs" style={{ color: NEUTRAL_TEXT }}>
                 {ownerText && <div className="flex justify-between"><span style={{ color: MUTE }}>등록자</span><span>{ownerText}</span></div>}
