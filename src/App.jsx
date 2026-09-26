@@ -505,7 +505,7 @@ export default function App() {
     { key: 'qr', label: '출석', icon: QrCode },
     { key: 'dashboard', label: '현황', icon: BarChart3 },
     { key: 'gallery', label: '서재', icon: Library },
-    { key: 'users', label: '멤버', icon: Users },
+    { key: 'users', label: '인원', icon: Users },
   ];
 
   // 오늘 생일인 멤버가 있으면 00시~24시 하루 종일 화면 전체에 꽃가루 효과
@@ -941,20 +941,22 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
             <PartyPopper size={18} style={{ color: '#EFC94C' }} />
           </div>
           <p className="text-sm mb-1" style={{ color: MUTE }}>생일 축하드려요! 행복한 하루 되세요 🎂</p>
-          <div className="flex justify-center mt-3">
-            <div className="relative" style={{ width: 176, height: 'auto', animation: 'photoRevealIn 1.3s ease-out both' }}>
-              {/* 은은하게 숨쉬는 글로우 - 넓게 퍼지는 층 + 밝은 중심층, 두 겹 */}
-              <div style={{ position: 'absolute', inset: -34, borderRadius: 50, background: 'radial-gradient(circle, rgba(255,224,120,0.55) 0%, rgba(255,224,120,0) 75%)', animation: 'photoGlowPulse 2.6s ease-in-out infinite', zIndex: -1 }} />
-              <div style={{ position: 'absolute', inset: -14, borderRadius: 30, background: 'radial-gradient(circle, rgba(255,244,200,0.85) 0%, rgba(255,213,74,0.4) 45%, rgba(255,213,74,0) 75%)', animation: 'photoGlowPulse 2.6s ease-in-out 0.1s infinite', zIndex: -1 }} />
-              <img src={BALLOON_REVEAL_PHOTOS[birthdayFolksToday[0]?.name] || BALLOON_REVEAL_PHOTO_DEFAULT} alt="" style={{ width: 176, height: 'auto', borderRadius: 20, display: 'block', border: '3px solid rgba(255,255,255,0.85)', boxShadow: '0 4px 14px rgba(0,0,0,0.45)' }} />
-              {/* 주변을 도는 작은 반짝임 */}
-              {[
-                { x: -14, y: -8, d: 0 }, { x: 190, y: 4, d: 0.4 }, { x: 200, y: 130, d: 0.9 },
-                { x: 176, y: 250, d: 0.2 }, { x: -10, y: 240, d: 0.7 }, { x: -18, y: 120, d: 1.2 },
-              ].map((s, i) => (
-                <span key={i} style={{ position: 'absolute', left: s.x, top: s.y, fontSize: 16, color: '#FFF4C8', textShadow: '0 0 10px rgba(255,224,120,1), 0 0 18px rgba(255,213,74,0.7)', animation: `sparkleTwinkle 1.8s ease-in-out ${s.d}s infinite` }}>✦</span>
-              ))}
-            </div>
+          <div className="flex flex-wrap justify-center gap-5 mt-3">
+            {birthdayFolksToday.map((folk) => (
+              <div key={folk.id} className="relative" style={{ width: 176, height: 'auto', animation: 'photoRevealIn 1.3s ease-out both' }}>
+                {/* 은은하게 숨쉬는 글로우 - 넓게 퍼지는 층 + 밝은 중심층, 두 겹 */}
+                <div style={{ position: 'absolute', inset: -34, borderRadius: 50, background: 'radial-gradient(circle, rgba(255,224,120,0.55) 0%, rgba(255,224,120,0) 75%)', animation: 'photoGlowPulse 2.6s ease-in-out infinite', zIndex: -1 }} />
+                <div style={{ position: 'absolute', inset: -14, borderRadius: 30, background: 'radial-gradient(circle, rgba(255,244,200,0.85) 0%, rgba(255,213,74,0.4) 45%, rgba(255,213,74,0) 75%)', animation: 'photoGlowPulse 2.6s ease-in-out 0.1s infinite', zIndex: -1 }} />
+                <img src={BALLOON_REVEAL_PHOTOS[folk.name] || BALLOON_REVEAL_PHOTO_DEFAULT} alt="" style={{ width: 176, height: 'auto', borderRadius: 20, display: 'block', border: '3px solid rgba(255,255,255,0.85)', boxShadow: '0 4px 14px rgba(0,0,0,0.45)' }} />
+                {/* 주변을 도는 작은 반짝임 */}
+                {[
+                  { x: -14, y: -8, d: 0 }, { x: 190, y: 4, d: 0.4 }, { x: 200, y: 130, d: 0.9 },
+                  { x: 176, y: 250, d: 0.2 }, { x: -10, y: 240, d: 0.7 }, { x: -18, y: 120, d: 1.2 },
+                ].map((s, i) => (
+                  <span key={i} style={{ position: 'absolute', left: s.x, top: s.y, fontSize: 16, color: '#FFF4C8', textShadow: '0 0 10px rgba(255,224,120,1), 0 0 18px rgba(255,213,74,0.7)', animation: `sparkleTwinkle 1.8s ease-in-out ${s.d}s infinite` }}>✦</span>
+                ))}
+              </div>
+            ))}
           </div>
         </Card>
       )}
@@ -1334,6 +1336,10 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [editingTowerPublic, setEditingTowerPublic] = useState(true);
   const [towerTagInput, setTowerTagInput] = useState('');
   const [editingTowerTag, setEditingTowerTag] = useState('');
+  const [towerNoteInput, setTowerNoteInput] = useState(''); // 비고 - 전체 회원 공통으로 입력 가능
+  const [towerNoteVisibleInput, setTowerNoteVisibleInput] = useState(false); // 체크하면 책탑 UI에도 비고가 보임(기본은 속성값에만)
+  const [editingTowerNote, setEditingTowerNote] = useState('');
+  const [editingTowerNoteVisible, setEditingTowerNoteVisible] = useState(false);
   const [towerColorInput, setTowerColorInput] = useState(COVER_EDGE_COLORS[0]); // 내 책장에 등록할 책 표지 색상
   const [editingTowerColor, setEditingTowerColor] = useState(COVER_EDGE_COLORS[0]); // 수정 시 표지 색상
   const addManualTowerEntry = async () => {
@@ -1343,10 +1349,12 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
       start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null,
       color: towerColorInput, source_share_id: null, created_at: new Date().toISOString(), sort_order: Date.now(),
       is_public: isSecretary ? towerPublicInput : false, // 모임 책장 공개는 간사만 가능 - 그 외 회원 글은 항상 내 책장에만
-      event_tag: towerTagInput.trim() || null,
+      event_tag: isSecretary ? (towerTagInput.trim() || null) : null, // 행사/토론회 태그는 간사만 입력 가능
       owner_name_override: null,
+      note: towerNoteInput.trim() || null, // 비고는 회원 누구나 입력 가능
+      note_visible: towerNoteVisibleInput,
     });
-    setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setTowerPublicInput(true); setTowerTagInput(''); setTowerColorInput(COVER_EDGE_COLORS[Math.floor(Math.random() * COVER_EDGE_COLORS.length)]); setShowTowerAdd(false);
+    setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setTowerPublicInput(true); setTowerTagInput(''); setTowerNoteInput(''); setTowerNoteVisibleInput(false); setTowerColorInput(COVER_EDGE_COLORS[Math.floor(Math.random() * COVER_EDGE_COLORS.length)]); setShowTowerAdd(false);
     await reload();
   };
   const saveTowerEdit = async (entry) => {
@@ -1355,9 +1363,11 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         .update({
           start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null,
           is_public: isSecretary ? editingTowerPublic : entry.is_public,
-          event_tag: editingTowerTag.trim() || null,
+          event_tag: isSecretary ? (editingTowerTag.trim() || null) : entry.event_tag, // 행사/토론회 태그는 간사만 수정 가능
           owner_name_override: entry.owner_name_override,
           color: editingTowerColor,
+          note: editingTowerNote.trim() || null,
+          note_visible: editingTowerNoteVisible,
         })
         .eq('id', entry.id)
         .select();
@@ -1377,6 +1387,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     setEditingTowerPublic(entry.is_public !== false);
     setEditingTowerTag(entry.event_tag || '');
     setEditingTowerColor(entry.color || COVER_EDGE_COLORS[0]);
+    setEditingTowerNote(entry.note || '');
+    setEditingTowerNoteVisible(!!entry.note_visible);
   };
   const removeTowerEntry = async (entryId) => { await deleteRow('book_tower_entries', 'id', entryId); await reload(); };
   const towerSortKey = (t) => t.finished_date || t.start_date || t.created_at.slice(0, 10);
@@ -1741,7 +1753,17 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
               <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>다 읽은 날 (선택)</div><input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
             </div>
             <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지 (선택)</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
-            <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그 (선택)</div><input value={towerTagInput} onChange={(e) => setTowerTagInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+            {isSecretary && (
+              <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그 (선택)</div><input value={towerTagInput} onChange={(e) => setTowerTagInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+            )}
+            <div>
+              <div className="text-[10px] mb-1" style={{ color: MUTE }}>비고 (선택)</div>
+              <input value={towerNoteInput} onChange={(e) => setTowerNoteInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
+              <label className="flex items-center gap-1.5 mt-1.5 text-[11px]" style={{ color: MUTE }}>
+                <input type="checkbox" checked={towerNoteVisibleInput} onChange={(e) => setTowerNoteVisibleInput(e.target.checked)} />
+                책탑 목록에도 비고 보이기 (체크 안 하면 속성값에만 저장돼요)
+              </label>
+            </div>
             <div>
               <div className="text-[10px] mb-1" style={{ color: MUTE }}>표지 색상</div>
               <div className="flex flex-wrap gap-1.5">
@@ -1807,7 +1829,17 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                         </div>
                       </div>
                       <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
-                      <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그</div><input value={editingTowerTag} onChange={(e) => setEditingTowerTag(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
+                      {isSecretary && (
+                        <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그</div><input value={editingTowerTag} onChange={(e) => setEditingTowerTag(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
+                      )}
+                      <div>
+                        <div className="text-[10px] mb-1" style={{ color: MUTE }}>비고</div>
+                        <input value={editingTowerNote} onChange={(e) => setEditingTowerNote(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} />
+                        <label className="flex items-center gap-1.5 mt-1.5 text-[11px]" style={{ color: MUTE }}>
+                          <input type="checkbox" checked={editingTowerNoteVisible} onChange={(e) => setEditingTowerNoteVisible(e.target.checked)} />
+                          책탑 목록에도 비고 보이기
+                        </label>
+                      </div>
                       <div>
                         <div className="text-[10px] mb-1" style={{ color: MUTE }}>표지 색상</div>
                         <div className="flex flex-wrap gap-1.5">
@@ -1856,11 +1888,13 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                           <div className="min-w-0 flex items-baseline gap-1">
                             {t.is_public === false && <Lock size={10} style={{ color: '#6B5B3E', alignSelf: 'center' }} />}
                             <span className="truncate min-w-0" style={{ fontFamily: BOOK_TITLE_FONT, fontSize: 13.5, fontWeight: 700, lineHeight: '17px', color: '#2A2015', letterSpacing: '0px', textShadow: '0 1px 0 rgba(255,255,255,0.3)' }}>{t.book_title}</span>
-                            {(t.owner_name_override != null ? t.owner_name_override : (owner ? dispName(owner.name, isLoggedIn) : '')) && (
-                              <span className="text-[10px] truncate shrink-0" style={{ color: '#8A7355', fontWeight: 500 }}>
-                                {t.owner_name_override != null ? t.owner_name_override : (owner ? dispName(owner.name, isLoggedIn) : '')}
-                              </span>
-                            )}
+                            {(() => {
+                              const ownerText = t.owner_name_override != null ? t.owner_name_override : (owner ? dispName(owner.name, isLoggedIn) : '');
+                              const noteText = t.note_visible && t.note ? t.note : '';
+                              const combined = [ownerText, noteText].filter(Boolean).join(' · ');
+                              if (!combined) return null;
+                              return <span className="text-[10px] truncate min-w-0" style={{ color: '#8A7355', fontWeight: 500 }}>{combined}</span>;
+                            })()}
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
@@ -2832,7 +2866,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       );
                     })}
                   </div>
-                  <p className="text-[10px] mt-2" style={{ color: MUTE }}>※ 벌칙 확정된 주 금요일까지 수행 예정일을 지정하고, 실제로 수행한 뒤엔 "완료로 확정"을 눌러야 완료 처리돼요.</p>
+                  <p className="text-[10px] mt-2" style={{ color: MUTE }}>※ 벌칙 확정 주 금요일까지 수행 예정일 지정, 수행 후 "완료로 확정" 클릭 필수.</p>
                 </div>
               )}
             </Card>
@@ -3059,11 +3093,13 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
                       {m.birthday && isLoggedIn && <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtMD(mdOf(m.birthday))}</span>}
                       {m.has_pin && <Lock size={11} style={{ color: MUTE }} />}
                     </div>
-                    {isLoggedIn && (m.department || m.job_type || m.joined_at || m.book_genre || m.note) && (
-                      <div className="flex items-center gap-2 flex-wrap mt-1 text-[11px]" style={{ color: MUTE }}>
-                        {(m.department || m.job_type) && (
-                          <span>{m.department}{m.department && m.job_type ? `(${m.job_type})` : m.job_type}</span>
-                        )}
+                    {isLoggedIn && (m.department || m.job_type) && (
+                      <div className="truncate mt-1 text-[11px]" style={{ color: MUTE }}>
+                        {m.department}{m.department && m.job_type ? `(${m.job_type})` : m.job_type}
+                      </div>
+                    )}
+                    {isLoggedIn && (m.joined_at || m.book_genre || m.note) && (
+                      <div className="flex items-center gap-2 flex-wrap mt-0.5 text-[11px]" style={{ color: MUTE }}>
                         {m.joined_at && <span>가입 {fmtDate(m.joined_at)}</span>}
                         {m.book_genre && <span>{m.book_genre}</span>}
                         {m.note && <span className="italic">{m.note}</span>}
