@@ -67,6 +67,7 @@ const COVER_EDGE_COLORS = [
   '#8B5E34', '#3E6B69', '#8A6F45', '#472B1D', '#2E4A66', '#3A5A3A', '#3A3A38', '#663636',
   '#5C3A21', '#264653', '#6B2D3C', '#4B4423', '#3D2B56', '#1F4E4A', '#5A3E5C', '#704214',
   '#B8352E', '#1F5FA8', '#2F8F4E', '#D9A521', // 원색 계열 - 빨강·파랑·초록·노랑
+  '#3E2723', '#4E5B31', '#7A4B8C', '#8C5E2A', '#2C5F5F', '#6E1F1F', '#3A4E7A', '#5C6B23', '#8A3E5C', '#264A2E',
 ];
 // 책마다 미세하게 다른 종이 톤 (같은 크림색이라도 책마다 살짝 다르게)
 const PAGE_TONES = [
@@ -639,15 +640,15 @@ export default function App() {
                 </button>
               )}
               {deviceRegMemberId ? (
-                <span className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: BTN_BG, color: BTN_TEXT }} title="이 기기는 등록된 사용자 전용이에요. 다른 사람으로 전환할 수 없어요.">
-                  <Lock size={11} />{currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} />{currentMember.name}</> : '등록된 기기'}
+                <span className="flex items-center gap-1 rounded-full font-semibold min-w-0" style={{ background: BTN_BG, color: BTN_TEXT, padding: 'clamp(5px, 1.6vw, 6px) clamp(8px, 2.6vw, 12px)', fontSize: 'clamp(10px, 3vw, 12px)' }} title="이 기기는 등록된 사용자 전용이에요. 다른 사람으로 전환할 수 없어요.">
+                  <Lock size={11} className="shrink-0" />{currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} /><span className="truncate whitespace-nowrap">{currentMember.name}</span></> : <span className="truncate whitespace-nowrap">등록된 기기</span>}
                 </span>
               ) : (
                 <button onClick={() => (currentMember ? logout() : openLogin())}
-                  className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold"
+                  className="flex items-center gap-1 rounded-full font-semibold min-w-0"
                   aria-label={currentMember ? '로그아웃' : '로그인'}
-                  style={{ background: currentMember ? BTN_BG : NEUTRAL_BG, color: currentMember ? BTN_TEXT : NEUTRAL_TEXT }}>
-                  {currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} />{currentMember.name}</> : <>로그인</>}
+                  style={{ background: currentMember ? BTN_BG : NEUTRAL_BG, color: currentMember ? BTN_TEXT : NEUTRAL_TEXT, padding: 'clamp(5px, 1.6vw, 6px) clamp(8px, 2.6vw, 12px)', fontSize: 'clamp(10px, 3vw, 12px)' }}>
+                  {currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} /><span className="truncate whitespace-nowrap">{currentMember.name}</span></> : <>로그인</>}
                 </button>
               )}
             </div>
@@ -1419,7 +1420,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   return (
     <div className="space-y-4">
       <Card>
-        <div className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: INK }}><ImageIcon size={16} style={{ color: '#7FDCCF' }} /> 포토로그</div>
+        <div className="flex items-center gap-1.5 text-sm font-semibold mb-3" style={{ color: INK }}><ImageIcon size={16} style={{ color: '#7FDCCF' }} /> 사진첩</div>
         <div>
           <label className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 px-4 text-sm font-semibold cursor-pointer w-full"
             style={{ background: currentMember ? NEUTRAL_BG : ROW_LINE, color: currentMember ? NEUTRAL_TEXT : MUTE, opacity: uploading ? 0.6 : 1 }}>
@@ -1568,7 +1569,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         const isOwner = currentMember?.id === ownerId;
         const canEditPost = currentMember?.id === viewingShare.posted_by || canManage;
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setViewingShareId(null)}>
+          <div className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setViewingShareId(null)}>
             <div className="w-full max-w-sm rounded-2xl border p-5 my-auto" style={{ background: CARD_BG, borderColor: LINE }} onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: viewingShare.kind === 'offer' ? SHARE_OFFER_BG : SHARE_REQUEST_BG, color: viewingShare.kind === 'offer' ? SHARE_OFFER_COLOR : SHARE_REQUEST_COLOR }}>{viewingShare.kind === 'offer' ? '빌려줄까요?' : '빌려주실 수 있나요?'}</span>
@@ -1905,18 +1906,18 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                               <span style={{ fontSize: 9, lineHeight: '10px', color: '#8A6A3F', fontWeight: 600, fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: 'tabular-nums' }} aria-label={`현재 ${t.current_page}페이지`}>{t.current_page}쪽</span>
                             )}
                           </div>
-                          {canReorder && towerSettingsOpen && (
-                            <div className="flex flex-col rounded-lg overflow-hidden" style={{ gap: 2, background: NEUTRAL_BG }}>
-                              <button onClick={() => moveTowerItem(list, t, 'up')} disabled={!canMoveUp} className="flex items-center justify-center" style={{ width: 28, height: 18, opacity: canMoveUp ? 1 : 0.25 }} aria-label="위로 이동"><ChevronUp size={14} style={{ color: '#6B5B3E' }} /></button>
-                              <button onClick={() => moveTowerItem(list, t, 'down')} disabled={!canMoveDown} className="flex items-center justify-center" style={{ width: 28, height: 18, opacity: canMoveDown ? 1 : 0.25 }} aria-label="아래로 이동"><ChevronDown size={14} style={{ color: '#6B5B3E' }} /></button>
-                            </div>
-                          )}
                           {isMine && (
                             <div className="flex items-center gap-1">
                               <button onClick={() => startTowerEdit(t)} className="p-0.5" aria-label="책탑 항목 수정"><Pencil size={10} style={{ color: '#6B5B3E' }} /></button>
                               {towerSettingsOpen && (
                                 <button onClick={() => requestDelete(() => removeTowerEntry(t.id), `'${t.book_title}'을(를) 책장에서 없앨까요?`)} className="p-0.5" aria-label="책탑에서 제거"><X size={10} style={{ color: '#6B5B3E' }} /></button>
                               )}
+                            </div>
+                          )}
+                          {canReorder && towerSettingsOpen && (
+                            <div className="flex flex-col rounded-lg overflow-hidden" style={{ gap: 2, background: '#3A2C18' }}>
+                              <button onClick={() => moveTowerItem(list, t, 'up')} disabled={!canMoveUp} className="flex items-center justify-center" style={{ width: 28, height: 18, opacity: canMoveUp ? 1 : 0.4 }} aria-label="위로 이동"><ChevronUp size={14} style={{ color: '#F2EAD6' }} /></button>
+                              <button onClick={() => moveTowerItem(list, t, 'down')} disabled={!canMoveDown} className="flex items-center justify-center" style={{ width: 28, height: 18, opacity: canMoveDown ? 1 : 0.4 }} aria-label="아래로 이동"><ChevronDown size={14} style={{ color: '#F2EAD6' }} /></button>
                             </div>
                           )}
                         </div>
@@ -2866,7 +2867,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       );
                     })}
                   </div>
-                  <p className="text-[10px] mt-2" style={{ color: MUTE }}>※ 벌칙 확정 주 금요일까지 수행 예정일 지정, 수행 후 "완료로 확정" 클릭 필수.</p>
+                  <p className="text-[10px] mt-2" style={{ color: MUTE }}>※ 벌칙 확정 시, 수행 예정일 지정 및 수행 후 "완료" 처리 필수</p>
                 </div>
               )}
             </Card>
