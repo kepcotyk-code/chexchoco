@@ -1216,6 +1216,18 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     if (!query.trim()) return;
     setLoading(true);
     setOpen(true);
+    // 1순위: 카카오(다음) 책 검색 - 국내 도서 표지까지 바로 가져옴 (Vercel 서버 함수 /api/book-search 경유, API 키는 서버에만 보관)
+    try {
+      const res = await fetch(`/api/book-search?query=${encodeURIComponent(query.trim())}`);
+      if (!res.ok) throw new Error('kakao search failed');
+      const data = await res.json();
+      if (Array.isArray(data.results) && data.results.length > 0) {
+        setResults(data.results);
+        setLoading(false);
+        return;
+      }
+    } catch (e) { /* 서버 함수가 아직 없거나 키 미설정이면 아래 구글 검색으로 대체 */ }
+    // 2순위(예비): 구글 도서 검색
     try {
       const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query.trim())}&maxResults=8`);
       const data = await res.json();
