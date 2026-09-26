@@ -1863,6 +1863,40 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 const barH = [42, 47, 53, 58][hash % 4] + (t.event_tag ? 8 : 0); // 책마다 두께를 다르게, 태그 있으면 한 줄만큼만 여유
                 const edgeH = Math.max(3, Math.round(barH * 0.112)); // 위아래 표지 두께 (기존의 70%)
                 const tone = PAGE_TONES[hash % PAGE_TONES.length];
+                // ---- 테스트: 완독한 책은 '덮인 책'으로 표현 (마음에 안 들면 이 if 블록만 지우면 이전 디자인으로 바로 롤백돼요) ----
+                if (isDone) {
+                  const pagePeekWidth = '15%';
+                  return (
+                    <div key={t.id} title={t.book_title} style={{ height: barH, marginLeft: Math.max(2, lengthInset + jitterX), marginRight: Math.max(2, lengthInset - jitterX), transform: `translateY(${microY}px)`, borderRadius: 4, overflow: 'hidden', filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.45)) drop-shadow(0 1px 1px rgba(0,0,0,0.4))' }}>
+                      <div className="relative w-full h-full">
+                        {/* 표지 전체 면 - 덮인 책의 앞표지가 그대로 보이는 느낌 */}
+                        <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, rgba(255,255,255,0.22) 0%, ${edgeColor} 14%, ${edgeColor} 86%, rgba(0,0,0,0.3) 100%)` }} />
+                        {/* 오른쪽 - 덮인 책 옆으로 살짝 드러난 페이지 단면 */}
+                        <div className="absolute top-0 bottom-0 right-0 pointer-events-none" style={{ width: pagePeekWidth, borderRadius: '0 4px 4px 0',
+                          background: `repeating-linear-gradient(180deg, ${tone.light} 0px, ${tone.light} 1.4px, ${tone.dark} 1.4px, ${tone.dark} 2.1px)`,
+                          boxShadow: 'inset 5px 0 8px -4px rgba(0,0,0,0.45), inset -1px 0 0 rgba(255,255,255,0.15)' }} />
+                        {/* 리본 책갈피 - 표지와 페이지 경계에 꽂혀 있음 */}
+                        <div className="absolute pointer-events-none" style={{ top: -1, right: `calc(${pagePeekWidth} - 3px)`, width: 9, height: Math.round(barH * 0.62), background: `linear-gradient(90deg, ${RIBBON_DONE} 0%, ${RIBBON_DONE}cc 100%)`, clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 4px), 0 100%)', boxShadow: '1px 1px 2px rgba(0,0,0,0.3)' }} />
+                        {/* 좌측 하단 - 평소엔 연필만, 설정 모드에서만 삭제도 함께 */}
+                        {isMine && (
+                          <div className="absolute flex items-center gap-1" style={{ left: 8, bottom: 4 }}>
+                            <button onClick={() => startTowerEdit(t)} className="p-0.5 rounded" style={{ background: 'rgba(0,0,0,0.28)' }} aria-label="책탑 항목 수정"><Pencil size={10} style={{ color: 'rgba(255,255,255,0.92)' }} /></button>
+                            {towerSettingsOpen && (
+                              <button onClick={() => requestDelete(() => removeTowerEntry(t.id), `'${t.book_title}'을(를) 책장에서 없앨까요?`)} className="p-0.5 rounded" style={{ background: 'rgba(0,0,0,0.28)' }} aria-label="책탑에서 제거"><X size={10} style={{ color: 'rgba(255,255,255,0.92)' }} /></button>
+                            )}
+                          </div>
+                        )}
+                        {/* 우측 하단 - 순서 이동 (설정 모드일 때만 노출) */}
+                        {canReorder && towerSettingsOpen && (
+                          <div className="absolute flex flex-col rounded-lg overflow-hidden" style={{ right: 6, bottom: 4, gap: 2, background: 'rgba(0,0,0,0.4)' }}>
+                            <button onClick={() => moveTowerItem(list, t, 'up')} disabled={!canMoveUp} className="flex items-center justify-center" style={{ width: 22, height: 16, opacity: canMoveUp ? 1 : 0.35 }} aria-label="위로 이동"><ChevronUp size={12} style={{ color: '#fff' }} /></button>
+                            <button onClick={() => moveTowerItem(list, t, 'down')} disabled={!canMoveDown} className="flex items-center justify-center" style={{ width: 22, height: 16, opacity: canMoveDown ? 1 : 0.35 }} aria-label="아래로 이동"><ChevronDown size={12} style={{ color: '#fff' }} /></button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
                 return (
                   <div key={t.id} style={{ height: barH, marginLeft: Math.max(2, lengthInset + jitterX), marginRight: Math.max(2, lengthInset - jitterX), transform: `translateY(${microY}px)`, borderRadius: 4, overflow: 'hidden', filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.45)) drop-shadow(0 1px 1px rgba(0,0,0,0.4))' }}>
                     <div className="relative w-full h-full">
