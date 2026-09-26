@@ -1916,30 +1916,31 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                       <div className="absolute pointer-events-none" style={{ top: edgeH, bottom: edgeH, left: PAGE_INSET, right: PAGE_INSET, borderRadius: 3,
                         background: 'linear-gradient(90deg, rgba(0,0,0,0.28) 0px, rgba(0,0,0,0.08) 4px, rgba(0,0,0,0) 9px, rgba(0,0,0,0) calc(100% - 9px), rgba(0,0,0,0.08) calc(100% - 4px), rgba(0,0,0,0.28) 100%)',
                         boxShadow: 'inset 1px 0 0 rgba(255,255,255,0.25), inset -1px 0 0 rgba(255,255,255,0.25)' }} />
-                      {/* 오른쪽 끝 - 상태 리본 (완독=초록 / 읽는중=호박색) */}
-                      <div className="absolute pointer-events-none" style={{ top: -1, right: 12, width: 9, height: Math.round(barH * 0.62), background: `linear-gradient(90deg, ${ribbonStatusColor} 0%, ${ribbonStatusColor}cc 100%)`, clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 4px), 0 100%)', boxShadow: '1px 1px 2px rgba(0,0,0,0.3)' }} />
-                      <div className="relative h-full flex items-center justify-between gap-1.5 pl-3" style={{ paddingRight: 20 }}>
-                        {/* 왼쪽 - 행사 태그(캡션) 위, 제목·등록자 아래로 한 덩어리 */}
+                      {/* 오른쪽 끝 - 상태 리본 (완독=버건디 / 읽는 중=포레스트그린 / 잠시 멈춤=카멜 / 읽을 예정=차콜) */}
+                      <div className="absolute pointer-events-none" style={{ top: -1, right: 12, width: 18, height: Math.round(barH * 0.62), background: `linear-gradient(90deg, ${ribbonStatusColor} 0%, ${ribbonStatusColor}cc 100%)`, clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 4px), 0 100%)', boxShadow: '1px 1px 2px rgba(0,0,0,0.3)' }} />
+                      <div className="relative h-full flex items-center justify-between gap-1.5" style={{ paddingLeft: 18, paddingRight: 38 }}>
+                        {/* 왼쪽 - 캡션(행사 태그·비고) 위, 제목·등록자 아래로 한 덩어리 */}
                         <div className="min-w-0 flex flex-col justify-center" style={{ gap: 2 }}>
-                          {t.event_tag && (
-                            <span className="truncate" style={{ fontSize: 9, lineHeight: '11px', fontWeight: 600, color: '#9C7B4A', letterSpacing: '0.15px' }}>{t.event_tag}</span>
-                          )}
+                          {(() => {
+                            const noteText = t.note_visible && t.note ? t.note : '';
+                            const captionParts = [t.event_tag, noteText].filter(Boolean);
+                            if (captionParts.length === 0) return null;
+                            return <span className="truncate" style={{ fontSize: 9, lineHeight: '11px', fontWeight: 600, color: '#9C7B4A', letterSpacing: '0.15px' }}>{captionParts.join(' · ')}</span>;
+                          })()}
                           <div className="min-w-0 flex items-baseline gap-1">
-                            {t.is_public === false && <Lock size={10} style={{ color: '#6B5B3E', alignSelf: 'center' }} />}
                             <span className="truncate min-w-0" style={{ fontFamily: BOOK_TITLE_FONT, fontSize: 13.5, fontWeight: 700, lineHeight: '17px', color: '#2A2015', letterSpacing: '0px', textShadow: '0 1px 0 rgba(255,255,255,0.3)' }}>{t.book_title}</span>
+                            {t.is_public === false && <Lock size={10} style={{ color: '#6B5B3E', alignSelf: 'center', flexShrink: 0 }} />}
                             {(() => {
                               const ownerText = t.owner_name_override != null ? t.owner_name_override : (owner ? dispName(owner.name, isLoggedIn) : '');
-                              const noteText = t.note_visible && t.note ? t.note : '';
-                              const combined = [ownerText, noteText].filter(Boolean).join(' · ');
-                              if (!combined) return null;
-                              return <span className="text-[10px] truncate min-w-0" style={{ color: '#8A7355', fontWeight: 500 }}>{combined}</span>;
+                              if (!ownerText) return null;
+                              return <span className="text-[10px] truncate min-w-0" style={{ color: '#8A7355', fontWeight: 500 }}>{ownerText}</span>;
                             })()}
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
-                          {/* 상태 - 읽는 중이면 쪽수를 바로 아래 줄에, 완독이면 한 줄만 */}
+                          {/* 상태 - 읽는 중이면 쪽수를 바로 아래 줄에, 완독이면 한 줄만. 글자색은 리본색이 아니라 제목과 동일한 잉크색 */}
                           <div className="flex flex-col items-end" style={{ gap: 1 }}>
-                            <span style={{ fontSize: 10, lineHeight: '11px', fontWeight: 700, color: ribbonStatusColor, letterSpacing: '0.1px' }}>{ribbonLabel}</span>
+                            <span style={{ fontSize: 10, lineHeight: '11px', fontWeight: 700, color: '#2A2015', letterSpacing: '0.1px' }}>{ribbonLabel}</span>
                             {showPage && (
                               <span style={{ fontSize: 9, lineHeight: '10px', color: '#8A6A3F', fontWeight: 600, fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: 'tabular-nums' }} aria-label={`현재 ${t.current_page}페이지`}>{t.current_page}쪽</span>
                             )}
