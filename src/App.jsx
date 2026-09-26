@@ -48,8 +48,14 @@ const SHARE_REQUEST_BG = '#3A2519';
 const FORM_PANEL_BG = '#171510';
 const FORM_PANEL_BORDER = '#3D3826';
 // 책장 상태 리본 색상
-const RIBBON_DONE = '#2F7A4D';    // 완독 - 짙은 초록
-const RIBBON_READING = '#C98A2B'; // 읽는 중 - 호박색
+// 책탑 리본 상태 4단계 - 책 추가/수정 창에서 직접 선택해 저장함
+const READ_STATUSES = [
+  { key: 'done', label: '완독', color: '#7A2536' },     // 버건디·와인
+  { key: 'reading', label: '읽는 중', color: '#2C5F41' }, // 포레스트 그린
+  { key: 'paused', label: '잠시 멈춤', color: '#9C6B2E' }, // 카멜·브라운
+  { key: 'planned', label: '읽을 예정', color: '#3A3A3A' }, // 차콜
+];
+const readStatusMeta = (key) => READ_STATUSES.find((s) => s.key === key) || READ_STATUSES[1];
 const SHOW_PAGE_IN_GROUP = false;
 const PAGE_INSET = 5; // 책장: 표지보다 페이지 단면이 좌우로 들어간 깊이(px)
 const BOOK_TITLE_FONT = "'Gowun Batang', 'Nanum Myeongjo', serif"; // 책 제목용 한글 세리프 - 붓결이 살아있는 서체
@@ -1343,6 +1349,8 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   const [editingTowerNoteVisible, setEditingTowerNoteVisible] = useState(false);
   const [towerColorInput, setTowerColorInput] = useState(COVER_EDGE_COLORS[0]); // 내 책장에 등록할 책 표지 색상
   const [editingTowerColor, setEditingTowerColor] = useState(COVER_EDGE_COLORS[0]); // 수정 시 표지 색상
+  const [towerStatusInput, setTowerStatusInput] = useState('reading'); // 완독/읽는 중/잠시 멈춤/읽을 예정
+  const [editingTowerStatus, setEditingTowerStatus] = useState('reading');
   const addManualTowerEntry = async () => {
     if (!currentMember || !towerTitleInput.trim()) return;
     await insertRow('book_tower_entries', {
@@ -1354,8 +1362,9 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
       owner_name_override: null,
       note: towerNoteInput.trim() || null, // 비고는 회원 누구나 입력 가능
       note_visible: towerNoteVisibleInput,
+      read_status: towerStatusInput,
     });
-    setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setTowerPublicInput(true); setTowerTagInput(''); setTowerNoteInput(''); setTowerNoteVisibleInput(false); setTowerColorInput(COVER_EDGE_COLORS[Math.floor(Math.random() * COVER_EDGE_COLORS.length)]); setShowTowerAdd(false);
+    setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setTowerPublicInput(true); setTowerTagInput(''); setTowerNoteInput(''); setTowerNoteVisibleInput(false); setTowerStatusInput('reading'); setTowerColorInput(COVER_EDGE_COLORS[Math.floor(Math.random() * COVER_EDGE_COLORS.length)]); setShowTowerAdd(false);
     await reload();
   };
   const saveTowerEdit = async (entry) => {
@@ -1369,6 +1378,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           color: editingTowerColor,
           note: editingTowerNote.trim() || null,
           note_visible: editingTowerNoteVisible,
+          read_status: editingTowerStatus,
         })
         .eq('id', entry.id)
         .select();
@@ -1390,6 +1400,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
     setEditingTowerColor(entry.color || COVER_EDGE_COLORS[0]);
     setEditingTowerNote(entry.note || '');
     setEditingTowerNoteVisible(!!entry.note_visible);
+    setEditingTowerStatus(entry.read_status || (entry.finished_date ? 'done' : 'reading'));
   };
   const removeTowerEntry = async (entryId) => { await deleteRow('book_tower_entries', 'id', entryId); await reload(); };
   const towerSortKey = (t) => t.finished_date || t.start_date || t.created_at.slice(0, 10);
@@ -1774,6 +1785,18 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 ))}
               </div>
             </div>
+            <div>
+              <div className="text-[10px] mb-1" style={{ color: MUTE }}>읽기 상태</div>
+              <div className="flex flex-wrap gap-1.5">
+                {READ_STATUSES.map((s) => (
+                  <button key={s.key} type="button" onClick={() => setTowerStatusInput(s.key)}
+                    className="rounded-full px-2.5 py-1.5 text-xs font-semibold"
+                    style={{ background: s.color, color: '#F2EEE3', opacity: towerStatusInput === s.key ? 1 : 0.4, border: towerStatusInput === s.key ? '2px solid #F2EEE3' : '2px solid transparent' }}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             {!isSecretary && (
               <p className="text-[11px]" style={{ color: MUTE }}>* 모임 책장 공개는 간사만 가능해요. 이 책은 내 책장에만 기록돼요.</p>
             )}
@@ -1799,11 +1822,14 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 const isEditing = editingTowerId === t.id;
                 const hash = t.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
                 const edgeColor = t.color || COVER_EDGE_COLORS[hash % COVER_EDGE_COLORS.length]; // 등록 시 고른 색상 우선, 없으면(기존 항목) 해시 기반 자동 색상
-                const isDone = !!t.finished_date;
-                const ribbonStatusColor = isDone ? RIBBON_DONE : RIBBON_READING;
-                const ribbonLabel = isDone ? '완독' : '읽는 중';
-                // 읽는 중일 때만 페이지를 작은 동그라미로 표시 (모임 책장은 SHOW_PAGE_IN_GROUP 설정 따름)
-                const showPage = !isDone && t.current_page && (towerView === 'mine' || SHOW_PAGE_IN_GROUP);
+                // 기존 데이터(read_status 없음)는 완독일 있으면 완독, 없으면 읽는 중으로 취급
+                const statusKey = t.read_status || (t.finished_date ? 'done' : 'reading');
+                const statusMeta = readStatusMeta(statusKey);
+                const isDone = statusKey === 'done';
+                const ribbonStatusColor = statusMeta.color;
+                const ribbonLabel = statusMeta.label;
+                // 읽는 중·잠시 멈춤일 때만 페이지를 작은 동그라미로 표시 (모임 책장은 SHOW_PAGE_IN_GROUP 설정 따름)
+                const showPage = (statusKey === 'reading' || statusKey === 'paused') && t.current_page && (towerView === 'mine' || SHOW_PAGE_IN_GROUP);
                 if (isEditing) {
                   return (
                     <div key={t.id} className="rounded-2xl p-3 space-y-2" style={{ background: FORM_PANEL_BG, border: `1.5px solid ${FORM_PANEL_BORDER}`, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)' }}>
@@ -1850,6 +1876,18 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                           ))}
                         </div>
                       </div>
+                      <div>
+                        <div className="text-[10px] mb-1" style={{ color: MUTE }}>읽기 상태</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {READ_STATUSES.map((s) => (
+                            <button key={s.key} type="button" onClick={() => setEditingTowerStatus(s.key)}
+                              className="rounded-full px-2.5 py-1.5 text-xs font-semibold"
+                              style={{ background: s.color, color: '#F2EEE3', opacity: editingTowerStatus === s.key ? 1 : 0.4, border: editingTowerStatus === s.key ? '2px solid #F2EEE3' : '2px solid transparent' }}>
+                              {s.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       <div className="flex gap-1.5 items-center pt-1">
                         <button onClick={() => saveTowerEdit(t)} className="flex-1 text-xs rounded-full py-2 font-semibold" style={{ background: '#1E1C16', color: '#F2EEE3' }}>저장</button>
                         <button onClick={() => setEditingTowerId(null)} className="flex-1 text-xs rounded-full py-2 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>취소</button>
@@ -1863,40 +1901,6 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 const barH = [42, 47, 53, 58][hash % 4] + (t.event_tag ? 8 : 0); // 책마다 두께를 다르게, 태그 있으면 한 줄만큼만 여유
                 const edgeH = Math.max(3, Math.round(barH * 0.112)); // 위아래 표지 두께 (기존의 70%)
                 const tone = PAGE_TONES[hash % PAGE_TONES.length];
-                // ---- 테스트: 완독한 책은 '덮인 책'으로 표현 (마음에 안 들면 이 if 블록만 지우면 이전 디자인으로 바로 롤백돼요) ----
-                if (isDone) {
-                  const pagePeekWidth = '15%';
-                  return (
-                    <div key={t.id} title={t.book_title} style={{ height: barH, marginLeft: Math.max(2, lengthInset + jitterX), marginRight: Math.max(2, lengthInset - jitterX), transform: `translateY(${microY}px)`, borderRadius: 4, overflow: 'hidden', filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.45)) drop-shadow(0 1px 1px rgba(0,0,0,0.4))' }}>
-                      <div className="relative w-full h-full">
-                        {/* 표지 전체 면 - 덮인 책의 앞표지가 그대로 보이는 느낌 */}
-                        <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, rgba(255,255,255,0.22) 0%, ${edgeColor} 14%, ${edgeColor} 86%, rgba(0,0,0,0.3) 100%)` }} />
-                        {/* 오른쪽 - 덮인 책 옆으로 살짝 드러난 페이지 단면 */}
-                        <div className="absolute top-0 bottom-0 right-0 pointer-events-none" style={{ width: pagePeekWidth, borderRadius: '0 4px 4px 0',
-                          background: `repeating-linear-gradient(180deg, ${tone.light} 0px, ${tone.light} 1.4px, ${tone.dark} 1.4px, ${tone.dark} 2.1px)`,
-                          boxShadow: 'inset 5px 0 8px -4px rgba(0,0,0,0.45), inset -1px 0 0 rgba(255,255,255,0.15)' }} />
-                        {/* 리본 책갈피 - 표지와 페이지 경계에 꽂혀 있음 */}
-                        <div className="absolute pointer-events-none" style={{ top: -1, right: `calc(${pagePeekWidth} - 3px)`, width: 9, height: Math.round(barH * 0.62), background: `linear-gradient(90deg, ${RIBBON_DONE} 0%, ${RIBBON_DONE}cc 100%)`, clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 4px), 0 100%)', boxShadow: '1px 1px 2px rgba(0,0,0,0.3)' }} />
-                        {/* 좌측 하단 - 평소엔 연필만, 설정 모드에서만 삭제도 함께 */}
-                        {isMine && (
-                          <div className="absolute flex items-center gap-1" style={{ left: 8, bottom: 4 }}>
-                            <button onClick={() => startTowerEdit(t)} className="p-0.5 rounded" style={{ background: 'rgba(0,0,0,0.28)' }} aria-label="책탑 항목 수정"><Pencil size={10} style={{ color: 'rgba(255,255,255,0.92)' }} /></button>
-                            {towerSettingsOpen && (
-                              <button onClick={() => requestDelete(() => removeTowerEntry(t.id), `'${t.book_title}'을(를) 책장에서 없앨까요?`)} className="p-0.5 rounded" style={{ background: 'rgba(0,0,0,0.28)' }} aria-label="책탑에서 제거"><X size={10} style={{ color: 'rgba(255,255,255,0.92)' }} /></button>
-                            )}
-                          </div>
-                        )}
-                        {/* 우측 하단 - 순서 이동 (설정 모드일 때만 노출) */}
-                        {canReorder && towerSettingsOpen && (
-                          <div className="absolute flex flex-col rounded-lg overflow-hidden" style={{ right: 6, bottom: 4, gap: 2, background: 'rgba(0,0,0,0.4)' }}>
-                            <button onClick={() => moveTowerItem(list, t, 'up')} disabled={!canMoveUp} className="flex items-center justify-center" style={{ width: 22, height: 16, opacity: canMoveUp ? 1 : 0.35 }} aria-label="위로 이동"><ChevronUp size={12} style={{ color: '#fff' }} /></button>
-                            <button onClick={() => moveTowerItem(list, t, 'down')} disabled={!canMoveDown} className="flex items-center justify-center" style={{ width: 22, height: 16, opacity: canMoveDown ? 1 : 0.35 }} aria-label="아래로 이동"><ChevronDown size={12} style={{ color: '#fff' }} /></button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                }
                 return (
                   <div key={t.id} style={{ height: barH, marginLeft: Math.max(2, lengthInset + jitterX), marginRight: Math.max(2, lengthInset - jitterX), transform: `translateY(${microY}px)`, borderRadius: 4, overflow: 'hidden', filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.45)) drop-shadow(0 1px 1px rgba(0,0,0,0.4))' }}>
                     <div className="relative w-full h-full">
