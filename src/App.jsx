@@ -639,14 +639,14 @@ export default function App() {
               )}
               {deviceRegMemberId ? (
                 <span className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: BTN_BG, color: BTN_TEXT }} title="이 기기는 등록된 사용자 전용이에요. 다른 사람으로 전환할 수 없어요.">
-                  <Lock size={11} />{currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} />{currentMember.name}님</> : '등록된 기기'}
+                  <Lock size={11} />{currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} />{currentMember.name}</> : '등록된 기기'}
                 </span>
               ) : (
                 <button onClick={() => (currentMember ? logout() : openLogin())}
                   className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold"
                   aria-label={currentMember ? '로그아웃' : '로그인'}
                   style={{ background: currentMember ? BTN_BG : NEUTRAL_BG, color: currentMember ? BTN_TEXT : NEUTRAL_TEXT }}>
-                  {currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} />{currentMember.name}님</> : <>로그인</>}
+                  {currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} />{currentMember.name}</> : <>로그인</>}
                 </button>
               )}
             </div>
@@ -787,8 +787,8 @@ export default function App() {
           </div>
         )}
 
-        {/* 카테고리 탭 5개를 항상 한 줄에 고정 — 화면이 넓으면 지금 크기 그대로, 좁아지면 아이콘 간격·글자 크기가 자동으로 줄어들어 가로 스크롤 없이 항상 한 화면에 다 보임 */}
-        <div className="flex mb-4" style={{ gap: 'clamp(3px, 1.6vw, 6px)' }}>
+        {/* 카테고리 탭 5개를 항상 한 줄에 고정 — 좁은 화면 기준으로 여유 있게 맞추고, 화면이 넓어질수록 지금 크기(패딩14px·폰트14px·아이콘15px)까지 자연스럽게 커짐 */}
+        <div className="flex mb-4" style={{ gap: 4 }}>
           {TABS.map((t) => {
             const Icon = t.icon; const active = tab === t.key;
             return (
@@ -796,9 +796,9 @@ export default function App() {
                 className="flex-1 min-w-0 flex items-center justify-center rounded-full font-semibold"
                 style={{
                   background: active ? BTN_BG : CARD_BG, color: active ? BTN_TEXT : MUTE, border: `1px solid ${active ? BTN_BG : LINE}`,
-                  gap: 'clamp(2px, 2vw, 6px)', padding: 'clamp(6px, 2.4vw, 8px) clamp(2px, 4vw, 14px)', fontSize: 'clamp(10px, 4vw, 14px)',
+                  gap: 'clamp(2px, 1vw, 6px)', padding: 'clamp(5px, 1.6vw, 8px) clamp(3px, 1.5vw, 14px)', fontSize: 'clamp(10.5px, 2.6vw, 14px)',
                 }}>
-                <Icon size={15} className="shrink-0" />
+                <Icon style={{ width: 'clamp(12px, 3.2vw, 15px)', height: 'clamp(12px, 3.2vw, 15px)' }} className="shrink-0" />
                 <span className="truncate">{t.label}</span>
               </button>
             );
@@ -1290,7 +1290,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   };
   const shareStatusInfo = (s) => {
     if (s.status === 'open') return { label: s.kind === 'offer' ? '대여가능' : '대기중', style: { background: '#12302C', color: '#7FDCCF' } };
-    if (s.status === 'requested') return { label: '요청중', style: { background: '#332815', color: '#EFC94C' } };
+    if (s.status === 'requested') return { label: '대여신청중', style: { background: '#332815', color: '#EFC94C' } };
     if (s.status === 'matched') return { label: '대여중', style: { background: '#3A2E10', color: '#EFC94C' } };
     return { label: '반납완료', style: { background: NEUTRAL_BG, color: MUTE, border: `1px solid ${LINE}` } };
   };
@@ -1549,7 +1549,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         const isOwner = currentMember?.id === ownerId;
         const canEditPost = currentMember?.id === viewingShare.posted_by || canManage;
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setViewingShareId(null)}>
+          <div className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto" style={{ background: 'rgba(0,0,0,0.7)', paddingTop: '8vh' }} onClick={() => setViewingShareId(null)}>
             <div className="w-full max-w-sm rounded-2xl border p-5" style={{ background: CARD_BG, borderColor: LINE }} onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: viewingShare.kind === 'offer' ? SHARE_OFFER_BG : SHARE_REQUEST_BG, color: viewingShare.kind === 'offer' ? SHARE_OFFER_COLOR : SHARE_REQUEST_COLOR }}>{viewingShare.kind === 'offer' ? '빌려줄까요?' : '빌려주실 수 있나요?'}</span>
@@ -1653,7 +1653,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
                 <>
                   {currentMember && currentMember.id !== viewingShare.posted_by ? (
                     <div className="flex justify-end">
-                      <PrimaryBtn onClick={() => { requestShare(viewingShare); setViewingShareId(null); }} icon={Check}>{viewingShare.kind === 'offer' ? '제가 빌릴게요' : '제가 빌려드릴게요'}</PrimaryBtn>
+                      <PrimaryBtn onClick={() => { requestShare(viewingShare); setViewingShareId(null); }} icon={Check}>대여신청</PrimaryBtn>
                     </div>
                   ) : currentMember?.id === viewingShare.posted_by ? (
                     <p className="text-xs" style={{ color: MUTE }}>다른 회원의 응답을 기다리는 중이에요.</p>
@@ -1662,6 +1662,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
               )}
               {viewingShare.status === 'requested' && !editingShare && (
                 <div className="space-y-2 pt-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                  <span className="inline-flex items-center text-[11px] rounded-full px-2 py-0.5 font-semibold" style={shareStatusInfo(viewingShare).style}>{shareStatusInfo(viewingShare).label}</span>
                   <div className="text-xs" style={{ color: NEUTRAL_TEXT }}>응답: {dispName(matcher?.name || '', isLoggedIn)}</div>
                   {currentMember?.id === viewingShare.posted_by ? (
                     <div className="flex gap-2">
