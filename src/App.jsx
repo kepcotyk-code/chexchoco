@@ -2506,9 +2506,15 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
     await notify(share.posted_by, `${currentMember.name}님이 [${share.book_title}] ${share.kind === 'offer' ? '제공' : '요청'}에 응답했어요. 확인 후 확정해주세요.`, share.id);
     await reload(['book_shares', 'notifications']);
   };
-  // 요청 취소 — 글쓴이가 다시 대기 상태로 되돌림 (다른 사람이 다시 요청할 수 있도록)
-  const cancelRequest = async (share) => {
-    await updateRow('book_shares', 'id', share.id, { status: 'open', matched_by: null });
+  // 거절 — 주인이 이 요청을 거절함. status만 'declined'로 바꾸고 posted_by/matched_by는 그대로 둬서, 잘못 눌렀을 때 되돌릴 수 있게 함
+  const declineRequest = async (share) => {
+    await updateRow('book_shares', 'id', share.id, { status: 'declined' });
+    await notify(shareBorrowerId(share), `[${share.book_title}] 대여요청이 거절됐어요.`, share.id);
+    await reload(['book_shares', 'notifications']);
+  };
+  // 거절 취소 — 실수로 거절을 눌렀을 때, 다시 요청 대기 상태로 되돌려서 수락할 수 있게 함
+  const undeclineRequest = async (share) => {
+    await updateRow('book_shares', 'id', share.id, { status: 'requested' });
     await reload(['book_shares']);
   };
   // 2단계: 확정 — 이때 대여일/반납기한이 정해짐
@@ -2558,6 +2564,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
     if (s.status === 'open') return { label: s.kind === 'offer' ? '대여가능' : '대기중', style: { background: '#12302C', color: '#7FDCCF' } };
     if (s.status === 'requested') return { label: '대여신청중', style: { background: '#332815', color: '#EFC94C' } };
     if (s.status === 'matched') return { label: '대여중', style: { background: '#3A2E10', color: '#EFC94C' } };
+    if (s.status === 'declined') return { label: '거절됨', style: { background: '#3A1F1F', color: '#E38B7A' } };
     return { label: '반납완료', style: { background: NEUTRAL_BG, color: MUTE, border: `1px solid ${LINE}` } };
   };
   const offers = bookShares.filter((s) => s.kind === 'offer' && s.status !== 'returned').sort((a, b) => b.created_at.localeCompare(a.created_at));
@@ -2632,6 +2639,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
   // 독서 시작일이 독서 완료일보다 늦으면(날짜가 겹치지 않고 거꾸로면) 저장을 막기 위한 체크
   const towerDateRangeInvalid = !!(towerStartInput && towerFinishedInput && towerFinishedInput < towerStartInput);
   const [towerSaving, setTowerSaving] = useState(false); // 추가/저장 버튼이 눌리는 동안 로딩 표시 - 느린 네트워크에서 중복 클릭 방지
+  const [borrowRequestingIds, setBorrowRequestingIds] = useState(() => new Set()); // 대여요청 버튼 연타/중복 클릭으로 같은 책이 두 번 등록되는 걸 막기 위한 진행 중 표시
   const addManualTowerEntry = async () => {
     if (!currentMember || !towerTitleInput.trim() || towerSaving) return;
     if (towerDateRangeInvalid) { showToast?.('독서 완료일이 독서 시작일보다 빠를 수 없어요. 날짜를 확인해주세요.', 'error'); return; }
@@ -2719,19 +2727,26 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
   };
   // 모임 책장(북적북적)의 완독한 책을 보고 바로 대여 요청 - 도서 공유함의 '요청됨' 상태로 바로 생성돼서, 이후 확정·반납 흐름은 도서 공유함과 동일하게 진행됨
   // 요청한 사람(빌리려는 사람)이 주체가 되도록 kind:'request'로 생성 - 도서 공유함의 '빌려주실 수 있나요?' 목록에 뜨고, posted_by가 요청자가 됨
-  const activeShareForTowerBook = (entry) => bookShares.find((s) => (s.posted_by === entry.member_id || s.matched_by === entry.member_id) && s.book_title === entry.book_title && s.status !== 'returned');
+  // 반납된 건은 물론, 거절된 건도 "진행 중인 요청"으로 안 쳐서(도서 공유함엔 "거절됨"으로 계속 남아있지만) 다시 대여요청 버튼을 누를 수 있게 함
+  const activeShareForTowerBook = (entry) => bookShares.find((s) => (s.posted_by === entry.member_id || s.matched_by === entry.member_id) && s.book_title === entry.book_title && s.status !== 'returned' && s.status !== 'declined');
   const requestBorrowFromTower = async (entry) => {
-    if (!currentMember) return;
-    const shareId = uid('bs');
-    await insertRow('book_shares', {
-      id: shareId, kind: 'request', posted_by: currentMember.id,
-      book_title: entry.book_title, book_author: entry.book_author || null, book_publisher: entry.book_publisher || null,
-      cover_url: entry.cover_url || null, status: 'requested', matched_by: entry.member_id,
-      created_at: new Date().toISOString(),
-    });
-    await notify(entry.member_id, `${currentMember.name}님이 [${entry.book_title}] 대여를 요청했어요. 도서 공유함에서 확인 후 확정해주세요.`, shareId);
-    await reload(['book_shares', 'notifications']);
-    showToast?.('대여 요청을 보냈어요. 도서 공유함에서 진행 상황을 볼 수 있어요.', 'success');
+    if (!currentMember || borrowRequestingIds.has(entry.id)) return; // 이미 진행 중이면(연타 등) 중복 등록 방지
+    if (activeShareForTowerBook(entry)) return; // 이미 요청/대여 중인 책이면(화면이 아직 안 바뀌었어도) 한 번 더 막음
+    setBorrowRequestingIds((prev) => new Set(prev).add(entry.id));
+    try {
+      const shareId = uid('bs');
+      await insertRow('book_shares', {
+        id: shareId, kind: 'request', posted_by: currentMember.id,
+        book_title: entry.book_title, book_author: entry.book_author || null, book_publisher: entry.book_publisher || null,
+        cover_url: entry.cover_url || null, status: 'requested', matched_by: entry.member_id,
+        created_at: new Date().toISOString(),
+      });
+      await notify(entry.member_id, `${currentMember.name}님이 [${entry.book_title}] 대여를 요청했어요. 도서 공유함에서 확인 후 확정해주세요.`, shareId);
+      await reload(['book_shares', 'notifications']);
+      showToast?.('대여 요청을 보냈어요. 도서 공유함에서 진행 상황을 볼 수 있어요.', 'success');
+    } finally {
+      setBorrowRequestingIds((prev) => { const next = new Set(prev); next.delete(entry.id); return next; });
+    }
   };
   const towerSortKey = (t) => t.start_date || t.finished_date || t.created_at.slice(0, 10); // 기본 정렬 기준은 독서 시작일 (수동으로 순서를 바꾼 책은 sort_order가 우선 적용됨)
   // 순서를 손으로 바꾼 적이 있으면 sort_order를, 없으면 날짜를 기준으로 삼음 (둘 다 밀리초 단위 숫자라 섞여도 자연스럽게 정렬됨)
@@ -3029,7 +3044,6 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
 
       {/* ---------- 도서 공유함 상세보기 ---------- */}
       {viewingShare && (() => {
-        const poster = members.find((m) => m.id === viewingShare.posted_by);
         const ownerId = shareOwnerId(viewingShare);
         const borrowerId = shareBorrowerId(viewingShare);
         const isOwner = currentMember?.id === ownerId;
@@ -3133,11 +3147,13 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
                   <div className="text-xs space-y-1 mb-3" style={{ color: NEUTRAL_TEXT }}>
                     {viewingShare.book_author && <div>저자: {viewingShare.book_author}</div>}
                     {viewingShare.book_publisher && <div>출판사: {viewingShare.book_publisher}</div>}
-                    {/* 책 주인이 정해진 상태(제공글이거나, 요청글에 누군가 응답해서 주인이 확정된 상태)면 "소유자"로, 아직 주인이 안 정해진 요청글(작성 직후, 아무도 응답 전)이면 "작성자"로 보여줌 */}
-                    {(viewingShare.kind === 'offer' || viewingShare.status !== 'open') ? (
+                    {/* 소유자: 제공글(offer)은 글쓴 사람이 곧 주인이라 항상 알 수 있고, 요청글(request)은 누군가 응답해서 matched_by가 정해진 뒤에만 알 수 있음
+                        대여요청자: 요청글(request)은 글쓴 사람이 곧 요청자라 항상 알 수 있고, 제공글(offer)은 누군가 응답해서 matched_by가 정해진 뒤에만 알 수 있음 */}
+                    {(viewingShare.kind === 'offer' || viewingShare.status !== 'open') && (
                       <div style={{ color: MUTE }}>소유자: {dispName(members.find((m) => m.id === ownerId)?.name || '', isLoggedIn)}</div>
-                    ) : (
-                      <div style={{ color: MUTE }}>작성자: {dispName(poster?.name || '', isLoggedIn)}</div>
+                    )}
+                    {(viewingShare.kind === 'request' || viewingShare.status !== 'open') && (
+                      <div style={{ color: MUTE }}>대여요청자: {dispName(members.find((m) => m.id === borrowerId)?.name || '', isLoggedIn)}</div>
                     )}
                   </div>
                 </>
@@ -3156,21 +3172,32 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
               {viewingShare.status === 'requested' && !editingShare && (
                 <div className="space-y-2 pt-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
                   <span className="inline-flex items-center text-[11px] rounded-full px-2 py-0.5 font-semibold" style={shareStatusInfo(viewingShare).style}>{shareStatusInfo(viewingShare).label}</span>
-                  {/* 빌리는 사람(대여요청자)과 확정 권한은 kind(offer/request)에 따라 posted_by/matched_by가 서로 바뀌므로, 항상 shareOwnerId/shareBorrowerId로 계산한 ownerId·borrowerId를 기준으로 표시함 */}
-                  <div className="text-xs" style={{ color: NEUTRAL_TEXT }}>대여요청자: {dispName(members.find((m) => m.id === borrowerId)?.name || '', isLoggedIn)}</div>
+                  {/* 확정 권한은 kind(offer/request)에 따라 posted_by/matched_by가 서로 바뀌므로, 항상 shareOwnerId로 계산한 ownerId를 기준으로 판단함 */}
                   {currentMember?.id === ownerId ? (
                     <div className="flex gap-2">
-                      <PrimaryBtn onClick={() => { confirmMatch(viewingShare); setViewingShareId(null); }} icon={Check}>확정하기</PrimaryBtn>
-                      <GhostBtn onClick={() => cancelRequest(viewingShare)}>취소</GhostBtn>
+                      <PrimaryBtn onClick={() => { confirmMatch(viewingShare); setViewingShareId(null); }} icon={Check}>수락</PrimaryBtn>
+                      <GhostBtn onClick={() => requestDelete(() => declineRequest(viewingShare), '이 대여요청을 거절할까요? 나중에 다시 수락할 수 있어요.')}>거절</GhostBtn>
                     </div>
                   ) : (
-                    <p className="text-xs" style={{ color: MUTE }}>책 주인이 확인 후 확정하면 대여가 시작돼요.</p>
+                    <p className="text-xs" style={{ color: MUTE }}>책 주인이 확인 후 수락하면 대여가 시작돼요.</p>
+                  )}
+                </div>
+              )}
+              {viewingShare.status === 'declined' && !editingShare && (
+                <div className="space-y-2 pt-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                  <span className="inline-flex items-center text-[11px] rounded-full px-2 py-0.5 font-semibold" style={shareStatusInfo(viewingShare).style}>{shareStatusInfo(viewingShare).label}</span>
+                  {currentMember?.id === ownerId ? (
+                    <div className="space-y-1.5">
+                      <p className="text-xs" style={{ color: MUTE }}>거절한 요청이에요. 잘못 눌렀다면 되돌릴 수 있어요.</p>
+                      <GhostBtn onClick={() => undeclineRequest(viewingShare)}>거절 취소하고 다시 보기</GhostBtn>
+                    </div>
+                  ) : (
+                    <p className="text-xs" style={{ color: MUTE }}>아쉽게도 이 요청은 거절됐어요.</p>
                   )}
                 </div>
               )}
               {(viewingShare.status === 'matched' || viewingShare.status === 'returned') && !editingShare && (
                 <div className="space-y-2 pt-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-                  <div className="text-xs" style={{ color: NEUTRAL_TEXT }}>대여요청자: {dispName(members.find((m) => m.id === borrowerId)?.name || '', isLoggedIn)}</div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs" style={{ color: MUTE }}>대여일:</span>
                     {viewingShare.status === 'matched' && (isOwner || currentMember?.id === borrowerId || canManage) ? (
@@ -3547,9 +3574,10 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
                         const label = existingShare.status === 'matched' ? '대여중' : (mine ? '요청중' : '대여요청됨');
                         return <span className="text-[11px] rounded-full px-2.5 py-1 font-semibold shrink-0" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{label}</span>;
                       }
+                      const requesting = borrowRequestingIds.has(t.id);
                       return (
-                        <button onClick={() => requestBorrowFromTower(t)} className="text-[11px] rounded-full px-2.5 py-1.5 font-semibold shrink-0" style={{ background: BTN_BG, color: BTN_TEXT }}>
-                          대여요청
+                        <button onClick={() => requestBorrowFromTower(t)} disabled={requesting} className="text-[11px] rounded-full px-2.5 py-1.5 font-semibold shrink-0" style={{ background: BTN_BG, color: BTN_TEXT, opacity: requesting ? 0.5 : 1 }}>
+                          {requesting ? '요청 중…' : '대여요청'}
                         </button>
                       );
                     })()}
