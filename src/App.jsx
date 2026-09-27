@@ -266,6 +266,34 @@ function PrimaryBtn({ children, onClick, disabled, icon: Icon }) {
     </button>
   );
 }
+// 북적북적(책탑) 추가·수정 폼에서 똑같이 쓰는 "독서 시작일 / 완료일" 입력 한 쌍 - 날짜가 거꾸로면 아래에 경고문구도 같이 보여줌
+function TowerDateRangeFields({ start, onStartChange, finish, onFinishChange, invalid, dense, finishLabel = '독서 완료일' }) {
+  const padCls = dense ? 'px-2.5 py-1.5' : 'px-3 py-2';
+  const fontSize = dense ? 'clamp(12px, 3.4vw, 13px)' : 'clamp(12px, 3.4vw, 14px)';
+  const minCol = dense ? 120 : 132;
+  return (
+    <>
+      <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(auto-fit, minmax(${minCol}px, 1fr))` }}>
+        <div>
+          <div className="text-[10px] mb-1" style={{ color: MUTE }}>독서 시작일</div>
+          <input type="date" value={start} onChange={(e) => onStartChange(e.target.value)} className={`w-full rounded-xl border ${padCls} outline-none`} style={{ ...inputStyle, fontSize }} aria-label="독서 시작일" />
+        </div>
+        <div>
+          <div className="text-[10px] mb-1" style={{ color: MUTE }}>{finishLabel}</div>
+          <div className="flex gap-1 items-center">
+            <input type="date" value={finish} onChange={(e) => onFinishChange(e.target.value)} className={`w-full rounded-xl border ${padCls} outline-none flex-1 min-w-0`} style={{ ...inputStyle, fontSize }} aria-label="독서 완료일" />
+            {finish && (
+              <button onClick={() => onFinishChange('')} className="shrink-0 p-1.5" aria-label="독서 완료일 지우기"><X size={13} style={{ color: MUTE }} /></button>
+            )}
+          </div>
+        </div>
+      </div>
+      {invalid && (
+        <div className="text-[11px]" style={{ color: '#E38B7A' }}>독서 완료일이 독서 시작일보다 빠를 수 없어요.</div>
+      )}
+    </>
+  );
+}
 function GhostBtn({ children, onClick, icon: Icon, color = NEUTRAL_TEXT, bg = NEUTRAL_BG, disabled }) {
   return (
     <button onClick={onClick} disabled={disabled}
@@ -504,7 +532,7 @@ function computeQuarterReport({ year, q }, d) {
     return {
       m, ...att, debates,
       finished: d.bookTowerEntries.filter((t) => t.member_id === m.id && inRange(t.finished_date)).length,
-      lent: d.bookShares.filter((s) => (s.status === 'matched' || s.status === 'returned') && inRange((s.borrowed_at || '').slice(0, 10)) && (s.kind === 'offer' ? s.posted_by : s.matched_by) === m.id).length,
+      lent: d.bookShares.filter((s) => (s.status === 'matched' || s.status === 'returned') && inRange((s.borrowed_at || '').slice(0, 10)) && shareOwnerId(s) === m.id).length,
       photos: d.photos.filter((p) => p.uploader_id === m.id && inRange((p.created_at || '').slice(0, 10))).length,
       praised: d.praises.filter((p) => p.to_member_id === m.id && inRange((p.created_at || '').slice(0, 10))).length,
     };
@@ -543,6 +571,13 @@ const checkinAttended = (checkins, sessionId, memberId) => {
   const c = checkins.find((ck) => ck.session_id === sessionId && ck.member_id === memberId);
   return attendanceStatusOf(c ? durationMin(c.check_in_at, c.check_out_at) : null) !== 'none';
 };
+
+/* ---------- book_shares 대칭 구조(owner/borrower) 계산 공통 헬퍼 -----------
+   kind:'offer'  → posted_by가 책 주인(owner), matched_by가 빌리는 사람(borrower)
+   kind:'request'→ posted_by가 빌리려는 사람(borrower), matched_by가 책 주인(owner)
+   여러 곳에서 이 if/else를 각자 반복해서 쓰고 있었는데, 앞으로는 이 두 함수만 쓰면 됨 */
+const shareOwnerId = (share) => (share.kind === 'offer' ? share.posted_by : share.matched_by);
+const shareBorrowerId = (share) => (share.kind === 'offer' ? share.matched_by : share.posted_by);
 
 /* ---------- 칭찬 포인트 · 등급 · 배지 ---------- */
 const PRAISE_KINDS = [
@@ -624,7 +659,7 @@ function computeMemberStats(d) {
       return counted.length >= 4 && counted.every((s) => st(s) === 'full');
     });
     const finished = d.bookTowerEntries.filter((t) => t.member_id === m.id && (t.finished_date || t.read_status === 'done')).length;
-    const lent = d.bookShares.filter((s) => (s.status === 'matched' || s.status === 'returned') && (s.kind === 'offer' ? s.posted_by : s.matched_by) === m.id).length;
+    const lent = d.bookShares.filter((s) => (s.status === 'matched' || s.status === 'returned') && shareOwnerId(s) === m.id).length;
     const myPhotos = d.photos.filter((p) => p.uploader_id === m.id);
     const photoDays = new Set(myPhotos.map((p) => (p.created_at || '').slice(0, 10))).size;
     const received = d.praises.filter((p) => p.to_member_id === m.id);
@@ -744,7 +779,7 @@ function TodaySummaryCard({ me, data, memberStat, showPraise, setTab }) {
 
   // 4) 빌린 책 반납 · 내 글에 온 대여 응답
   bookShares.forEach((s) => {
-    const borrower = s.kind === 'offer' ? s.matched_by : s.posted_by;
+    const borrower = shareBorrowerId(s);
     if (s.status === 'matched' && borrower === me.id) {
       if (s.due_date) {
         const dd = dayDiffStr(s.due_date, today);
@@ -2507,7 +2542,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
     return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.5;
   };
   const confirmReturn = async (share) => {
-    const borrowerId = share.kind === 'offer' ? share.matched_by : share.posted_by;
+    const borrowerId = shareBorrowerId(share);
     const today = todayStr();
     await updateRow('book_shares', 'id', share.id, { status: 'returned', returned_at: today });
     await insertRow('book_tower_entries', { id: uid('bt'), member_id: borrowerId, book_title: share.book_title, book_author: share.book_author || null, book_publisher: share.book_publisher || null, cover_url: share.cover_url || null, start_date: share.borrowed_at, finished_date: today, current_page: null, color: randomPastel(), source_share_id: share.id, created_at: new Date().toISOString(), read_status: 'done' });
@@ -2594,28 +2629,41 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
   const [towerOwnerMemberId, setTowerOwnerMemberId] = useState(''); // 간사가 모임 명단에서 등록자를 고르면 그 회원 책장에 실제로 등록됨
   const [editingTowerOwnerMemberId, setEditingTowerOwnerMemberId] = useState('');
   const [editingTowerOffset, setEditingTowerOffset] = useState(null); // 책탑에서 이 책이 좌우로 얼마나 삐뚤어져 보일지 (간사가 수동 지정, null=자동)
+  // 독서 시작일이 독서 완료일보다 늦으면(날짜가 겹치지 않고 거꾸로면) 저장을 막기 위한 체크
+  const towerDateRangeInvalid = !!(towerStartInput && towerFinishedInput && towerFinishedInput < towerStartInput);
+  const [towerSaving, setTowerSaving] = useState(false); // 추가/저장 버튼이 눌리는 동안 로딩 표시 - 느린 네트워크에서 중복 클릭 방지
   const addManualTowerEntry = async () => {
-    if (!currentMember || !towerTitleInput.trim()) return;
-    const pickedOwner = isSecretary && towerOwnerMemberId ? members.find((m) => m.id === towerOwnerMemberId) : null;
-    await insertRow('book_tower_entries', {
-      id: uid('bt'), member_id: pickedOwner ? pickedOwner.id : currentMember.id, book_title: towerTitleInput.trim(),
-      start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null,
-      color: towerColorInput, source_share_id: null, created_at: new Date().toISOString(), sort_order: Date.now(),
-      is_public: towerPublicInput, // 모임 책장 공개는 누구나 가능 - 기본은 공개, 우측 상단 비공개 체크박스로 회원이 직접 선택
-      event_tag: isSecretary ? (towerTagInput.trim() || null) : null, // 행사/토론회 태그는 간사만 입력 가능
-      // 등록자는 간사만 회원 명단에서 지정 가능 - 고르면 그 회원 책장에 실제로 등록됨(member_id)
-      owner_name_override: null,
-      note: towerNoteInput.trim() || null, // 비고는 회원 누구나 입력 가능
-      note_visible: towerNoteVisibleInput,
-      read_status: towerStatusInput,
-      book_author: towerAuthorInput.trim() || null,
-      book_publisher: towerPublisherInput.trim() || null,
-      cover_url: towerCoverUrlInput || null,
-    });
-    setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setTowerPublicInput(true); setTowerTagInput(''); setTowerNoteInput(''); setTowerNoteVisibleInput(false); setTowerStatusInput('reading'); setTowerColorInput(COVER_EDGE_COLORS[Math.floor(Math.random() * COVER_EDGE_COLORS.length)]); setTowerAuthorInput(''); setTowerPublisherInput(''); setTowerCoverUrlInput(''); setTowerBookSearchOpen(false); setTowerOwnerMemberId(''); setShowTowerAdd(false);
-    await reload(['book_tower_entries']);
+    if (!currentMember || !towerTitleInput.trim() || towerSaving) return;
+    if (towerDateRangeInvalid) { showToast?.('독서 완료일이 독서 시작일보다 빠를 수 없어요. 날짜를 확인해주세요.', 'error'); return; }
+    setTowerSaving(true);
+    try {
+      const pickedOwner = isSecretary && towerOwnerMemberId ? members.find((m) => m.id === towerOwnerMemberId) : null;
+      await insertRow('book_tower_entries', {
+        id: uid('bt'), member_id: pickedOwner ? pickedOwner.id : currentMember.id, book_title: towerTitleInput.trim(),
+        start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null,
+        color: towerColorInput, source_share_id: null, created_at: new Date().toISOString(), sort_order: Date.now(),
+        is_public: towerPublicInput, // 모임 책장 공개는 누구나 가능 - 기본은 공개, 우측 상단 비공개 체크박스로 회원이 직접 선택
+        event_tag: isSecretary ? (towerTagInput.trim() || null) : null, // 행사/토론회 태그는 간사만 입력 가능
+        // 등록자는 간사만 회원 명단에서 지정 가능 - 고르면 그 회원 책장에 실제로 등록됨(member_id)
+        owner_name_override: null,
+        note: towerNoteInput.trim() || null, // 비고는 회원 누구나 입력 가능
+        note_visible: towerNoteVisibleInput,
+        read_status: towerStatusInput,
+        book_author: towerAuthorInput.trim() || null,
+        book_publisher: towerPublisherInput.trim() || null,
+        cover_url: towerCoverUrlInput || null,
+      });
+      setTowerTitleInput(''); setTowerStartInput(todayStr()); setTowerPageInput(''); setTowerFinishedInput(''); setTowerPublicInput(true); setTowerTagInput(''); setTowerNoteInput(''); setTowerNoteVisibleInput(false); setTowerStatusInput('reading'); setTowerColorInput(COVER_EDGE_COLORS[Math.floor(Math.random() * COVER_EDGE_COLORS.length)]); setTowerAuthorInput(''); setTowerPublisherInput(''); setTowerCoverUrlInput(''); setTowerBookSearchOpen(false); setTowerOwnerMemberId(''); setShowTowerAdd(false);
+      await reload(['book_tower_entries']);
+    } catch (e) {
+      showToast?.('추가에 실패했어요: ' + (e?.message || '알 수 없는 오류'), 'error');
+    } finally {
+      setTowerSaving(false);
+    }
   };
   const saveTowerEdit = async (entry) => {
+    if (towerDateRangeInvalid || towerSaving) { if (towerDateRangeInvalid) showToast?.('독서 완료일이 독서 시작일보다 빠를 수 없어요. 날짜를 확인해주세요.', 'error'); return; }
+    setTowerSaving(true);
     try {
       const pickedOwner = isSecretary && editingTowerOwnerMemberId ? members.find((m) => m.id === editingTowerOwnerMemberId) : null;
       const { data, error } = await supabase.from('book_tower_entries')
@@ -2639,6 +2687,8 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
       await reload(['book_tower_entries']);
     } catch (e) {
       showToast?.('저장에 실패했어요: ' + (e?.message || '알 수 없는 오류'), 'error');
+    } finally {
+      setTowerSaving(false);
     }
   };
   const startTowerEdit = (entry) => {
@@ -2668,14 +2718,15 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
     await reload(['book_tower_entries']);
   };
   // 모임 책장(북적북적)의 완독한 책을 보고 바로 대여 요청 - 도서 공유함의 '요청됨' 상태로 바로 생성돼서, 이후 확정·반납 흐름은 도서 공유함과 동일하게 진행됨
-  const activeShareForTowerBook = (entry) => bookShares.find((s) => s.posted_by === entry.member_id && s.book_title === entry.book_title && s.status !== 'returned');
+  // 요청한 사람(빌리려는 사람)이 주체가 되도록 kind:'request'로 생성 - 도서 공유함의 '빌려주실 수 있나요?' 목록에 뜨고, posted_by가 요청자가 됨
+  const activeShareForTowerBook = (entry) => bookShares.find((s) => (s.posted_by === entry.member_id || s.matched_by === entry.member_id) && s.book_title === entry.book_title && s.status !== 'returned');
   const requestBorrowFromTower = async (entry) => {
     if (!currentMember) return;
     const shareId = uid('bs');
     await insertRow('book_shares', {
-      id: shareId, kind: 'offer', posted_by: entry.member_id,
+      id: shareId, kind: 'request', posted_by: currentMember.id,
       book_title: entry.book_title, book_author: entry.book_author || null, book_publisher: entry.book_publisher || null,
-      cover_url: entry.cover_url || null, status: 'requested', matched_by: currentMember.id,
+      cover_url: entry.cover_url || null, status: 'requested', matched_by: entry.member_id,
       created_at: new Date().toISOString(),
     });
     await notify(entry.member_id, `${currentMember.name}님이 [${entry.book_title}] 대여를 요청했어요. 도서 공유함에서 확인 후 확정해주세요.`, shareId);
@@ -2718,18 +2769,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
             </label>
           </div>
           <div className="text-sm font-bold truncate" style={{ color: INK }}>{t.book_title}</div>
-          <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))' }}>
-            <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>독서 시작일</div><input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 outline-none" style={{ ...inputStyle, fontSize: 'clamp(12px, 3.4vw, 13px)' }} aria-label="독서 시작일" /></div>
-            <div>
-              <div className="text-[10px] mb-1" style={{ color: MUTE }}>독서 완료일</div>
-              <div className="flex gap-1 items-center">
-                <input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 outline-none flex-1 min-w-0" style={{ ...inputStyle, fontSize: 'clamp(12px, 3.4vw, 13px)' }} aria-label="독서 완료일" />
-                {towerFinishedInput && (
-                  <button onClick={() => setTowerFinishedInput('')} className="shrink-0 p-1.5" aria-label="독서 완료일 지우기"><X size={13} style={{ color: MUTE }} /></button>
-                )}
-              </div>
-            </div>
-          </div>
+          <TowerDateRangeFields dense start={towerStartInput} onStartChange={setTowerStartInput} finish={towerFinishedInput} onFinishChange={setTowerFinishedInput} invalid={towerDateRangeInvalid} />
           <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
           {isSecretary && (
             <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>토론회 태그</div><input value={editingTowerTag} onChange={(e) => setEditingTowerTag(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
@@ -2787,7 +2827,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
             </div>
           )}
           <div className="flex gap-1.5 items-center pt-1">
-            <button onClick={() => saveTowerEdit(t)} className="flex-1 text-xs rounded-full py-2 font-semibold" style={{ background: '#1E1C16', color: '#F2EEE3' }}>저장</button>
+            <button onClick={() => saveTowerEdit(t)} disabled={towerDateRangeInvalid || towerSaving} className="flex-1 text-xs rounded-full py-2 font-semibold" style={{ background: '#1E1C16', color: '#F2EEE3', opacity: (towerDateRangeInvalid || towerSaving) ? 0.5 : 1 }}>{towerSaving ? '저장 중…' : '저장'}</button>
             <button onClick={() => setEditingTowerId(null)} className="flex-1 text-xs rounded-full py-2 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>취소</button>
           </div>
         </div>
@@ -2991,8 +3031,8 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
       {viewingShare && (() => {
         const poster = members.find((m) => m.id === viewingShare.posted_by);
         const matcher = members.find((m) => m.id === viewingShare.matched_by);
-        const ownerId = viewingShare.kind === 'offer' ? viewingShare.posted_by : viewingShare.matched_by;
-        const borrowerId = viewingShare.kind === 'offer' ? viewingShare.matched_by : viewingShare.posted_by;
+        const ownerId = shareOwnerId(viewingShare);
+        const borrowerId = shareBorrowerId(viewingShare);
         const isOwner = currentMember?.id === ownerId;
         const canEditPost = currentMember?.id === viewingShare.posted_by || canManage;
         return (
@@ -3220,18 +3260,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
               <input value={towerAuthorInput} onChange={(e) => setTowerAuthorInput(e.target.value)} placeholder="저자 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
               <input value={towerPublisherInput} onChange={(e) => setTowerPublisherInput(e.target.value)} placeholder="출판사 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
             </div>
-            <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(132px, 1fr))' }}>
-              <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>독서 시작일</div><input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 outline-none" style={{ ...inputStyle, fontSize: 'clamp(12px, 3.4vw, 14px)' }} /></div>
-              <div>
-                <div className="text-[10px] mb-1" style={{ color: MUTE }}>독서 완료일 (선택)</div>
-                <div className="flex gap-1 items-center">
-                  <input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 outline-none flex-1 min-w-0" style={{ ...inputStyle, fontSize: 'clamp(12px, 3.4vw, 14px)' }} />
-                  {towerFinishedInput && (
-                    <button onClick={() => setTowerFinishedInput('')} className="shrink-0 p-1.5" aria-label="독서 완료일 지우기"><X size={13} style={{ color: MUTE }} /></button>
-                  )}
-                </div>
-              </div>
-            </div>
+            <TowerDateRangeFields start={towerStartInput} onStartChange={setTowerStartInput} finish={towerFinishedInput} onFinishChange={setTowerFinishedInput} invalid={towerDateRangeInvalid} finishLabel="독서 완료일 (선택)" />
             <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지 (선택)</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
             {isSecretary && (
               <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>토론회 태그 (선택)</div><input value={towerTagInput} onChange={(e) => setTowerTagInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
@@ -3274,7 +3303,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
                 </select>
               </div>
             )}
-            <PrimaryBtn onClick={addManualTowerEntry} icon={Plus}>추가</PrimaryBtn>
+            <PrimaryBtn onClick={addManualTowerEntry} disabled={towerDateRangeInvalid || !towerTitleInput.trim() || towerSaving} icon={Plus}>{towerSaving ? '추가 중…' : '추가'}</PrimaryBtn>
           </div>
         )}
         {showTowerAdd && <div className="text-[10px] font-semibold mb-2" style={{ color: MUTE }}>쌓인 책 목록</div>}
@@ -3509,7 +3538,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
                       if (!currentMember || isOwnEntry || statusKey !== 'done' || t.is_public === false) return null;
                       const existingShare = activeShareForTowerBook(t);
                       if (existingShare) {
-                        const mine = existingShare.matched_by === currentMember.id;
+                        const mine = shareBorrowerId(existingShare) === currentMember.id;
                         const label = existingShare.status === 'matched' ? '대여중' : (mine ? '요청중' : '대여요청됨');
                         return <span className="text-[11px] rounded-full px-2.5 py-1 font-semibold shrink-0" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{label}</span>;
                       }
