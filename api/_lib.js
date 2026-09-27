@@ -99,6 +99,13 @@ export async function sendWebPush(sub, payload, vapid) {
 // link_id가 'tab:dashboard' 형식이면 그 탭으로, 아니면(도서공유 등) 서재 탭으로 열림
 export const linkToUrl = (linkId) => (linkId && String(linkId).startsWith('tab:') ? `/#${String(linkId).slice(4)}` : '/#gallery');
 
+// 알림 내용에서 "OOO님이" 형태로 들어있는 이름을 찾아, 푸시 제목에 "책스초코 · OOO님" 처럼 보낸 사람을 표시함
+// (자동 알림처럼 특정 회원이 보낸 게 아닌 경우는 이름이 없으니 그냥 "책스초코"로 남음)
+export const pushTitleFor = (message) => {
+  const m = String(message || '').match(/([^\s"']{1,12})님이/);
+  return m ? `책스초코(${m[1]})` : '책스초코';
+};
+
 // 최근 30분 안에 생긴 알림 중 아직 푸시를 안 보낸 것만 골라서, 받는 사람의 모든 기기로 발송
 export async function flushPendingPushes(env, vapid) {
   const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
@@ -114,7 +121,7 @@ export async function flushPendingPushes(env, vapid) {
   for (const n of claimed) {
     for (const s of (subs || []).filter((x) => x.member_id === n.member_id)) {
       try {
-        const r = await sendWebPush(s, { title: '책스초코', body: n.message, url: linkToUrl(n.link_id), tag: n.id }, vapid);
+        const r = await sendWebPush(s, { title: pushTitleFor(n.message), body: n.message, url: linkToUrl(n.link_id), tag: n.id }, vapid);
         if (r.ok) sent += 1;
         if (r.gone) goneEndpoints.push(s.endpoint);
       } catch (e) { /* 한 기기 실패가 다른 기기 발송을 막지 않도록 */ }
