@@ -1257,6 +1257,14 @@ export default function App() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const loginSelectRef = React.useRef(null);
+  // 아이폰 버그 대응: 로그인창이 막 열렸을 때 이름 선택창을 누르면, 첫 탭은 포커스만 잡고 목록은 안 열려서 두 번 눌러야 하는 경우가 있음
+  // → 창이 열리자마자 미리 포커스를 걸어둬서, 사용자의 첫 탭에서 바로 목록이 열리도록 함
+  useEffect(() => {
+    if (!showLoginModal) return;
+    const t = setTimeout(() => loginSelectRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, [showLoginModal]);
   const [modalSelectedId, setModalSelectedId] = useState('');
   const [modalPinInput, setModalPinInput] = useState('');
   const [modalPinError, setModalPinError] = useState('');
@@ -1477,6 +1485,15 @@ export default function App() {
     navigator.serviceWorker.addEventListener('message', onMsg);
     return () => navigator.serviceWorker.removeEventListener('message', onMsg);
   }, []);
+  // 안 읽은 알림 개수를 홈 화면 아이콘(바로가기)에 빨간 숫자 배지로 표시 (지원하는 기기에서만 - 안드로이드/최신 아이폰 홈 화면 설치 시)
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('setAppBadge' in navigator)) return;
+    const count = currentUserId ? notifications.filter((n) => n.member_id === currentUserId && !n.read_at).length : 0;
+    try {
+      if (count > 0) navigator.setAppBadge(count).catch(() => {});
+      else navigator.clearAppBadge().catch(() => {});
+    } catch (e) { /* 배지 기능을 지원하지 않는 기기 - 무시 */ }
+  }, [notifications, currentUserId]);
   // 로그인하면 이 기기의 푸시 구독을 그 사람 것으로 연결, 로그아웃하면 연결 해제
   useEffect(() => {
     currentPushSubscription().then((sub) => {
@@ -1565,6 +1582,17 @@ export default function App() {
     return () => ro.disconnect();
   }, [loaded]);
 
+  // 아이폰(iOS) 버그 대응: 화면을 처음 열었을 때, 노치(안전 영역) 크기 계산이 아직 안 끝나서
+  // 위쪽에 여백이 크게 잡혔다가 "스크롤을 한 번 해야만" 정상 크기로 줄어드는 문제가 있음.
+  // → 화면이 뜨자마자 아주 살짝(1px) 스크롤했다가 바로 되돌려서, 강제로 한 번 다시 계산시킴 (사용자 눈에는 안 보임)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const nudge = () => { window.scrollTo(0, 1); requestAnimationFrame(() => window.scrollTo(0, 0)); };
+    const t1 = setTimeout(nudge, 0);
+    const t2 = setTimeout(nudge, 300);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [loaded]);
+
   if (!loaded) return <SkeletonScreen />;
 
   return (
@@ -1610,8 +1638,9 @@ export default function App() {
           ))}
         </div>
       )}
-      <div className="max-w-3xl mx-auto px-4 pt-6 pb-24">
+      <div className="max-w-3xl mx-auto px-4 pt-2 pb-24">
         {/* 최상단(KEPCO READING CLUB 줄 + 책스초코 제목)은 스크롤해도 항상 화면 위에 고정 */}
+        {/* 위쪽 여백은 이제 이 줄의 paddingTop(노치 크기)만으로 정해짐 - 예전엔 바깥쪽 pt-6(24px)이 노치 크기에 그대로 더해져서 여백이 필요 이상으로 컸음 */}
         <div ref={headerRef} className="sticky -mx-4 px-4" style={{ top: 0, zIndex: 40, background: PAPER_BG, paddingTop: 'max(8px, env(safe-area-inset-top))', paddingBottom: 12, marginTop: -8, marginBottom: 12 }}>
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[11px] tracking-[0.2em] uppercase" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>KEPCO Reading Club</span>
@@ -1694,7 +1723,7 @@ export default function App() {
                 <div className="space-y-3">
                   <div>
                     <label htmlFor="login-member-select" className="text-xs mb-1 block" style={{ color: MUTE }}>이름 선택</label>
-                    <select id="login-member-select" value={modalSelectedId} onChange={(e) => { setModalSelectedId(e.target.value); setModalPinInput(''); setModalPinError(''); }}
+                    <select ref={loginSelectRef} id="login-member-select" value={modalSelectedId} onChange={(e) => { setModalSelectedId(e.target.value); setModalPinInput(''); setModalPinError(''); }}
                       className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none" style={inputStyle}>
                       <option value="">— 선택하세요 —</option>
                       {sortedMembers.map((m) => <option key={m.id} value={m.id}>{maskMiddle(m.name)} ({m.role})</option>)}
