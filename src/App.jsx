@@ -2273,6 +2273,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
 
   // ---------- 도서 공유함 ----------
   const [showShareForm, setShowShareForm] = useState(false);
+  const [showReturnedShares, setShowReturnedShares] = useState(false); // 반납완료 목록은 기본 접기
   const [shareKind, setShareKind] = useState('offer');
   const [shareTitle, setShareTitle] = useState('');
   const [shareAuthor, setShareAuthor] = useState('');
@@ -2412,7 +2413,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
     const borrowerId = share.kind === 'offer' ? share.matched_by : share.posted_by;
     const today = todayStr();
     await updateRow('book_shares', 'id', share.id, { status: 'returned', returned_at: today });
-    await insertRow('book_tower_entries', { id: uid('bt'), member_id: borrowerId, book_title: share.book_title, start_date: share.borrowed_at, finished_date: today, current_page: null, color: randomPastel(), source_share_id: share.id, created_at: new Date().toISOString() });
+    await insertRow('book_tower_entries', { id: uid('bt'), member_id: borrowerId, book_title: share.book_title, book_author: share.book_author || null, book_publisher: share.book_publisher || null, cover_url: share.cover_url || null, start_date: share.borrowed_at, finished_date: today, current_page: null, color: randomPastel(), source_share_id: share.id, created_at: new Date().toISOString(), read_status: 'done' });
     await notify(borrowerId, `[${share.book_title}] 반납 완료 처리됐어요. 내 책탑에 추가됐어요.`, share.id);
     await reload(['book_shares', 'book_tower_entries', 'notifications']);
   };
@@ -2427,8 +2428,9 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
     if (s.status === 'matched') return { label: '대여중', style: { background: '#3A2E10', color: '#EFC94C' } };
     return { label: '반납완료', style: { background: NEUTRAL_BG, color: MUTE, border: `1px solid ${LINE}` } };
   };
-  const offers = bookShares.filter((s) => s.kind === 'offer').sort((a, b) => b.created_at.localeCompare(a.created_at));
-  const requests = bookShares.filter((s) => s.kind === 'request').sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const offers = bookShares.filter((s) => s.kind === 'offer' && s.status !== 'returned').sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const requests = bookShares.filter((s) => s.kind === 'request' && s.status !== 'returned').sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const returnedShares = bookShares.filter((s) => s.status === 'returned').sort((a, b) => (b.returned_at || '').localeCompare(a.returned_at || ''));
   const viewingShare = bookShares.find((s) => s.id === viewingShareId) || null;
 
   useEffect(() => {
@@ -2583,7 +2585,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
     await reload(['book_shares', 'notifications']);
     showToast?.('대여 요청을 보냈어요. 도서 공유함에서 진행 상황을 볼 수 있어요.', 'success');
   };
-  const towerSortKey = (t) => t.finished_date || t.start_date || t.created_at.slice(0, 10);
+  const towerSortKey = (t) => t.start_date || t.finished_date || t.created_at.slice(0, 10); // 기본 정렬 기준은 독서 시작일 (수동으로 순서를 바꾼 책은 sort_order가 우선 적용됨)
   // 순서를 손으로 바꾼 적이 있으면 sort_order를, 없으면 날짜를 기준으로 삼음 (둘 다 밀리초 단위 숫자라 섞여도 자연스럽게 정렬됨)
   const towerEffectiveOrder = (t) => t.sort_order != null ? t.sort_order : (new Date(towerSortKey(t)).getTime() || 0);
   const towerCompare = (a, b) => towerEffectiveOrder(a) - towerEffectiveOrder(b);
@@ -2620,13 +2622,13 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
           </div>
           <div className="text-sm font-bold truncate" style={{ color: INK }}>{t.book_title}</div>
           <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))' }}>
-            <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>시작일</div><input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 outline-none" style={{ ...inputStyle, fontSize: 'clamp(12px, 3.4vw, 13px)' }} aria-label="시작일" /></div>
+            <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>독서 시작일</div><input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 outline-none" style={{ ...inputStyle, fontSize: 'clamp(12px, 3.4vw, 13px)' }} aria-label="독서 시작일" /></div>
             <div>
-              <div className="text-[10px] mb-1" style={{ color: MUTE }}>완료일</div>
+              <div className="text-[10px] mb-1" style={{ color: MUTE }}>독서 완료일</div>
               <div className="flex gap-1 items-center">
-                <input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 outline-none flex-1 min-w-0" style={{ ...inputStyle, fontSize: 'clamp(12px, 3.4vw, 13px)' }} aria-label="완료일" />
+                <input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 outline-none flex-1 min-w-0" style={{ ...inputStyle, fontSize: 'clamp(12px, 3.4vw, 13px)' }} aria-label="독서 완료일" />
                 {towerFinishedInput && (
-                  <button onClick={() => setTowerFinishedInput('')} className="shrink-0 p-1.5" aria-label="완료일 지우기"><X size={13} style={{ color: MUTE }} /></button>
+                  <button onClick={() => setTowerFinishedInput('')} className="shrink-0 p-1.5" aria-label="독서 완료일 지우기"><X size={13} style={{ color: MUTE }} /></button>
                 )}
               </div>
             </div>
@@ -2666,15 +2668,6 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
           </div>
           {isSecretary && (
             <div>
-              <div className="text-[10px] mb-1" style={{ color: MUTE }}>등록자 (회원 명단에서 지정)</div>
-              <select value={editingTowerOwnerMemberId} onChange={(e) => setEditingTowerOwnerMemberId(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle}>
-                <option value="">그대로 유지</option>
-                {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
-            </div>
-          )}
-          {isSecretary && (
-            <div>
               <div className="text-[10px] mb-1" style={{ color: MUTE }}>책탑에서 좌우 위치 (안 건드리면 책마다 자동으로 살짝씩 다르게 삐뚤어져 보여요)</div>
               <div className="flex items-center gap-2">
                 <button type="button" onClick={() => setEditingTowerOffset((v) => Math.max(-20, (v ?? 0) - 5))} className="rounded-full p-1.5" style={{ background: NEUTRAL_BG }} aria-label="왼쪽으로 이동"><ChevronLeft size={14} style={{ color: NEUTRAL_TEXT }} /></button>
@@ -2684,6 +2677,16 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
                   <button type="button" onClick={() => setEditingTowerOffset(null)} className="text-[11px] underline" style={{ color: MUTE }}>자동으로</button>
                 )}
               </div>
+            </div>
+          )}
+          {/* 등록자는 맨 아래에 배치 */}
+          {isSecretary && (
+            <div>
+              <div className="text-[10px] mb-1" style={{ color: MUTE }}>등록자 (회원 명단에서 지정)</div>
+              <select value={editingTowerOwnerMemberId} onChange={(e) => setEditingTowerOwnerMemberId(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle}>
+                <option value="">그대로 유지</option>
+                {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
             </div>
           )}
           <div className="flex gap-1.5 items-center pt-1">
@@ -2861,6 +2864,30 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
             );
           })}
         </div>
+        {returnedShares.length > 0 && (
+          <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+            <button onClick={() => setShowReturnedShares((v) => !v)} className="w-full flex items-center justify-between text-xs font-bold mb-1.5" style={{ color: MUTE }}>
+              <span>반납완료 ({returnedShares.length})</span>
+              {showReturnedShares ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+            {showReturnedShares && (
+              <div className="space-y-1.5">
+                {returnedShares.map((s) => {
+                  const poster = members.find((m) => m.id === s.posted_by);
+                  return (
+                    <button key={s.id} onClick={() => { setViewingShareId(s.id); setDueDateInput(''); setBorrowedDateInput(''); setEditingShare(false); }} className="w-full flex items-center justify-between rounded-xl px-3 py-2 text-left" style={{ background: NEUTRAL_BG }}>
+                      <div className="min-w-0">
+                        <div className="text-sm truncate" style={{ color: INK }}>{s.book_title}</div>
+                        <div className="text-[10px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{dispName(poster?.name || '', isLoggedIn)}</div>
+                      </div>
+                      <span className="text-[10px] rounded-full px-2 py-0.5 font-semibold shrink-0 ml-2" style={shareStatusInfo(s).style}>{shareStatusInfo(s).label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </Card>
 
       {/* ---------- 도서 공유함 상세보기 ---------- */}
@@ -2988,7 +3015,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
               {viewingShare.status === 'requested' && !editingShare && (
                 <div className="space-y-2 pt-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
                   <span className="inline-flex items-center text-[11px] rounded-full px-2 py-0.5 font-semibold" style={shareStatusInfo(viewingShare).style}>{shareStatusInfo(viewingShare).label}</span>
-                  <div className="text-xs" style={{ color: NEUTRAL_TEXT }}>응답: {dispName(matcher?.name || '', isLoggedIn)}</div>
+                  <div className="text-xs" style={{ color: NEUTRAL_TEXT }}>대여요청자: {dispName(matcher?.name || '', isLoggedIn)}</div>
                   {currentMember?.id === viewingShare.posted_by ? (
                     <div className="flex gap-2">
                       <PrimaryBtn onClick={() => { confirmMatch(viewingShare); setViewingShareId(null); }} icon={Check}>확정하기</PrimaryBtn>
@@ -3001,7 +3028,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
               )}
               {(viewingShare.status === 'matched' || viewingShare.status === 'returned') && !editingShare && (
                 <div className="space-y-2 pt-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-                  <div className="text-xs" style={{ color: NEUTRAL_TEXT }}>응답: {dispName(matcher?.name || '', isLoggedIn)}</div>
+                  <div className="text-xs" style={{ color: NEUTRAL_TEXT }}>대여요청자: {dispName(matcher?.name || '', isLoggedIn)}</div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs" style={{ color: MUTE }}>대여일:</span>
                     {viewingShare.status === 'matched' && (isOwner || currentMember?.id === borrowerId || canManage) ? (
@@ -3097,13 +3124,13 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
               <input value={towerPublisherInput} onChange={(e) => setTowerPublisherInput(e.target.value)} placeholder="출판사 (선택)" className="rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
             </div>
             <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(132px, 1fr))' }}>
-              <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>시작일</div><input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 outline-none" style={{ ...inputStyle, fontSize: 'clamp(12px, 3.4vw, 14px)' }} /></div>
+              <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>독서 시작일</div><input type="date" value={towerStartInput} onChange={(e) => setTowerStartInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 outline-none" style={{ ...inputStyle, fontSize: 'clamp(12px, 3.4vw, 14px)' }} /></div>
               <div>
-                <div className="text-[10px] mb-1" style={{ color: MUTE }}>완료일 (선택)</div>
+                <div className="text-[10px] mb-1" style={{ color: MUTE }}>독서 완료일 (선택)</div>
                 <div className="flex gap-1 items-center">
                   <input type="date" value={towerFinishedInput} onChange={(e) => setTowerFinishedInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 outline-none flex-1 min-w-0" style={{ ...inputStyle, fontSize: 'clamp(12px, 3.4vw, 14px)' }} />
                   {towerFinishedInput && (
-                    <button onClick={() => setTowerFinishedInput('')} className="shrink-0 p-1.5" aria-label="완료일 지우기"><X size={13} style={{ color: MUTE }} /></button>
+                    <button onClick={() => setTowerFinishedInput('')} className="shrink-0 p-1.5" aria-label="독서 완료일 지우기"><X size={13} style={{ color: MUTE }} /></button>
                   )}
                 </div>
               </div>
@@ -3346,14 +3373,15 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
                   <div className="space-y-1.5 text-xs mt-3" style={{ color: NEUTRAL_TEXT }}>
                     {t.book_author && <div className="flex justify-between gap-3 min-w-0"><span className="shrink-0" style={{ color: MUTE }}>저자</span><span className="text-right truncate min-w-0">{t.book_author}</span></div>}
                     {t.book_publisher && <div className="flex justify-between gap-3 min-w-0"><span className="shrink-0" style={{ color: MUTE }}>출판사</span><span className="text-right truncate min-w-0">{t.book_publisher}</span></div>}
-                    {ownerText && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>등록자</span><span className="text-right">{ownerText}</span></div>}
                     {t.event_tag && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>토론회</span><span className="text-right">{t.event_tag}</span></div>}
-                    {t.start_date && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>시작일</span><span>{fmtDate(t.start_date)}</span></div>}
-                    {t.finished_date && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>완료일</span><span>{fmtDate(t.finished_date)}</span></div>}
+                    {t.start_date && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>독서 시작일</span><span>{fmtDate(t.start_date)}</span></div>}
+                    {t.finished_date && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>독서 완료일</span><span>{fmtDate(t.finished_date)}</span></div>}
                     {/* 현재 페이지는 본인 책이거나 모임 공개 설정일 때만 표시 */}
                     {t.current_page != null && (isOwnEntry || SHOW_PAGE_IN_GROUP) && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>현재 페이지</span><span>{t.current_page}쪽</span></div>}
                     {/* 비고는 '목록에도 보이기'를 켰거나, 본인·간사가 볼 때 표시 */}
                     {t.note && (t.note_visible || canEditEntry) && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>비고</span><span className="text-right">{t.note}</span></div>}
+                    {/* 등록자는 맨 아래에 표시 */}
+                    {ownerText && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>등록자</span><span className="text-right">{ownerText}</span></div>}
                   </div>
                 </>
               )}
