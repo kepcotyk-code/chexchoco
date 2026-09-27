@@ -2996,20 +2996,22 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
               <div className="relative min-w-0">
                 <button onClick={() => setTowerPickerOpen((v) => !v)} className="w-full flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT, border: `1px dashed ${LINE}` }}><Library size={13} /> {towerPickerOpen ? '접기' : '모임 책장에서 완독한 책 고르기'}</button>
                 {towerPickerOpen && (() => {
-                  const doneBooks = groupTower.filter((t) => (t.read_status || (t.finished_date ? 'done' : 'reading')) === 'done');
+                  // 이미 나와 진행 중인(요청/대여중) 책이거나 내가 완독한 책(나한테 요청할 순 없으니)은 목록에서 제외
+                  const doneBooks = groupTower.filter((t) => (t.read_status || (t.finished_date ? 'done' : 'reading')) === 'done' && t.member_id !== currentMember?.id && !activeShareForTowerBook(t));
                   return (
                     <div className="absolute z-10 left-0 right-0 mt-1 rounded-xl border overflow-hidden" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 300, overflowY: 'auto' }}>
                       <div className="flex items-center justify-between px-2 py-1" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
-                        <span className="text-[11px]" style={{ color: MUTE }}>완독한 책 {doneBooks.length}권</span>
+                        <span className="text-[11px]" style={{ color: MUTE }}>완독한 책 {doneBooks.length}권 · 고르면 바로 대여요청이 보내져요</span>
                         <button onClick={() => setTowerPickerOpen(false)} className="p-1" aria-label="목록 닫기"><X size={12} style={{ color: MUTE }} /></button>
                       </div>
                       {doneBooks.length === 0 && (
-                        <div className="px-3 py-3 text-xs" style={{ color: MUTE }}>아직 모임 책장에 완독한 책이 없어요.</div>
+                        <div className="px-3 py-3 text-xs" style={{ color: MUTE }}>지금 대여요청 가능한 완독한 책이 없어요.</div>
                       )}
                       {doneBooks.map((t) => {
                         const owner = members.find((m) => m.id === t.member_id);
+                        // 여기서 고르면 폼에 채워넣기만 하는 게 아니라, 북적북적에서 대여요청 누른 것과 동일하게 그 소유자에게 바로 요청이 감 (누가 주인인지 이미 알고 있으니까)
                         return (
-                          <button key={t.id} onClick={() => { setShareTitle(t.book_title); setShareAuthor(t.book_author || ''); setSharePublisher(t.book_publisher || ''); setShareCoverUrl(t.cover_url || ''); setTowerPickerOpen(false); }} className="w-full flex items-center gap-2.5 px-2.5 py-2 text-left" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
+                          <button key={t.id} onClick={() => { setTowerPickerOpen(false); setShowShareForm(false); requestBorrowFromTower(t); }} className="w-full flex items-center gap-2.5 px-2.5 py-2 text-left" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
                             {t.cover_url ? <img src={t.cover_url} alt="" className="rounded shrink-0" style={{ width: 32, height: 46, objectFit: 'cover' }} /> : <div className="rounded shrink-0" style={{ width: 32, height: 46, background: NEUTRAL_BG }} />}
                             <div className="min-w-0">
                               <div className="text-xs font-semibold truncate" style={{ color: INK }}>{t.book_title}</div>
