@@ -240,6 +240,11 @@ const mdOf = (birthday) => birthday ? birthday.slice(5, 10) : null;
 const fmtMD = (md) => { const [m, d] = md.split('-'); return `${parseInt(m, 10)}월 ${parseInt(d, 10)}일`; };
 const maskName = (name) => { if (!name) return name; const chars = [...name]; return chars[0] + 'O'.repeat(Math.max(chars.length - 1, 0)); };
 const dispName = (name, loggedIn) => (loggedIn ? name : maskName(name));
+// 닉네임 사용 설정을 켠 회원은 "이름(닉네임)" 형태로 표시 (로그인 상태에서만 - 비로그인 시엔 기존처럼 이름만 가려서 보여줌)
+const nameWithNickname = (member, loggedIn) => {
+  const base = dispName(member?.name || '', loggedIn);
+  return (loggedIn && member?.nickname_enabled && member?.nickname) ? `${base}(${member.nickname})` : base;
+};
 // 로그인 창 명단용 - 가운데 글자만 가림 (김태영 → 김O영, 남궁민수 → 남OO수, 두 글자는 끝 글자를 가림)
 const maskMiddle = (name) => { if (!name) return name; const c = [...name]; if (c.length <= 2) return c[0] + 'O'; return c[0] + 'O'.repeat(c.length - 2) + c[c.length - 1]; };
 const uid = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -1683,7 +1688,7 @@ export default function App() {
                     className="flex items-center gap-1 rounded-full font-semibold min-w-0"
                     aria-label={currentMember ? '내 메뉴' : '로그인'}
                     style={{ background: currentMember ? BTN_BG : NEUTRAL_BG, color: currentMember ? BTN_TEXT : NEUTRAL_TEXT, padding: 'clamp(5px, 1.6vw, 6px) clamp(8px, 2.6vw, 12px)', fontSize: 'clamp(10px, 3vw, 12px)' }}>
-                    {currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} /><span className="truncate whitespace-nowrap">{currentMember.name}</span></> : <>로그인</>}
+                    {currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} /><span className="truncate whitespace-nowrap">{nameWithNickname(currentMember, true)}</span></> : <>로그인</>}
                   </button>
                   {/* 이름 버튼을 누르면 "인원 보기 / 로그아웃" 중 고르는 작은 메뉴 - 예전처럼 누르자마자 바로 로그아웃하게 되돌리려면,
                       이 드롭다운을 지우고 위 onClick을 다시 () => (currentMember ? logout() : openLogin()) 로 바꾸면 됨 */}
@@ -2478,6 +2483,8 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
   const [towerCoverUploading, setTowerCoverUploading] = useState(false);
   const [viewingTowerId, setViewingTowerId] = useState(null); // 책탑 항목 클릭 시 책 정보 조회용
   const [showAllTower, setShowAllTower] = useState(false); // 북적북적 목록 '더보기' 펼침 여부
+  const [quickPageEditId, setQuickPageEditId] = useState(null); // 내 책장에서 쪽수만 빠르게 고칠 때, 지금 입력 중인 항목 id
+  const [quickPageValue, setQuickPageValue] = useState('');
   // 상세보기 창이 열려 있는 동안 뒤 화면이 스크롤되지 않게 고정 (스크롤로 주소창이 움직이며 음영 위치가 틀어지는 것도 방지)
   useEffect(() => {
     if (!viewingShareId && !viewingTowerId) return undefined;
@@ -2548,6 +2555,31 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
     setEditingTowerOwnerMemberId(''); // 비워두면 현재 등록자 그대로 유지 - 명단에서 새로 고를 때만 옮겨감
   };
   const removeTowerEntry = async (entryId) => { await deleteRow('book_tower_entries', 'id', entryId); await reload(['book_tower_entries']); };
+  // 내 책장 목록에서 전체 수정창을 열지 않고, 쪽수만 바로 입력하는 간편 기능
+  const saveQuickPage = async (entry) => {
+    const trimmed = quickPageValue.trim();
+    setQuickPageEditId(null);
+    if (trimmed === '') return;
+    const n = parseInt(trimmed, 10);
+    if (Number.isNaN(n) || n < 0) return;
+    await updateRow('book_tower_entries', 'id', entry.id, { current_page: n });
+    await reload(['book_tower_entries']);
+  };
+  // 모임 책장(북적북적)의 완독한 책을 보고 바로 대여 요청 - 도서 공유함의 '요청됨' 상태로 바로 생성돼서, 이후 확정·반납 흐름은 도서 공유함과 동일하게 진행됨
+  const activeShareForTowerBook = (entry) => bookShares.find((s) => s.posted_by === entry.member_id && s.book_title === entry.book_title && s.status !== 'returned');
+  const requestBorrowFromTower = async (entry) => {
+    if (!currentMember) return;
+    const shareId = uid('bs');
+    await insertRow('book_shares', {
+      id: shareId, kind: 'offer', posted_by: entry.member_id,
+      book_title: entry.book_title, book_author: entry.book_author || null, book_publisher: entry.book_publisher || null,
+      cover_url: entry.cover_url || null, status: 'requested', matched_by: currentMember.id,
+      created_at: new Date().toISOString(),
+    });
+    await notify(entry.member_id, `${currentMember.name}님이 [${entry.book_title}] 대여를 요청했어요. 도서 공유함에서 확인 후 확정해주세요.`, shareId);
+    await reload(['book_shares', 'notifications']);
+    showToast?.('대여 요청을 보냈어요. 도서 공유함에서 진행 상황을 볼 수 있어요.', 'success');
+  };
   const towerSortKey = (t) => t.finished_date || t.start_date || t.created_at.slice(0, 10);
   // 순서를 손으로 바꾼 적이 있으면 sort_order를, 없으면 날짜를 기준으로 삼음 (둘 다 밀리초 단위 숫자라 섞여도 자연스럽게 정렬됨)
   const towerEffectiveOrder = (t) => t.sort_order != null ? t.sort_order : (new Date(towerSortKey(t)).getTime() || 0);
@@ -3193,7 +3225,22 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
                         <div className="flex items-center gap-1.5 shrink-0">
                           {/* 상태 글자는 리본 안에 흰색으로 표기 - 여기엔 읽는 중·잠시 멈춤일 때 쪽수만 표시 */}
                           <div className="flex flex-col items-end" style={{ gap: 1 }}>
-                            {showPage && (
+                            {/* 내 책장의 읽는 중·잠시 멈춤 책은 전체 수정창을 열지 않고 쪽수만 바로 입력 가능 */}
+                            {quickPageEditId === t.id ? (
+                              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                <input autoFocus type="number" inputMode="numeric" value={quickPageValue} onChange={(e) => setQuickPageValue(e.target.value)}
+                                  onBlur={() => saveQuickPage(t)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } if (e.key === 'Escape') setQuickPageEditId(null); }}
+                                  className="rounded border text-right outline-none" style={{ width: 40, fontSize: 10, padding: '1px 3px', background: '#FFFFFF', color: '#2A2015', borderColor: '#6B4E2A' }} aria-label="현재 쪽수 입력" />
+                                <span style={{ fontSize: 9, color: '#6B4E2A' }}>쪽</span>
+                              </div>
+                            ) : isMine && (statusKey === 'reading' || statusKey === 'paused') ? (
+                              <button onClick={(e) => { e.stopPropagation(); setQuickPageValue(t.current_page ? String(t.current_page) : ''); setQuickPageEditId(t.id); }}
+                                className="flex items-center gap-0.5" aria-label="현재 쪽수 바로 입력">
+                                <span style={{ fontSize: 9, lineHeight: '10px', color: '#6B4E2A', fontWeight: 600, fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: 'tabular-nums' }}>{t.current_page ? `${t.current_page}쪽` : '쪽수 입력'}</span>
+                                <Pencil size={8} style={{ color: '#6B4E2A', opacity: 0.6 }} />
+                              </button>
+                            ) : showPage && (
                               <span style={{ fontSize: 9, lineHeight: '10px', color: '#6B4E2A', fontWeight: 600, fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: 'tabular-nums' }} aria-label={`현재 ${t.current_page}페이지`}>{t.current_page}쪽</span>
                             )}
                           </div>
@@ -3261,8 +3308,24 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
                       </div>
                     </div>
                   )}
-                  {/* 도서명 - 저자·출판사는 아래 속성 목록에 각각 한 줄로 표시(길어도 줄바꿈되지 않도록 말줄임 처리) */}
-                  <div className="text-base font-semibold" style={{ color: INK }}>{t.book_title}</div>
+                  {/* 도서명(왼쪽) · 완독한 남의 책이면 오른쪽에 대여 요청 버튼 - 저자·출판사는 아래 속성 목록에 각각 한 줄로 표시(길어도 줄바꿈되지 않도록 말줄임 처리) */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-base font-semibold min-w-0 truncate" style={{ color: INK }}>{t.book_title}</div>
+                    {(() => {
+                      if (!currentMember || isOwnEntry || statusKey !== 'done' || t.is_public === false) return null;
+                      const existingShare = activeShareForTowerBook(t);
+                      if (existingShare) {
+                        const mine = existingShare.matched_by === currentMember.id;
+                        const label = existingShare.status === 'matched' ? '대여중' : (mine ? '요청중' : '대여요청됨');
+                        return <span className="text-[11px] rounded-full px-2.5 py-1 font-semibold shrink-0" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{label}</span>;
+                      }
+                      return (
+                        <button onClick={() => requestBorrowFromTower(t)} className="text-[11px] rounded-full px-2.5 py-1.5 font-semibold shrink-0" style={{ background: BTN_BG, color: BTN_TEXT }}>
+                          대여요청
+                        </button>
+                      );
+                    })()}
+                  </div>
                   <div className="space-y-1.5 text-xs mt-3" style={{ color: NEUTRAL_TEXT }}>
                     {t.book_author && <div className="flex justify-between gap-3 min-w-0"><span className="shrink-0" style={{ color: MUTE }}>저자</span><span className="text-right truncate min-w-0">{t.book_author}</span></div>}
                     {t.book_publisher && <div className="flex justify-between gap-3 min-w-0"><span className="shrink-0" style={{ color: MUTE }}>출판사</span><span className="text-right truncate min-w-0">{t.book_publisher}</span></div>}
@@ -4369,6 +4432,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
   const [editingId, setEditingId] = useState(null);
   const [editMode, setEditMode] = useState('full'); // 'full' | 'self'
   const [editName, setEditName] = useState(''); const [editRole, setEditRole] = useState('회원'); const [editBirthday, setEditBirthday] = useState(''); const [editPin, setEditPin] = useState(''); const [clearPin, setClearPin] = useState(false);
+  const [editNickname, setEditNickname] = useState(''); const [editNicknameEnabled, setEditNicknameEnabled] = useState(false);
   const [editDept, setEditDept] = useState(''); const [editJobType, setEditJobType] = useState(''); const [editJoinedAt, setEditJoinedAt] = useState(''); const [editGenre, setEditGenre] = useState(''); const [editNote, setEditNote] = useState('');
   // 멤버 탭 화면 표시용 — 로그인한 본인이 맨 위로 오도록 재배치 (다른 탭에서 쓰는 sortedMembers 순서엔 영향 없음)
   const displayMembers = isLoggedIn ? [...sortedMembers].sort((a, b) => (a.id === currentUserId ? -1 : b.id === currentUserId ? 1 : 0)) : sortedMembers;
@@ -4385,7 +4449,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
     setNewName(''); setNewRole('회원'); setNewBirthday(''); setNewPin(''); setNewDept(''); setNewJobType(''); setNewJoinedAt(''); setNewGenre(''); setNewNote(''); setShowAddForm(false);
   };
   // PIN은 목록 조회에 안 실려 있어서(m.has_pin만 boolean으로 존재), 수정 시작 시 실제 값은 프리필하지 않음 — 빈 칸=기존 값 유지, 입력하면 새 값으로 교체
-  const startEdit = (m) => { setEditingId(m.id); setEditMode('full'); setEditName(m.name); setEditRole(m.role); setEditBirthday(m.birthday || ''); setEditPin(''); setClearPin(false); setEditDept(m.department || ''); setEditJobType(m.job_type || ''); setEditJoinedAt(m.joined_at || ''); setEditGenre(m.book_genre || ''); setEditNote(m.note || ''); };
+  const startEdit = (m) => { setEditingId(m.id); setEditMode('full'); setEditName(m.name); setEditRole(m.role); setEditBirthday(m.birthday || ''); setEditPin(''); setClearPin(false); setEditDept(m.department || ''); setEditJobType(m.job_type || ''); setEditJoinedAt(m.joined_at || ''); setEditGenre(m.book_genre || ''); setEditNote(m.note || ''); setEditNickname(m.nickname || ''); setEditNicknameEnabled(!!m.nickname_enabled); };
   const startSelfEdit = (m) => { setEditingId(m.id); setEditMode('self'); setEditBirthday(m.birthday || ''); setEditPin(''); setClearPin(false); setEditDept(m.department || ''); setEditJobType(m.job_type || ''); setEditJoinedAt(m.joined_at || ''); setEditGenre(m.book_genre || ''); setEditNote(m.note || ''); };
   const saveEdit = async () => {
     if (editPin && !/^\d{4}$/.test(editPin)) return;
@@ -4397,7 +4461,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
     const pinPatch = clearPin ? { pin: null } : editPin ? { pin: editPin } : {}; // 빈 칸이면 pin 필드 자체를 patch에서 빼서 기존 값 그대로 유지
     if (editMode === 'full') {
       if (!editName.trim()) return;
-      await updateRow('members', 'id', editingId, { name: editName.trim(), role: editRole, birthday: editBirthday || null, department: editDept || null, job_type: editJobType || null, joined_at: editJoinedAt || null, book_genre: editGenre || null, note: editNote || null, ...pinPatch });
+      await updateRow('members', 'id', editingId, { name: editName.trim(), role: editRole, birthday: editBirthday || null, department: editDept || null, job_type: editJobType || null, joined_at: editJoinedAt || null, book_genre: editGenre || null, note: editNote || null, nickname: editNickname.trim() || null, nickname_enabled: editNicknameEnabled, ...pinPatch });
     } else {
       await updateRow('members', 'id', editingId, { birthday: editBirthday || null, department: editDept || null, job_type: editJobType || null, book_genre: editGenre || null, ...pinPatch });
     }
@@ -4535,7 +4599,14 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
                 </div>
                 {editMode === 'full' && (
                   <>
-                    <input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} aria-label="이름" />
+                    <div className="flex gap-2">
+                      <input value={editName} onChange={(e) => setEditName(e.target.value)} className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} aria-label="이름" />
+                      <input value={editNickname} onChange={(e) => setEditNickname(e.target.value)} placeholder="닉네임 (선택)" className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} aria-label="닉네임" />
+                    </div>
+                    <label className="inline-flex items-center gap-1.5 text-xs" style={{ color: MUTE }}>
+                      <input type="checkbox" checked={editNicknameEnabled} onChange={(e) => setEditNicknameEnabled(e.target.checked)} />
+                      닉네임 사용 (다른 회원에게 "{editName.trim() || m.name}({editNickname.trim() || '닉네임'})" 형태로 표시돼요)
+                    </label>
                     <RolePicker value={editRole} onChange={setEditRole} />
                   </>
                 )}
@@ -4575,7 +4646,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <Stamp role={m.role} size={36} tilt={idx % 2 === 0 ? -5 : 4} />
                     <div className="min-w-0 flex-1">
-                      <div className="font-semibold truncate" style={{ color: INK }}>{dispName(m.name, isLoggedIn)}{m.id === currentUserId && <span className="ml-1.5 text-[11px] font-normal" style={{ color: MUTE }}>(나)</span>}</div>
+                      <div className="font-semibold truncate" style={{ color: INK }}>{nameWithNickname(m, isLoggedIn)}{m.id === currentUserId && <span className="ml-1.5 text-[11px] font-normal" style={{ color: MUTE }}>(나)</span>}</div>
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <RoleChip role={m.role} />
                         {m.birthday && isLoggedIn && <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtMD(mdOf(m.birthday))}</span>}
