@@ -82,6 +82,18 @@ if (typeof document !== 'undefined') {
     st.textContent = 'html{touch-action:manipulation;}@supports (-webkit-touch-callout: none){input,select,textarea{font-size:16px !important;}}';
     document.head.appendChild(st);
   }
+  // 홈 화면 설치(앱처럼 쓰기)용 정보 - public 폴더의 manifest.webmanifest / 아이콘 파일과 연결
+  const ensureHeadTag = (selector, create) => { if (!document.head.querySelector(selector)) document.head.appendChild(create()); };
+  const mk = (tag, attrs) => () => { const el = document.createElement(tag); Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v)); return el; };
+  ensureHeadTag('link[rel="manifest"]', mk('link', { rel: 'manifest', href: '/manifest.webmanifest' }));
+  ensureHeadTag('link[rel="apple-touch-icon"]', mk('link', { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' }));
+  ensureHeadTag('meta[name="theme-color"]', mk('meta', { name: 'theme-color', content: '#141310' }));
+  ensureHeadTag('meta[name="apple-mobile-web-app-capable"]', mk('meta', { name: 'apple-mobile-web-app-capable', content: 'yes' }));
+  ensureHeadTag('meta[name="mobile-web-app-capable"]', mk('meta', { name: 'mobile-web-app-capable', content: 'yes' }));
+  ensureHeadTag('meta[name="apple-mobile-web-app-title"]', mk('meta', { name: 'apple-mobile-web-app-title', content: '책스초코' }));
+  ensureHeadTag('meta[name="apple-mobile-web-app-status-bar-style"]', mk('meta', { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' }));
+  const icon = document.head.querySelector('link[rel="icon"]');
+  if (icon) { icon.setAttribute('href', '/icon-192.png'); icon.setAttribute('type', 'image/png'); } else document.head.appendChild(mk('link', { rel: 'icon', type: 'image/png', href: '/icon-192.png' })());
 } // 모임 책장에서 남의 진행 페이지 노출 여부 (true면 공개)
 const TOWER_BADGE_PALETTE = ['#7C5CC4', '#D97A3D', '#C4544A', '#3E93A0', '#C48A3E'];
 // 정확한 우측 90도 측면(옆에서 본 책 두께 단면)용 - 표지 단면에 쓰이는 단색
@@ -355,8 +367,780 @@ const computeWeeklyPenalties = (sessions, checkins, calendarDays, members, absen
     .sort((a, b) => b.weekKey.localeCompare(a.weekKey));
 };
 
+/* ---------- 기능 on/off (간사 설정창에서 켜고 끔, settings 테이블의 'features' 값에 저장) ---------- */
+const DEFAULT_FEATURES = { todaySummary: true, quarterReport: false, praise: false, autoDue: true, autoPenalty: true, autoDues: true, duesDay: 25 };
+const parseFeatures = (settings) => {
+  const raw = settings.find((s) => s.key === 'features')?.value;
+  try { return { ...DEFAULT_FEATURES, ...(raw ? JSON.parse(raw) : {}) }; } catch (e) { return { ...DEFAULT_FEATURES }; }
+};
+
+/* ---------- 휴대폰 푸시 알림 · 앱 설치 ---------- */
+// 공개키(서버의 VAPID_PUBLIC_KEY 환경변수와 같은 값) - 비밀키는 서버(Vercel 환경변수)에만 있음
+const VAPID_PUBLIC_KEY = 'BPoaOc6OWQhQ5tZfcMrzAhABsAD2yQ2HCousiuTM8ijH6d3czHD9xZe7Tv2EHYt7IXjTA1_Ak4AmZ5VKDiNJcVE';
+const urlB64ToUint8 = (s) => {
+  const padded = (s + '='.repeat((4 - (s.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(padded);
+  return Uint8Array.from([...bin].map((c) => c.charCodeAt(0)));
+};
+const envUA = () => (typeof navigator !== 'undefined' ? navigator.userAgent || '' : '');
+const isIOSDevice = () => /iPhone|iPad|iPod/.test(envUA()) || (typeof navigator !== 'undefined' && navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isInAppBrowser = () => /KAKAOTALK|NAVER\(inapp|Instagram|FBAN|FBAV|Line\/|everytimeApp/i.test(envUA());
+const isStandaloneApp = () => typeof window !== 'undefined' && ((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true);
+const pushSupported = () => typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+// 알림이 새로 생기면 서버에 "푸시 보내줘"라고 알림 (여러 개가 한꺼번에 생겨도 한 번만 호출되게 살짝 모아서 보냄)
+let pushFlushTimer = null;
+const triggerPushFlush = () => {
+  clearTimeout(pushFlushTimer);
+  pushFlushTimer = setTimeout(() => { fetch('/api/send-push', { method: 'POST' }).catch(() => {}); }, 800);
+};
+async function savePushSubscription(sub, memberId) {
+  const j = sub.toJSON();
+  const { error } = await supabase.from('push_subscriptions').upsert({
+    endpoint: j.endpoint, member_id: memberId, p256dh: j.keys?.p256dh, auth: j.keys?.auth,
+    user_agent: envUA().slice(0, 200), updated_at: new Date().toISOString(),
+  }, { onConflict: 'endpoint' });
+  if (error) throw error;
+}
+async function currentPushSubscription() {
+  if (!pushSupported()) return null;
+  const reg = await navigator.serviceWorker.getRegistration();
+  return reg ? reg.pushManager.getSubscription() : null;
+}
+if (typeof window !== 'undefined') {
+  // 안드로이드 크롬/삼성인터넷의 "설치 가능" 신호를 잡아두었다가, 설치 배너의 [설치하기] 버튼에서 사용
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); window.__chexInstallPrompt = e; window.dispatchEvent(new Event('chex-installable')); });
+}
+
+/* ---------- 출석·분기 결산 공통 계산 ---------- */
+const attendanceStatusOf = (dur) => (dur !== null && dur >= 30 ? 'full' : dur !== null && dur >= 15 ? 'half' : 'none');
+// 특정 기간 세션들에 대한 한 회원의 출석률 (출장·휴가는 분모에서 제외, 30분↑=1일, 15~29분=0.5일)
+const attendanceOfMember = (m, sessionsInRange, checkins, absenceExcuses) => {
+  let present = 0; let excused = 0;
+  sessionsInRange.forEach((s) => {
+    if (absenceExcuses.some((e) => e.date === s.date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason))) { excused += 1; return; }
+    const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
+    const st = attendanceStatusOf(c ? durationMin(c.check_in_at, c.check_out_at) : null);
+    present += st === 'full' ? 1 : st === 'half' ? 0.5 : 0;
+  });
+  const denom = sessionsInRange.length - excused;
+  return { present, denom, rate: denom > 0 ? Math.round((present / denom) * 100) : 0 };
+};
+const quarterOfDate = (dateStr) => ({ year: parseInt(dateStr.slice(0, 4), 10), q: Math.floor((parseInt(dateStr.slice(5, 7), 10) - 1) / 3) + 1 });
+const shiftQuarter = ({ year, q }, delta) => { const idx = year * 4 + (q - 1) + delta; return { year: Math.floor(idx / 4), q: (idx % 4) + 1 }; };
+const quarterRange = (year, q) => {
+  const sm = (q - 1) * 3 + 1; const em = sm + 2; const last = new Date(year, em, 0).getDate();
+  return { from: `${year}-${pad(sm)}-01`, to: `${year}-${pad(em)}-${pad(last)}`, label: `${year}년 ${q}분기`, period: `${sm}.1 ~ ${em}.${last}` };
+};
+// 분기 결산 - 모임 전체 통계 + 시상(출석왕·개근상·다독왕 등) + 회원별 기록
+function computeQuarterReport({ year, q }, d) {
+  const r = quarterRange(year, q);
+  const today = todayStr();
+  const inRange = (date) => !!date && date >= r.from && date <= r.to && date <= today;
+  const sess = d.sessions.filter((s) => inRange(s.date));
+  const debateDates = new Set(d.calendarDays.filter((c) => c.type === '토론회' && inRange(c.date)).map((c) => c.date));
+  const rows = d.members.map((m) => {
+    const att = attendanceOfMember(m, sess, d.checkins, d.absenceExcuses);
+    const debates = sess.filter((s) => debateDates.has(s.date) && checkinAttended(d.checkins, s.id, m.id)).length;
+    return {
+      m, ...att, debates,
+      finished: d.bookTowerEntries.filter((t) => t.member_id === m.id && inRange(t.finished_date)).length,
+      lent: d.bookShares.filter((s) => (s.status === 'matched' || s.status === 'returned') && inRange((s.borrowed_at || '').slice(0, 10)) && (s.kind === 'offer' ? s.posted_by : s.matched_by) === m.id).length,
+      photos: d.photos.filter((p) => p.uploader_id === m.id && inRange((p.created_at || '').slice(0, 10))).length,
+      praised: d.praises.filter((p) => p.to_member_id === m.id && inRange((p.created_at || '').slice(0, 10))).length,
+    };
+  });
+  const top = (key, filterFn = () => true) => {
+    const pool = rows.filter(filterFn);
+    const max = Math.max(0, ...pool.map((x) => x[key]));
+    return max > 0 ? { value: max, winners: pool.filter((x) => x[key] === max).map((x) => x.m) } : null;
+  };
+  const rated = rows.filter((x) => x.denom > 0);
+  return {
+    ...r, year, q,
+    inProgress: today <= r.to,
+    hasData: sess.length > 0,
+    sessionsCount: sess.length,
+    debateCount: [...debateDates].length,
+    avgRate: rated.length ? Math.round(rated.reduce((s, x) => s + x.rate, 0) / rated.length) : 0,
+    finishedTotal: rows.reduce((s, x) => s + x.finished, 0),
+    lentTotal: rows.reduce((s, x) => s + x.lent, 0),
+    photosTotal: rows.reduce((s, x) => s + x.photos, 0),
+    praiseTotal: rows.reduce((s, x) => s + x.praised, 0),
+    awards: {
+      attendance: top('rate', (x) => x.denom > 0),
+      perfect: rows.filter((x) => x.denom >= 4 && x.rate === 100).map((x) => x.m),
+      reader: top('finished'),
+      debater: top('debates'),
+      sharer: top('lent'),
+      recorder: top('photos'),
+      praised: top('praised'),
+      newcomers: d.members.filter((m) => inRange(m.joined_at)),
+    },
+    rows,
+  };
+}
+const checkinAttended = (checkins, sessionId, memberId) => {
+  const c = checkins.find((ck) => ck.session_id === sessionId && ck.member_id === memberId);
+  return attendanceStatusOf(c ? durationMin(c.check_in_at, c.check_out_at) : null) !== 'none';
+};
+
+/* ---------- 칭찬 포인트 · 등급 · 배지 ---------- */
+const PRAISE_KINDS = [
+  { key: 'clap', icon: '👏', label: '열정 박수' },
+  { key: 'insight', icon: '💡', label: '깊은 인사이트' },
+  { key: 'speaker', icon: '🎤', label: '멋진 발제' },
+  { key: 'snack', icon: '🍪', label: '간식 요정' },
+  { key: 'recommend', icon: '📖', label: '책 추천왕' },
+  { key: 'cheer', icon: '🤗', label: '든든한 응원' },
+];
+const praiseKindMeta = (key) => PRAISE_KINDS.find((k) => k.key === key) || PRAISE_KINDS[0];
+const PRAISE_DAILY_LIMIT = 3; // 한 사람이 하루에 보낼 수 있는 칭찬 수
+const POINT_RULES = [
+  { key: 'full', label: '출석 (30분 이상)', pts: 2 },
+  { key: 'half', label: '출석 (15~29분)', pts: 1 },
+  { key: 'debates', label: '토론회 참석 보너스', pts: 3 },
+  { key: 'finished', label: '완독 1권', pts: 5 },
+  { key: 'lent', label: '책 빌려주기 1회', pts: 3 },
+  { key: 'praised', label: '칭찬 받기', pts: 2 },
+  { key: 'praiser', label: '칭찬 보내기', pts: 1 },
+  { key: 'photoDays', label: '사진 올린 날', pts: 1 },
+  { key: 'penaltyDone', label: '벌칙 성실 수행', pts: 1 },
+];
+const LEVELS = [
+  { min: 0, icon: '🌱', name: '새싹', color: '#8FBF7F' },
+  { min: 30, icon: '🌿', name: '새잎', color: '#6FB38A' },
+  { min: 80, icon: '🐛', name: '책벌레', color: '#B6C45A' },
+  { min: 160, icon: '📖', name: '애독가', color: '#7FA8D9' },
+  { min: 300, icon: '🦉', name: '현자', color: '#B39DDB' },
+  { min: 500, icon: '👑', name: '전설', color: '#EFC94C' },
+];
+const BADGES = [
+  { key: 'streak3', icon: '🔥', name: '불꽃 출석', desc: '3주 연속 개근', color: '#F0A87C' },
+  { key: 'streak8', icon: '☄️', name: '꺼지지 않는 불꽃', desc: '8주 연속 개근', color: '#E5484D' },
+  { key: 'perfectMonth', icon: '💯', name: '한 달 개근', desc: '한 달 모든 모임 30분↑ 출석', color: '#E0958C' },
+  { key: 'book1', icon: '📗', name: '첫 완독', desc: '책 1권 완독', color: '#6FB38A' },
+  { key: 'book5', icon: '📚', name: '다독가', desc: '책 5권 완독', color: '#7FA8D9' },
+  { key: 'book10', icon: '🏅', name: '독서왕', desc: '책 10권 완독', color: '#EFC94C' },
+  { key: 'debate3', icon: '🎙️', name: '토론 단골', desc: '토론회 3회 참석', color: '#D9C24C' },
+  { key: 'share3', icon: '🤝', name: '나눔천사', desc: '책 3번 빌려주기', color: '#B39DDB' },
+  { key: 'photo10', icon: '📸', name: '기록가', desc: '사진 10장 올리기', color: '#7FDCCF' },
+  { key: 'praised10', icon: '🌟', name: '칭찬 스타', desc: '칭찬 10개 받기', color: '#EFC94C' },
+  { key: 'praiser10', icon: '💌', name: '칭찬 요정', desc: '칭찬 10번 보내기', color: '#F2A7C3' },
+  { key: 'promise', icon: '🙆', name: '약속 지킴이', desc: '벌칙을 성실히 수행', color: '#9FC5A8' },
+];
+const levelOf = (points) => {
+  let idx = 0; LEVELS.forEach((l, i) => { if (points >= l.min) idx = i; });
+  return { ...LEVELS[idx], next: LEVELS[idx + 1] || null };
+};
+// 회원별 칭찬 포인트·등급·배지 (전체 기간 누적)
+function computeMemberStats(d) {
+  const today = todayStr();
+  const past = d.sessions.filter((s) => s.date <= today);
+  const debateDates = new Set(d.calendarDays.filter((c) => c.type === '토론회').map((c) => c.date));
+  const ciBy = {}; d.checkins.forEach((c) => { ciBy[`${c.session_id}_${c.member_id}`] = c; });
+  const excusedSet = new Set(d.absenceExcuses.filter((e) => EXEMPT_EXCUSE_REASONS.includes(e.reason)).map((e) => `${e.date}_${e.member_id}`));
+  const weeks = {}; past.forEach((s) => { const wk = weekKeyOf(s.date); (weeks[wk] = weeks[wk] || []).push(s); });
+  const months = {}; past.forEach((s) => { const mk = s.date.slice(0, 7); (months[mk] = months[mk] || []).push(s); });
+  const weekDone = (wk) => { const sun = new Date(`${wk}T00:00:00`); sun.setDate(sun.getDate() + 6); return `${sun.getFullYear()}-${pad(sun.getMonth() + 1)}-${pad(sun.getDate())}` < today; };
+  const out = {};
+  d.members.forEach((m) => {
+    const st = (s) => {
+      if (excusedSet.has(`${s.date}_${m.id}`)) return 'excused';
+      const c = ciBy[`${s.id}_${m.id}`];
+      return attendanceStatusOf(c ? durationMin(c.check_in_at, c.check_out_at) : null);
+    };
+    let full = 0; let half = 0; let debates = 0;
+    past.forEach((s) => { const x = st(s); if (x === 'full') full += 1; if (x === 'half') half += 1; if ((x === 'full' || x === 'half') && debateDates.has(s.date)) debates += 1; });
+    let best = 0; let cur = 0;
+    Object.keys(weeks).sort().forEach((wk) => {
+      if (!weekDone(wk)) return; // 진행 중인 주는 아직 판단 안 함
+      const counted = weeks[wk].filter((s) => st(s) !== 'excused');
+      if (!counted.length) return; // 전부 출장·휴가인 주는 연속 기록을 끊지도 늘리지도 않음
+      if (counted.every((s) => st(s) !== 'none')) { cur += 1; best = Math.max(best, cur); } else cur = 0;
+    });
+    const perfectMonth = Object.entries(months).some(([mk, ss]) => {
+      if (mk >= today.slice(0, 7)) return false; // 끝난 달만
+      const counted = ss.filter((s) => st(s) !== 'excused');
+      return counted.length >= 4 && counted.every((s) => st(s) === 'full');
+    });
+    const finished = d.bookTowerEntries.filter((t) => t.member_id === m.id && (t.finished_date || t.read_status === 'done')).length;
+    const lent = d.bookShares.filter((s) => (s.status === 'matched' || s.status === 'returned') && (s.kind === 'offer' ? s.posted_by : s.matched_by) === m.id).length;
+    const myPhotos = d.photos.filter((p) => p.uploader_id === m.id);
+    const photoDays = new Set(myPhotos.map((p) => (p.created_at || '').slice(0, 10))).size;
+    const received = d.praises.filter((p) => p.to_member_id === m.id);
+    const given = d.praises.filter((p) => p.from_member_id === m.id);
+    const penaltyDone = d.penaltyCompletions.filter((p) => p.member_id === m.id && p.confirmed).length;
+    const counts = { full, half, debates, finished, lent, praised: received.length, praiser: given.length, photoDays, penaltyDone };
+    const points = POINT_RULES.reduce((sum, r) => sum + (counts[r.key] || 0) * r.pts, 0);
+    const earned = new Set();
+    if (best >= 3) earned.add('streak3');
+    if (best >= 8) earned.add('streak8');
+    if (perfectMonth) earned.add('perfectMonth');
+    if (finished >= 1) earned.add('book1');
+    if (finished >= 5) earned.add('book5');
+    if (finished >= 10) earned.add('book10');
+    if (debates >= 3) earned.add('debate3');
+    if (lent >= 3) earned.add('share3');
+    if (myPhotos.length >= 10) earned.add('photo10');
+    if (received.length >= 10) earned.add('praised10');
+    if (given.length >= 10) earned.add('praiser10');
+    if (penaltyDone >= 1) earned.add('promise');
+    const byKind = {}; received.forEach((p) => { byKind[p.kind] = (byKind[p.kind] || 0) + 1; });
+    out[m.id] = {
+      points, level: levelOf(points), counts, badges: BADGES.filter((b) => earned.has(b.key)),
+      bestStreak: best, currentStreak: cur, praisedByKind: byKind,
+      received: [...received].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')),
+    };
+  });
+  return out;
+}
+
+/* ============================================================= */
+/* ---------- 새 기능 화면 조각들 (오늘 요약 · 분기 결산 · 칭찬 · 설치/알림 · 로딩) ---------- */
+const localYmd = (iso) => { if (!iso) return ''; const d = new Date(iso); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+const dayDiffStr = (a, b) => Math.round((new Date(`${a}T00:00:00`) - new Date(`${b}T00:00:00`)) / 86400000);
+const mdWeek = (ds) => { const d = new Date(`${ds}T00:00:00`); return `${d.getMonth() + 1}.${d.getDate()}(${'일월화수목금토'[d.getDay()]})`; };
+
+// 로딩 중 뼈대 화면 - 글자만 떠 있는 것보다 실제 화면 모양이 먼저 보여서 덜 기다리는 느낌
+function SkeletonScreen() {
+  return (
+    <div className="min-h-screen" style={{ background: PAPER_BG }}>
+      <style>{`
+        @keyframes chexShimmer { 0% { background-position: -320px 0; } 100% { background-position: 320px 0; } }
+        .chex-sk { background: linear-gradient(90deg, #1E1C16 0px, #2B2820 90px, #1E1C16 180px); background-size: 640px 100%; animation: chexShimmer 1.3s linear infinite; border-radius: 12px; }
+        @media (prefers-reduced-motion: reduce) { .chex-sk { animation: none; } }
+      `}</style>
+      <div className="max-w-3xl mx-auto px-4 pt-6" aria-busy="true" aria-label="불러오는 중">
+        <div className="flex items-center justify-between mb-3">
+          <div className="chex-sk" style={{ width: 150, height: 12 }} />
+          <div className="chex-sk" style={{ width: 90, height: 30, borderRadius: 999 }} />
+        </div>
+        <div className="chex-sk mx-auto mb-5" style={{ width: 140, height: 36 }} />
+        <div className="grid grid-cols-6 gap-1.5 mb-4">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="chex-sk aspect-square" />)}</div>
+        <div className="flex mb-4" style={{ gap: 4 }}>{Array.from({ length: 5 }).map((_, i) => <div key={i} className="chex-sk flex-1" style={{ height: 36, borderRadius: 999 }} />)}</div>
+        {[150, 96, 190].map((h, i) => <div key={i} className="chex-sk mb-3" style={{ height: h, borderRadius: 16 }} />)}
+      </div>
+    </div>
+  );
+}
+
+// 켜고 끄는 스위치 한 줄
+function ToggleRow({ label, desc, on, onChange, disabled }) {
+  return (
+    <div className="flex items-start justify-between gap-3 py-2.5" style={{ borderTop: `1px solid ${ROW_LINE}`, opacity: disabled ? 0.5 : 1 }}>
+      <div className="min-w-0">
+        <div className="text-sm" style={{ color: INK }}>{label}</div>
+        {desc && <div className="text-[11px] mt-0.5 leading-snug" style={{ color: MUTE }}>{desc}</div>}
+      </div>
+      <button role="switch" aria-checked={!!on} aria-label={label} disabled={disabled} onClick={() => onChange(!on)}
+        className="shrink-0 rounded-full relative" style={{ width: 44, height: 26, background: on ? '#4E8F6A' : NEUTRAL_BG, border: `1px solid ${on ? '#4E8F6A' : LINE}`, transition: 'background 0.15s' }}>
+        <span className="absolute rounded-full" style={{ top: 3, left: on ? 21 : 3, width: 18, height: 18, background: '#F2EEE3', transition: 'left 0.15s' }} />
+      </button>
+    </div>
+  );
+}
+
+// ☀️ 오늘의 책스초코 - 로그인한 회원에게 오늘 챙길 것들을 한 카드로
+function TodaySummaryCard({ me, data, memberStat, showPraise, setTab }) {
+  const { sessions, checkins, calendarDays, absenceExcuses, bookShares, penaltyCompletions, duesPayments, dinnerCollections } = data;
+  const today = todayStr();
+  const now = new Date();
+  const dateLabel = `${now.getMonth() + 1}월 ${now.getDate()}일 (${'일월화수목금토'[now.getDay()]})`;
+  const items = [];
+
+  // 1) 오늘 출석
+  const todayTypes = calendarDays.filter((c) => c.date === today).map((c) => c.type);
+  const meetingToday = todayTypes.some((t) => ATTENDANCE_DAY_TYPES.includes(t));
+  const excuse = absenceExcuses.find((e) => e.date === today && e.member_id === me.id);
+  const sess = sessions.find((s) => s.date === today);
+  const ci = sess ? checkins.find((c) => c.session_id === sess.id && c.member_id === me.id) : null;
+  if (meetingToday) {
+    if (ci) items.push({ icon: '✅', text: `오늘 출석 완료 · ${fmtTime(ci.check_in_at)} 입실${ci.check_out_at ? ` · ${fmtTime(ci.check_out_at)} 퇴실` : ' · 퇴실 전'}`, tab: 'qr' });
+    else if (excuse) items.push({ icon: '🧳', text: `오늘은 '${excuse.reason}' 사유가 등록돼 있어요`, tab: 'qr' });
+    else items.push({ icon: '⏰', text: todayTypes.includes('토론회') ? '오늘은 토론회! 아직 출석 전이에요' : '아직 출석 전이에요', tab: 'qr', action: '출석하기', warn: true });
+  } else {
+    items.push({ icon: '🌙', text: todayTypes.includes('휴무일') ? '오늘은 휴무일이에요' : '오늘은 모임이 없는 날이에요' });
+  }
+
+  // 2) 이번 주 출석 현황 (+ 연속 개근 기록)
+  const mon = getMonday(today);
+  const monStr = `${mon.getFullYear()}-${pad(mon.getMonth() + 1)}-${pad(mon.getDate())}`;
+  const weekDates = [...new Set(calendarDays.filter((c) => ATTENDANCE_DAY_TYPES.includes(c.type) && c.date >= monStr && c.date <= today).map((c) => c.date))];
+  let wAtt = 0; let wCnt = 0;
+  weekDates.forEach((ds) => {
+    if (absenceExcuses.some((e) => e.date === ds && e.member_id === me.id && EXEMPT_EXCUSE_REASONS.includes(e.reason))) return;
+    wCnt += 1;
+    const s = sessions.find((x) => x.date === ds);
+    if (s && checkinAttended(checkins, s.id, me.id)) wAtt += 1;
+  });
+  if (wCnt > 0) items.push({ icon: '📅', text: `이번 주 출석 ${wAtt} / ${wCnt}일${memberStat && memberStat.currentStreak >= 2 ? ` · 🔥 ${memberStat.currentStreak}주 연속 개근 중` : ''}`, tab: 'dashboard' });
+
+  // 3) 다가오는 토론회·회식
+  const nextOf = (type) => calendarDays.filter((c) => c.type === type && c.date >= today).map((c) => c.date).sort()[0];
+  const debate = nextOf('토론회');
+  if (debate) { const dd = dayDiffStr(debate, today); items.push({ icon: '🎤', text: `토론회 ${dd === 0 ? '오늘' : `D-${dd}`} · ${mdWeek(debate)}`, tab: 'dashboard' }); }
+  const dinner = nextOf('회식일');
+  if (dinner && dayDiffStr(dinner, today) <= 30) { const dd = dayDiffStr(dinner, today); items.push({ icon: '🍻', text: `회식 ${dd === 0 ? '오늘' : `D-${dd}`} · ${mdWeek(dinner)}`, tab: 'dashboard' }); }
+
+  // 4) 빌린 책 반납 · 내 글에 온 대여 응답
+  bookShares.forEach((s) => {
+    const borrower = s.kind === 'offer' ? s.matched_by : s.posted_by;
+    if (s.status === 'matched' && borrower === me.id) {
+      if (s.due_date) {
+        const dd = dayDiffStr(s.due_date, today);
+        items.push({ icon: dd < 0 ? '⏰' : '📚', text: dd < 0 ? `『${s.book_title}』 반납기한 ${-dd}일 지남` : dd === 0 ? `『${s.book_title}』 오늘 반납일` : `『${s.book_title}』 반납 D-${dd}`, tab: 'gallery', warn: dd <= 1 });
+      } else items.push({ icon: '📚', text: `『${s.book_title}』 빌리는 중 · 반납일 미정`, tab: 'gallery' });
+    }
+    if (s.status === 'requested' && s.posted_by === me.id) items.push({ icon: '📬', text: `『${s.book_title}』에 응답이 왔어요 · 확정해주세요`, tab: 'gallery', warn: true });
+  });
+
+  // 5) 내 벌칙 (완료 확정 전)
+  const mine = [];
+  computeWeeklyPenalties(sessions, checkins, calendarDays, [me], absenceExcuses).forEach((w) => w.results.forEach((r) => {
+    if (!r.missedAll) return;
+    const comp = penaltyCompletions.find((p) => p.session_id === w.weekKey && p.member_id === me.id);
+    if (!comp?.confirmed) mine.push(comp);
+  }));
+  if (mine.length) {
+    const dated = mine.find((c) => c?.performed_date);
+    items.push({ icon: '🎯', text: dated ? `벌칙 ${mine.length}건 미완료 · 수행 예정일 ${mdWeek(dated.performed_date)}` : `벌칙 ${mine.length}건 미완료 · 수행 예정일을 정해주세요`, tab: 'dashboard', warn: true });
+  }
+
+  // 6) 회비 · 회식비 (이번 달 회비 걷기가 시작됐을 때만)
+  const mk = today.slice(0, 7);
+  const monthDues = duesPayments.filter((x) => x.month === mk);
+  if (monthDues.some((x) => x.paid) && !monthDues.some((x) => x.member_id === me.id && x.paid)) items.push({ icon: '💰', text: `${parseInt(mk.slice(5), 10)}월 회비 미납이에요`, warn: true });
+  const dinnerDue = dinnerCollections.filter((c) => c.member_id === me.id && !c.paid).reduce((s, c) => s + Number(c.amount || 0), 0);
+  if (dinnerDue > 0) items.push({ icon: '🍽️', text: `미납 회식비 ${dinnerDue.toLocaleString('ko-KR')}원`, warn: true });
+
+  // 7) 칭찬 포인트
+  if (showPraise && memberStat) {
+    const lv = memberStat.level;
+    const todayPraise = memberStat.received.filter((p) => localYmd(p.created_at) === today).length;
+    items.push({ icon: lv.icon, text: `${lv.name} · ${memberStat.points}P${lv.next ? ` · 다음 등급까지 ${lv.next.min - memberStat.points}P` : ''}${todayPraise ? ` · 오늘 칭찬 ${todayPraise}개 받음` : ''}`, tab: 'users' });
+  }
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="text-sm font-semibold" style={{ color: INK }}>☀️ 오늘의 책스초코</div>
+        <div className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{dateLabel}</div>
+      </div>
+      <div className="space-y-1.5">
+        {items.map((it, i) => {
+          const inner = (
+            <>
+              <span className="shrink-0 text-center" style={{ fontSize: 15, width: 20 }} aria-hidden="true">{it.icon}</span>
+              <span className="flex-1 min-w-0 text-[13px] leading-snug" style={{ color: it.warn ? '#F3C9AD' : NEUTRAL_TEXT }}>{it.text}</span>
+              {it.action && <span className="shrink-0 text-[11px] font-semibold rounded-full px-2.5 py-1" style={{ background: BTN_BG, color: BTN_TEXT }}>{it.action}</span>}
+              {it.tab && !it.action && <ChevronRight size={14} className="shrink-0" style={{ color: MUTE }} />}
+            </>
+          );
+          const style = { background: it.warn ? 'rgba(240,168,124,0.09)' : NEUTRAL_BG, border: `1px solid ${it.warn ? 'rgba(240,168,124,0.25)' : 'transparent'}` };
+          return it.tab
+            ? <button key={i} onClick={() => setTab(it.tab)} className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2 text-left" style={style}>{inner}</button>
+            : <div key={i} className="flex items-center gap-2.5 rounded-xl px-3 py-2" style={style}>{inner}</div>;
+        })}
+      </div>
+    </Card>
+  );
+}
+
+// 📊 분기 결산 카드 - 공지 탭(분기 끝나고 30일간) + 간사 설정창 미리보기에서 같이 사용
+function QuarterReportCard({ report, isLoggedIn, currentMember, preview = false, collapsible = true, showPraise = true }) {
+  const [open, setOpen] = useState(!collapsible);
+  const nm = (m) => dispName(m.name, isLoggedIn);
+  const names = (list, max = 4) => (list.length <= max ? list.map(nm).join(', ') : `${list.slice(0, max).map(nm).join(', ')} 외 ${list.length - max}명`);
+  const a = report.awards;
+  const awards = [
+    a.attendance && { icon: '🏆', title: '출석왕', who: names(a.attendance.winners), value: `${a.attendance.value}%` },
+    a.perfect.length > 0 && { icon: '💯', title: '개근상', who: names(a.perfect, 6), value: `${a.perfect.length}명` },
+    a.reader && { icon: '📚', title: '다독왕', who: names(a.reader.winners), value: `${a.reader.value}권` },
+    a.debater && { icon: '🎤', title: '토론왕', who: names(a.debater.winners), value: `${a.debater.value}회` },
+    a.sharer && { icon: '🤝', title: '나눔왕', who: names(a.sharer.winners), value: `${a.sharer.value}회` },
+    a.recorder && { icon: '📸', title: '기록왕', who: names(a.recorder.winners), value: `${a.recorder.value}장` },
+    showPraise && a.praised && { icon: '👏', title: '칭찬왕', who: names(a.praised.winners), value: `${a.praised.value}개` },
+    a.newcomers.length > 0 && { icon: '🌱', title: '새 식구', who: names(a.newcomers, 6), value: `${a.newcomers.length}명` },
+  ].filter(Boolean);
+  const stats = [
+    { label: '모임', value: `${report.sessionsCount}회` },
+    { label: '평균 출석률', value: `${report.avgRate}%` },
+    { label: '토론회', value: `${report.debateCount}회` },
+    { label: '완독', value: `${report.finishedTotal}권` },
+    { label: '도서 나눔', value: `${report.lentTotal}건` },
+    { label: '사진', value: `${report.photosTotal}장` },
+  ];
+  const mine = currentMember ? report.rows.find((x) => x.m.id === currentMember.id) : null;
+  return (
+    <div className="rounded-2xl border p-4" style={{ borderColor: '#5A4A22', background: 'linear-gradient(180deg, #2A2414 0%, #1E1C16 70%)' }}>
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <div className="min-w-0">
+          <div className="text-[15px] font-semibold" style={{ color: '#F3D98A', fontFamily: "'Fraunces', serif" }}>📊 {report.label} 결산</div>
+          <div className="text-[11px] mt-0.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{report.period}</div>
+        </div>
+        {preview && <span className="shrink-0 text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ background: report.inProgress ? '#3A2E10' : '#1E2A38', color: report.inProgress ? '#EFC94C' : '#7FA8D9' }}>{report.inProgress ? '진행 중 · 미리보기' : '미리보기'}</span>}
+      </div>
+      {!report.hasData ? (
+        <p className="text-xs py-3 text-center" style={{ color: MUTE }}>이 분기에는 아직 모임 기록이 없어요.</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-3 gap-1.5">
+            {stats.map((s) => (
+              <div key={s.label} className="rounded-xl py-2 text-center" style={{ background: 'rgba(0,0,0,0.22)' }}>
+                <div className="text-[15px] font-semibold" style={{ color: INK }}>{s.value}</div>
+                <div className="text-[10.5px]" style={{ color: MUTE }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+          {collapsible && (
+            <button onClick={() => setOpen((v) => !v)} className="w-full mt-2.5 flex items-center justify-center gap-1 text-xs py-1.5" style={{ color: '#E8CF86' }} aria-expanded={open}>
+              {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />} {open ? '접기' : `시상 내역${mine ? '·나의 기록' : ''} 보기`}
+            </button>
+          )}
+          {open && (
+            <div className="mt-2 space-y-1.5">
+              {awards.length === 0 && <p className="text-xs text-center py-2" style={{ color: MUTE }}>시상 대상이 아직 없어요.</p>}
+              {awards.map((w) => (
+                <div key={w.title} className="flex items-center gap-2.5 rounded-xl px-3 py-2" style={{ background: 'rgba(0,0,0,0.22)' }}>
+                  <span style={{ fontSize: 18 }} aria-hidden="true">{w.icon}</span>
+                  <span className="text-xs font-semibold shrink-0" style={{ color: '#F3D98A', width: 48 }}>{w.title}</span>
+                  <span className="flex-1 min-w-0 text-[13px] leading-snug" style={{ color: INK }}>{w.who}</span>
+                  <span className="shrink-0 text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{w.value}</span>
+                </div>
+              ))}
+              {mine && (
+                <div className="rounded-xl px-3 py-2.5 mt-1" style={{ border: '1px dashed #5A4A22' }}>
+                  <div className="text-[11px] mb-1" style={{ color: '#E8CF86' }}>나의 {report.q}분기</div>
+                  <div className="text-[13px] leading-relaxed" style={{ color: INK }}>
+                    출석률 {mine.rate}% · 완독 {mine.finished}권 · 토론회 {mine.debates}회{showPraise ? ` · 받은 칭찬 ${mine.praised}개` : ''} · 사진 {mine.photos}장
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// 📲 홈 화면 설치 안내 배너 (설치돼 있거나 닫은 지 14일 안 됐으면 안 보임)
+function InstallBanner() {
+  const [promptEvt, setPromptEvt] = useState(() => (typeof window !== 'undefined' ? window.__chexInstallPrompt || null : null));
+  const [hidden, setHidden] = useState(() => { try { return Date.now() - Number(localStorage.getItem('chexchoco-install-dismissed') || 0) < 14 * 86400000; } catch (e) { return false; } });
+  useEffect(() => {
+    const on = () => setPromptEvt(window.__chexInstallPrompt || null);
+    const done = () => { window.__chexInstallPrompt = null; setPromptEvt(null); setHidden(true); };
+    window.addEventListener('chex-installable', on);
+    window.addEventListener('appinstalled', done);
+    return () => { window.removeEventListener('chex-installable', on); window.removeEventListener('appinstalled', done); };
+  }, []);
+  if (hidden || isStandaloneApp()) return null;
+  const dismiss = () => { try { localStorage.setItem('chexchoco-install-dismissed', String(Date.now())); } catch (e) { /* 무시 */ } setHidden(true); };
+  let body = null; let action = null;
+  if (promptEvt) {
+    body = '홈 화면에 설치하면 앱처럼 바로 열리고, 휴대폰 알림도 받을 수 있어요.';
+    action = <button onClick={async () => { promptEvt.prompt(); try { await promptEvt.userChoice; } catch (e) { /* 무시 */ } window.__chexInstallPrompt = null; setPromptEvt(null); }} className="shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: BTN_BG, color: BTN_TEXT }}>설치하기</button>;
+  } else if (isInAppBrowser()) {
+    body = '카카오톡 같은 앱 안에서는 설치·알림이 안 돼요. 오른쪽 아래 ⋮(또는 ⋯) → "다른 브라우저로 열기"로 열어주세요.';
+  } else if (isIOSDevice()) {
+    body = 'Safari 아래쪽 공유 버튼(□↑) → "홈 화면에 추가"를 누르면 앱처럼 설치되고 알림도 받을 수 있어요.';
+  } else return null;
+  return (
+    <div className="flex items-center gap-2.5 rounded-2xl border px-3.5 py-3" style={{ borderColor: '#3A4A5E', background: '#18202A' }}>
+      <span style={{ fontSize: 20 }} aria-hidden="true">📲</span>
+      <p className="flex-1 min-w-0 text-[12.5px] leading-snug" style={{ color: '#C9D8EA' }}>{body}</p>
+      {action}
+      <button onClick={dismiss} className="shrink-0 p-1" aria-label="설치 안내 닫기"><X size={14} style={{ color: MUTE }} /></button>
+    </div>
+  );
+}
+
+// 🔔 휴대폰 알림 켜기/끄기 (알림함 맨 위)
+function PushToggle({ currentMember, showToast }) {
+  const [state, setState] = useState('checking'); // checking | unsupported | denied | on | off
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!pushSupported()) { setState('unsupported'); return; }
+    if (Notification.permission === 'denied') { setState('denied'); return; }
+    currentPushSubscription().then((sub) => setState(sub && Notification.permission === 'granted' ? 'on' : 'off')).catch(() => setState('off'));
+  }, []);
+  const enable = async () => {
+    setBusy(true);
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') { setState(perm === 'denied' ? 'denied' : 'off'); return; }
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(VAPID_PUBLIC_KEY) });
+      await savePushSubscription(sub, currentMember.id);
+      setState('on');
+      showToast?.('휴대폰 알림을 켰어요.', 'success');
+    } catch (e) {
+      showToast?.('휴대폰 알림을 켜지 못했어요. 잠시 후 다시 시도해주세요.', 'error');
+    } finally { setBusy(false); }
+  };
+  const disable = async () => {
+    setBusy(true);
+    try {
+      const sub = await currentPushSubscription();
+      if (sub) { await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint); await sub.unsubscribe(); }
+      setState('off');
+      showToast?.('이 기기의 휴대폰 알림을 껐어요.', 'success');
+    } catch (e) { showToast?.('알림을 끄지 못했어요.', 'error'); } finally { setBusy(false); }
+  };
+  let text; let btn = null;
+  if (state === 'checking') text = '휴대폰 알림 상태 확인 중…';
+  else if (state === 'on') { text = '이 기기로 휴대폰 알림을 받고 있어요.'; btn = <button onClick={disable} disabled={busy} className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>끄기</button>; }
+  else if (state === 'off') { text = '앱을 닫아둬도 새 알림을 휴대폰으로 받을 수 있어요.'; btn = <button onClick={enable} disabled={busy} className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold" style={{ background: BTN_BG, color: BTN_TEXT }}>{busy ? '켜는 중…' : '알림 켜기'}</button>; }
+  else if (state === 'denied') text = '이 브라우저에서 알림이 차단돼 있어요. 브라우저 설정 → 사이트 설정 → 알림에서 허용해주세요.';
+  else if (isInAppBrowser()) text = '카카오톡 같은 앱 안에서는 휴대폰 알림을 받을 수 없어요. ⋮ → "다른 브라우저로 열기" 후 켜주세요.';
+  else if (isIOSDevice() && !isStandaloneApp()) text = '아이폰은 Safari 공유 버튼(□↑) → "홈 화면에 추가" 후, 홈 화면의 책스초코에서 알림을 켤 수 있어요. (iOS 16.4 이상)';
+  else text = '이 브라우저는 휴대폰 알림을 지원하지 않아요.';
+  return (
+    <div className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 mb-3" style={{ background: state === 'on' ? 'rgba(78,143,106,0.12)' : NEUTRAL_BG }}>
+      <span style={{ fontSize: 16 }} aria-hidden="true">{state === 'on' ? '🔔' : '🔕'}</span>
+      <p className="flex-1 min-w-0 text-[12px] leading-snug" style={{ color: NEUTRAL_TEXT }}>{text}</p>
+      {btn}
+    </div>
+  );
+}
+
+// 👏 칭찬 보내기 창
+function PraiseModal({ target, me, praises, onClose, onSent, showToast }) {
+  const [kind, setKind] = useState(PRAISE_KINDS[0].key);
+  const [msg, setMsg] = useState('');
+  const [sending, setSending] = useState(false);
+  const today = todayStr();
+  const sentToday = praises.filter((p) => p.from_member_id === me.id && localYmd(p.created_at) === today);
+  const left = Math.max(0, PRAISE_DAILY_LIMIT - sentToday.length);
+  const alreadyToTarget = sentToday.some((p) => p.to_member_id === target.id);
+  const blocked = left <= 0 || alreadyToTarget;
+  const send = async () => {
+    if (blocked || sending) return;
+    setSending(true);
+    try {
+      const k = praiseKindMeta(kind);
+      const text = msg.trim().slice(0, 60);
+      await insertRow('praises', { id: uid('pr'), from_member_id: me.id, to_member_id: target.id, kind, message: text || null, created_at: new Date().toISOString() });
+      await insertRow('notifications', { id: uid('nt'), member_id: target.id, message: `${k.icon} ${me.name}님이 '${k.label}' 칭찬을 보냈어요${text ? `: "${text}"` : '!'}`, link_id: 'tab:users', created_at: new Date().toISOString() });
+      showToast?.(`${target.name}님에게 ${k.icon} 칭찬을 보냈어요!`, 'success');
+      await onSent();
+    } catch (e) {
+      showToast?.('칭찬을 보내지 못했어요. 잠시 후 다시 시도해주세요.', 'error');
+    } finally { setSending(false); }
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl border p-4" style={{ background: CARD_BG, borderColor: LINE }} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-sm font-semibold" style={{ color: INK }}>{target.name}님 칭찬하기</div>
+          <button onClick={onClose} className="p-1" aria-label="닫기"><X size={16} style={{ color: MUTE }} /></button>
+        </div>
+        <div className="grid grid-cols-3 gap-1.5 mb-3">
+          {PRAISE_KINDS.map((k) => (
+            <button key={k.key} onClick={() => setKind(k.key)} className="rounded-xl py-2.5 flex flex-col items-center gap-1"
+              style={{ background: kind === k.key ? '#2E2A1C' : NEUTRAL_BG, border: `1.5px solid ${kind === k.key ? '#EFC94C' : 'transparent'}` }} aria-pressed={kind === k.key}>
+              <span style={{ fontSize: 22 }} aria-hidden="true">{k.icon}</span>
+              <span className="text-[11px]" style={{ color: kind === k.key ? '#F3D98A' : NEUTRAL_TEXT }}>{k.label}</span>
+            </button>
+          ))}
+        </div>
+        <input value={msg} onChange={(e) => setMsg(e.target.value.slice(0, 60))} placeholder="한마디 남기기 (선택, 60자)" className="w-full rounded-xl border px-3 py-2 text-sm outline-none mb-2" style={inputStyle} />
+        <p className="text-[11px] mb-3" style={{ color: blocked ? '#F0A87C' : MUTE }}>
+          {alreadyToTarget ? `오늘은 이미 ${target.name}님을 칭찬했어요. 내일 또 보내주세요!` : left <= 0 ? '오늘 보낼 수 있는 칭찬을 모두 썼어요. (하루 3번)' : `오늘 남은 칭찬 ${left}번 · 받는 사람 +2P, 보내는 사람 +1P`}
+        </p>
+        <PrimaryBtn onClick={send} disabled={blocked || sending} icon={Check}>{sending ? '보내는 중…' : '칭찬 보내기'}</PrimaryBtn>
+      </div>
+    </div>
+  );
+}
+
+// 🏅 회원 칭찬 프로필 (등급 · 배지 · 받은 칭찬 · 포인트 내역)
+function MemberProfileModal({ member, stat, members, isLoggedIn, canPraise, onPraise, onClose }) {
+  const lv = stat.level;
+  const nextGap = lv.next ? lv.next.min - lv.min : 1;
+  const progress = lv.next ? Math.min(100, Math.round(((stat.points - lv.min) / nextGap) * 100)) : 100;
+  const earned = new Set(stat.badges.map((b) => b.key));
+  const nameOf = (id) => dispName(members.find((m) => m.id === id)?.name || '알 수 없음', isLoggedIn);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl border p-4" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 'calc(100dvh - 24px)', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <Stamp role={member.role} size={30} tilt={0} />
+            <span className="font-semibold truncate" style={{ color: INK }}>{dispName(member.name, isLoggedIn)}</span>
+          </div>
+          <button onClick={onClose} className="p-1" aria-label="닫기"><X size={16} style={{ color: MUTE }} /></button>
+        </div>
+        <div className="rounded-xl p-3 mb-3" style={{ background: NEUTRAL_BG }}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-semibold" style={{ color: lv.color }}>{lv.icon} {lv.name}</span>
+            <span className="text-sm font-semibold" style={{ color: INK, fontFamily: "'IBM Plex Mono', monospace" }}>{stat.points}P</span>
+          </div>
+          <div className="rounded-full overflow-hidden" style={{ height: 6, background: '#141310' }} role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}>
+            <div style={{ width: `${progress}%`, height: '100%', background: lv.color }} />
+          </div>
+          <div className="text-[11px] mt-1.5" style={{ color: MUTE }}>{lv.next ? `다음 등급 ${lv.next.icon} ${lv.next.name}까지 ${lv.next.min - stat.points}P` : '최고 등급이에요! 👑'}{stat.bestStreak >= 2 ? ` · 최장 ${stat.bestStreak}주 연속 개근` : ''}</div>
+        </div>
+        <div className="text-xs font-semibold mb-1.5" style={{ color: MUTE }}>배지 {stat.badges.length} / {BADGES.length}</div>
+        <div className="grid grid-cols-4 gap-1.5 mb-3">
+          {BADGES.map((b) => {
+            const has = earned.has(b.key);
+            return (
+              <div key={b.key} className="rounded-xl py-2 px-1 flex flex-col items-center text-center" title={b.desc}
+                style={{ background: has ? 'rgba(255,255,255,0.05)' : 'transparent', border: `1px solid ${has ? b.color : LINE}`, opacity: has ? 1 : 0.45 }}>
+                <span style={{ fontSize: 20, filter: has ? 'none' : 'grayscale(1)' }} aria-hidden="true">{b.icon}</span>
+                <span className="text-[10px] mt-0.5 leading-tight" style={{ color: has ? INK : MUTE }}>{b.name}</span>
+                <span className="text-[9px] leading-tight mt-0.5" style={{ color: MUTE }}>{b.desc}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="text-xs font-semibold mb-1.5" style={{ color: MUTE }}>받은 칭찬 {stat.received.length}개</div>
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {PRAISE_KINDS.map((k) => (
+            <span key={k.key} className="text-[11px] rounded-full px-2 py-1" style={{ background: NEUTRAL_BG, color: (stat.praisedByKind[k.key] || 0) > 0 ? INK : MUTE }}>{k.icon} {stat.praisedByKind[k.key] || 0}</span>
+          ))}
+        </div>
+        {isLoggedIn && stat.received.length > 0 && (
+          <div className="space-y-1 mb-3">
+            {stat.received.slice(0, 5).map((p) => (
+              <div key={p.id} className="text-[12px] rounded-lg px-2.5 py-1.5" style={{ background: 'rgba(0,0,0,0.2)', color: NEUTRAL_TEXT }}>
+                {praiseKindMeta(p.kind).icon} <span style={{ color: MUTE }}>{nameOf(p.from_member_id)}</span>{p.message ? ` · ${p.message}` : ''}
+                <span className="text-[10px] ml-1" style={{ color: MUTE }}>{fmtDate(localYmd(p.created_at)).slice(5)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <details className="mb-3">
+          <summary className="text-xs cursor-pointer" style={{ color: MUTE }}>포인트 내역 보기</summary>
+          <div className="mt-1.5 space-y-0.5">
+            {POINT_RULES.map((r) => (
+              <div key={r.key} className="flex justify-between text-[12px]" style={{ color: NEUTRAL_TEXT }}>
+                <span>{r.label} × {stat.counts[r.key] || 0}</span>
+                <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{(stat.counts[r.key] || 0) * r.pts}P</span>
+              </div>
+            ))}
+          </div>
+        </details>
+        {canPraise && <PrimaryBtn onClick={onPraise} icon={Plus}>칭찬하기</PrimaryBtn>}
+      </div>
+    </div>
+  );
+}
+
+// 🏅 칭찬 포인트 랭킹 (인원 탭 맨 위)
+function PraiseRankingCard({ members, memberStats, isLoggedIn, onOpenProfile }) {
+  const [showRules, setShowRules] = useState(false);
+  const ranked = members.filter((m) => memberStats[m.id]).map((m) => ({ m, s: memberStats[m.id] })).sort((a, b) => b.s.points - a.s.points).slice(0, 5);
+  if (ranked.length === 0) return null;
+  const medal = ['🥇', '🥈', '🥉'];
+  return (
+    <Card>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm font-semibold" style={{ color: INK }}>🏅 칭찬 포인트 랭킹</div>
+        <button onClick={() => setShowRules((v) => !v)} className="text-[11px] underline underline-offset-2" style={{ color: MUTE }}>{showRules ? '닫기' : '포인트 기준'}</button>
+      </div>
+      {showRules && (
+        <div className="rounded-xl p-2.5 mb-2 grid grid-cols-2 gap-x-3 gap-y-0.5" style={{ background: NEUTRAL_BG }}>
+          {POINT_RULES.map((r) => (
+            <div key={r.key} className="flex justify-between text-[11px]" style={{ color: NEUTRAL_TEXT }}><span>{r.label}</span><span style={{ color: '#EFC94C' }}>+{r.pts}</span></div>
+          ))}
+          <div className="col-span-2 text-[10.5px] mt-1" style={{ color: MUTE }}>등급: {LEVELS.map((l) => `${l.icon}${l.name}(${l.min}P~)`).join(' · ')}</div>
+        </div>
+      )}
+      <div className="space-y-1">
+        {ranked.map(({ m, s }, i) => (
+          <button key={m.id} onClick={() => onOpenProfile(m)} className="w-full flex items-center gap-2 rounded-xl px-2.5 py-2 text-left" style={{ background: i === 0 ? 'rgba(239,201,76,0.08)' : 'transparent' }}>
+            <span className="shrink-0 text-center" style={{ width: 22, fontSize: i < 3 ? 16 : 12, color: MUTE }}>{medal[i] || i + 1}</span>
+            <span className="shrink-0" style={{ fontSize: 15 }} aria-hidden="true">{s.level.icon}</span>
+            <span className="flex-1 min-w-0 truncate text-sm" style={{ color: INK }}>{dispName(m.name, isLoggedIn)}</span>
+            <span className="shrink-0 text-[13px] tracking-tight" aria-label={`배지 ${s.badges.length}개`}>{s.badges.slice(0, 4).map((b) => b.icon).join('')}</span>
+            <span className="shrink-0 text-xs font-semibold" style={{ color: '#EFC94C', fontFamily: "'IBM Plex Mono', monospace", minWidth: 40, textAlign: 'right' }}>{s.points}P</span>
+          </button>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// 🧩 기능 설정 (간사 전용) - 새 기능 켜고 끄기 + 분기 결산 미리보기 + 자동 알림 미리보기 + 푸시 테스트
+function FeatureSettingsCard({ features, saveFeatures, reportData, currentMember, showToast }) {
+  const cur = quarterOfDate(todayStr());
+  const options = [0, -1, -2, -3].map((dq) => shiftQuarter(cur, dq));
+  const [sel, setSel] = useState(0);
+  const report = useMemo(() => computeQuarterReport(options[sel], reportData), [sel, reportData]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [dry, setDry] = useState(null);
+  const [dryLoading, setDryLoading] = useState(false);
+  const set = (key) => (value) => saveFeatures({ [key]: value });
+  const runDry = async () => {
+    setDryLoading(true);
+    try {
+      const r = await fetch('/api/daily-reminders?dry=1');
+      setDry(await r.json());
+    } catch (e) {
+      setDry({ error: '자동 알림 서버 함수를 불러오지 못했어요. (api/daily-reminders.js 배포 후 확인할 수 있어요)' });
+    } finally { setDryLoading(false); }
+  };
+  const sendTest = async () => {
+    try {
+      await insertRow('notifications', { id: uid('nt'), member_id: currentMember.id, message: '🔔 테스트 알림이에요. 휴대폰 알림이 잘 도착했나요?', link_id: 'tab:admin', created_at: new Date().toISOString() });
+      showToast?.('테스트 알림을 보냈어요. 알림함과 휴대폰을 확인해주세요.', 'success');
+    } catch (e) { showToast?.('테스트 알림을 보내지 못했어요.', 'error'); }
+  };
+  return (
+    <Card>
+      <div className="flex items-center gap-1.5 text-sm font-semibold mb-1" style={{ color: INK }}>🧩 기능 설정 <span className="text-[10px] font-normal rounded-full px-1.5 py-0.5" style={{ background: '#1E2A38', color: '#7FA8D9' }}>간사 전용</span></div>
+      <p className="text-[11px] mb-1" style={{ color: MUTE }}>새로 추가된 기능을 켜고 끌 수 있어요. 마음에 안 들면 끄기만 하면 바로 원래대로 돌아가요.</p>
+      <ToggleRow label="☀️ 오늘의 책스초코 (공지 탭 요약 카드)" desc="로그인한 회원에게 오늘 출석·일정·반납일·벌칙·회비를 한 카드로 보여줘요." on={features.todaySummary} onChange={set('todaySummary')} />
+      <ToggleRow label="📊 분기 결산 공지" desc="분기가 끝나면 30일 동안 공지 탭 맨 위에 지난 분기 결산이 보여요. 아래에서 미리 확인할 수 있어요." on={features.quarterReport} onChange={set('quarterReport')} />
+      <ToggleRow label="🏅 칭찬 포인트·배지" desc="인원 탭의 칭찬하기, 등급·배지, 포인트 랭킹을 보여줘요." on={features.praise} onChange={set('praise')} />
+      <ToggleRow label="📚 자동 알림 · 도서 반납기한" desc="반납 하루 전·당일, 기한 초과 1·3·7일째에 알림 (초과 1일째엔 책 주인에게도)" on={features.autoDue} onChange={set('autoDue')} />
+      <ToggleRow label="🎯 자동 알림 · 벌칙" desc="수행 예정일 당일 알림 + 금요일에 예정일을 안 정한 벌칙 대상자에게 알림" on={features.autoPenalty} onChange={set('autoPenalty')} />
+      <ToggleRow label="💰 자동 알림 · 회비·회식비" desc="매달 지정한 날 아침에 이번 달 회비 미납자·미납 회식비가 있는 회원에게 알림 (그달 회비 걷기가 시작된 경우만)" on={features.autoDues} onChange={set('autoDues')} />
+      {features.autoDues && (
+        <div className="flex items-center justify-between gap-3 pb-2.5 pl-1">
+          <span className="text-[12px]" style={{ color: NEUTRAL_TEXT }}>회비 알림 날짜</span>
+          <select value={features.duesDay} onChange={(e) => saveFeatures({ duesDay: Number(e.target.value) })} className="rounded-lg border px-2 py-1 text-sm outline-none" style={inputStyle} aria-label="회비 알림 날짜">
+            {Array.from({ length: 28 }).map((_, i) => <option key={i + 1} value={i + 1}>매달 {i + 1}일</option>)}
+          </select>
+        </div>
+      )}
+      <div className="flex flex-wrap gap-1.5 pt-2.5" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+        <button onClick={runDry} disabled={dryLoading} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{dryLoading ? '확인 중…' : '오늘 보낼 자동 알림 미리보기'}</button>
+        <button onClick={sendTest} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>나에게 테스트 알림 보내기</button>
+      </div>
+      {dry && (
+        <div className="mt-2 rounded-xl p-2.5 text-[12px]" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>
+          {dry.error ? <span style={{ color: '#F0A87C' }}>{dry.error}</span>
+            : dry.skipped ? <span style={{ color: '#F0A87C' }}>{dry.skipped}</span>
+            : dry.count === 0 ? `오늘(${dry.today})은 보낼 자동 알림이 없어요.`
+            : (
+              <>
+                <div className="mb-1" style={{ color: MUTE }}>오늘({dry.today}) 아침 8시에 보낼 알림 {dry.count}건</div>
+                {dry.notifications.map((n, i) => <div key={i} className="leading-snug py-0.5">· <b style={{ color: INK }}>{n.to}</b> {n.message}</div>)}
+              </>
+            )}
+        </div>
+      )}
+      <div className="flex items-center justify-between gap-2 mt-4 mb-2">
+        <span className="text-xs font-semibold" style={{ color: MUTE }}>분기 결산 미리보기</span>
+        <select value={sel} onChange={(e) => setSel(Number(e.target.value))} className="rounded-lg border px-2 py-1 text-sm outline-none" style={inputStyle} aria-label="미리볼 분기">
+          {options.map((o, i) => <option key={i} value={i}>{o.year}년 {o.q}분기{i === 0 ? ' (진행 중)' : ''}</option>)}
+        </select>
+      </div>
+      <QuarterReportCard report={report} isLoggedIn currentMember={currentMember} preview collapsible={false} showPraise={features.praise} />
+      <p className="text-[11px] mt-2" style={{ color: MUTE }}>
+        {features.quarterReport ? `켜져 있어요 → ${quarterRange(cur.year, cur.q).label}이 끝나면 다음 날부터 30일 동안 공지 탭에 자동으로 보여요.` : '꺼져 있어요 → 공지 탭에는 보이지 않아요. 위 스위치로 켤 수 있어요.'}
+      </p>
+    </Card>
+  );
+}
+
 /* ---------- Supabase data layer ---------- */
-const TABLES = ['members', 'notices', 'notice_views', 'sessions', 'checkins', 'penalty_completions', 'calendar_days', 'settings', 'photos', 'absence_excuses', 'meeting_locations', 'dues_payments', 'expenses', 'dinner_collections', 'book_shares', 'notifications', 'book_tower_entries', 'birthday_balloons', 'membership_applications', 'membership_votes'];
+const TABLES = ['members', 'notices', 'notice_views', 'sessions', 'checkins', 'penalty_completions', 'calendar_days', 'settings', 'photos', 'absence_excuses', 'meeting_locations', 'dues_payments', 'expenses', 'dinner_collections', 'book_shares', 'notifications', 'book_tower_entries', 'birthday_balloons', 'membership_applications', 'membership_votes', 'praises'];
 
 async function fetchAll(tables = TABLES, myMemberId = null) {
   // members는 pin 컬럼이 빠진 members_public 뷰에서 조회 (일반 조회 시 PIN이 클라이언트로 전송되지 않도록)
@@ -386,6 +1170,7 @@ async function verifyPin(memberId, input) {
 async function insertRow(table, row) {
   const { error } = await supabase.from(table).insert(row);
   if (error) throw error;
+  if (table === 'notifications') triggerPushFlush(); // 알림이 생기면 휴대폰 푸시도 바로 발송
 }
 async function updateRow(table, matchCol, matchVal, patch) {
   const { error } = await supabase.from(table).update(patch).eq(matchCol, matchVal);
@@ -428,6 +1213,7 @@ export default function App() {
   const [birthdayBalloons, setBirthdayBalloons] = useState([]);
   const [membershipApplications, setMembershipApplications] = useState([]); // 가입 신청 목록
   const [membershipVotes, setMembershipVotes] = useState([]); // 운영진별 승인 기록 (application_id, member_id)
+  const [praises, setPraises] = useState([]); // 칭찬 포인트 - 회원끼리 주고받은 칭찬
   const [showApplyForm, setShowApplyForm] = useState(false); // 상단 "가입신청" 버튼 -> 인원 탭에서 신청서 자동으로 펼침
   const [showNotifications, setShowNotifications] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(() => localStorage.getItem('chexchoco-current-user') || null);
@@ -443,6 +1229,12 @@ export default function App() {
     if (current === tab) return;
     if (!current) window.history.replaceState(null, '', '#' + tab); // 첫 진입은 기록을 쌓지 않음
     else window.history.pushState(null, '', '#' + tab);
+  }, [tab]);
+  // 탭을 바꾸면 새 탭이 중간부터 보이지 않도록 화면 맨 위로 올림
+  const firstTabRenderRef = React.useRef(true);
+  useEffect(() => {
+    if (firstTabRenderRef.current) { firstTabRenderRef.current = false; return; }
+    if (window.scrollY > 0) window.scrollTo({ top: 0 });
   }, [tab]);
   useEffect(() => {
     const onPop = () => setTab(tabFromHash() || 'notice');
@@ -511,6 +1303,7 @@ export default function App() {
       if (data.birthday_balloons) setBirthdayBalloons(data.birthday_balloons);
       if (data.membership_applications) setMembershipApplications(data.membership_applications);
       if (data.membership_votes) setMembershipVotes(data.membership_votes);
+      if (data.praises) setPraises(data.praises);
       setError('');
     } catch (e) { setError('데이터를 불러오지 못했어요. 새로고침해 주세요.'); }
     setLoaded(true);
@@ -585,7 +1378,7 @@ export default function App() {
   const openNotification = async (n) => {
     if (!n.read_at) await updateRow('notifications', 'id', n.id, { read_at: new Date().toISOString() });
     setShowNotifications(false);
-    setTab('gallery');
+    setTab(n.link_id && String(n.link_id).startsWith('tab:') ? String(n.link_id).slice(4) : 'gallery'); // 자동 알림·칭찬은 해당 탭으로, 도서 공유 알림은 서재로
     await reload(['notifications']);
   };
   // 알림 삭제 - 화면에서 먼저 지우고(즉시 반영) 서버에서도 삭제
@@ -646,6 +1439,48 @@ export default function App() {
     return ro !== 0 ? ro : a.name.localeCompare(b.name, 'ko');
   }), [members]);
   const recentPhotos = useMemo(() => [...photos].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 6), [photos]);
+
+  // 간사가 설정창에서 켜고 끄는 새 기능들 (오늘 요약 · 분기 결산 · 칭찬 포인트 · 자동 알림)
+  const features = useMemo(() => parseFeatures(settings), [settings]);
+  const saveFeatures = async (patch) => {
+    const next = { ...features, ...patch };
+    const value = JSON.stringify(next);
+    setSettings((prev) => (prev.some((x) => x.key === 'features') ? prev.map((x) => (x.key === 'features' ? { ...x, value } : x)) : [...prev, { key: 'features', value }]));
+    try { await upsertRow('settings', { key: 'features', value }, 'key'); showToast('기능 설정을 저장했어요.', 'success'); }
+    catch (e) { showToast('설정을 저장하지 못했어요.', 'error'); }
+    reload(['settings']);
+  };
+  // 분기 결산·칭찬 포인트 계산에 쓰는 데이터 묶음
+  const reportData = useMemo(() => ({
+    members: sortedMembers, sessions, checkins, absenceExcuses, calendarDays, bookTowerEntries, bookShares, photos, praises, penaltyCompletions,
+    duesPayments, dinnerCollections,
+  }), [sortedMembers, sessions, checkins, absenceExcuses, calendarDays, bookTowerEntries, bookShares, photos, praises, penaltyCompletions, duesPayments, dinnerCollections]);
+  const memberStats = useMemo(() => computeMemberStats(reportData), [reportData]);
+  // 공지 탭에 띄울 분기 결산 = 바로 지난 분기 (분기가 끝난 뒤 30일 동안만)
+  const noticeQuarterReport = useMemo(() => {
+    if (!features.quarterReport) return null;
+    const prevQ = shiftQuarter(quarterOfDate(todayStr()), -1);
+    const r = computeQuarterReport(prevQ, reportData);
+    const daysSinceEnd = dayDiffStr(todayStr(), r.to);
+    return r.hasData && daysSinceEnd >= 1 && daysSinceEnd <= 30 ? r : null;
+  }, [features.quarterReport, reportData]);
+
+  // 서비스 워커 등록 (휴대폰 푸시 알림 수신용) + 알림을 눌러 열었을 때 해당 탭으로 이동
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return undefined;
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    const onMsg = (e) => { if (e.data?.type === 'open-tab' && e.data.tab) { setTab(e.data.tab); reload(['notifications']); } };
+    navigator.serviceWorker.addEventListener('message', onMsg);
+    return () => navigator.serviceWorker.removeEventListener('message', onMsg);
+  }, []);
+  // 로그인하면 이 기기의 푸시 구독을 그 사람 것으로 연결, 로그아웃하면 연결 해제
+  useEffect(() => {
+    currentPushSubscription().then((sub) => {
+      if (!sub) return;
+      if (currentUserId && Notification.permission === 'granted') savePushSubscription(sub, currentUserId).catch(() => {});
+      else if (!currentUserId) supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint).then(() => {}, () => {});
+    }).catch(() => {});
+  }, [currentUserId]);
 
   const TABS = [
     { key: 'notice', label: '공지', icon: Megaphone },
@@ -726,11 +1561,7 @@ export default function App() {
     return () => ro.disconnect();
   }, [loaded]);
 
-  if (!loaded) {
-    return <div className="min-h-screen flex items-center justify-center" style={{ background: PAPER_BG }}>
-      <div className="text-sm" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>불러오는 중…</div>
-    </div>;
-  }
+  if (!loaded) return <SkeletonScreen />;
 
   return (
     <div className="min-h-screen" style={{ background: PAPER_BG, fontFamily: "'Inter', sans-serif" }}>
@@ -914,8 +1745,9 @@ export default function App() {
                   <button onClick={() => setShowNotifications(false)} aria-label="닫기"><X size={16} style={{ color: MUTE }} /></button>
                 </div>
               </div>
+              <PushToggle currentMember={currentMember} showToast={showToast} />
               {myNotifications.length === 0 ? (
-                <p className="text-sm text-center py-6" style={{ color: MUTE }}>알림이 없어요.</p>
+                <p className="text-sm text-center py-6 leading-relaxed" style={{ color: MUTE }}>새 알림이 없어요.<br /><span className="text-xs">대여신청·반납·벌칙·칭찬 소식이 여기로 와요.</span></p>
               ) : (
                 <div className="space-y-1.5">
                   {myNotifications.map((n) => (
@@ -988,13 +1820,22 @@ export default function App() {
         </div>
         </div>
 
+        {tab === 'notice' && (
+          <div className="space-y-3 mb-3">
+            <InstallBanner />
+            {features.todaySummary && currentMember && (
+              <TodaySummaryCard me={currentMember} data={reportData} memberStat={memberStats[currentMember.id]} showPraise={features.praise} setTab={setTab} />
+            )}
+            {noticeQuarterReport && <QuarterReportCard report={noticeQuarterReport} isLoggedIn={!!currentMember} currentMember={currentMember} showPraise={features.praise} />}
+          </div>
+        )}
         {tab === 'notice' && <NoticeScreen notices={notices} noticeViews={noticeViews} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} requestDelete={requestDelete} birthdayBalloons={birthdayBalloons} />}
         {tab === 'gallery' && <GalleryScreen photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} requestDelete={requestDelete} showToast={showToast} bookShares={bookShares} bookTowerEntries={bookTowerEntries} />}
         {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} meetingLocations={meetingLocations} />}
         {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} currentMember={currentMember} />}
-        {tab === 'users' && <UsersScreen members={members} sortedMembers={sortedMembers} currentUserId={currentUserId} setIdentity={setIdentity} canManage={canManageUsers} notices={notices} sessions={sessions} checkins={checkins} reload={reload} requestDelete={requestDelete} showToast={showToast} membershipApplications={membershipApplications} membershipVotes={membershipVotes} showApplyForm={showApplyForm} setShowApplyForm={setShowApplyForm} />}
+        {tab === 'users' && <UsersScreen members={members} sortedMembers={sortedMembers} currentUserId={currentUserId} setIdentity={setIdentity} canManage={canManageUsers} notices={notices} sessions={sessions} checkins={checkins} reload={reload} requestDelete={requestDelete} showToast={showToast} membershipApplications={membershipApplications} membershipVotes={membershipVotes} showApplyForm={showApplyForm} setShowApplyForm={setShowApplyForm} praiseOn={features.praise} memberStats={memberStats} praises={praises} />}
         {tab === 'treasury' && canManageUsers && <TreasuryScreen members={sortedMembers} duesPayments={duesPayments} expenses={expenses} dinnerCollections={dinnerCollections} currentMember={currentMember} reload={reload} requestDelete={requestDelete} showToast={showToast} />}
-        {tab === 'admin' && canManageAttendance && <AdminScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} setPenaltyRule={setPenaltyRule} penaltyCompletions={penaltyCompletions} reload={reload} calendarDays={calendarDays} absenceExcuses={absenceExcuses} requestDelete={requestDelete} currentMember={currentMember} weatherOverride={weatherOverride} setWeatherOverride={setWeatherOverride} />}
+        {tab === 'admin' && canManageAttendance && <AdminScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} setPenaltyRule={setPenaltyRule} penaltyCompletions={penaltyCompletions} reload={reload} calendarDays={calendarDays} absenceExcuses={absenceExcuses} requestDelete={requestDelete} currentMember={currentMember} weatherOverride={weatherOverride} setWeatherOverride={setWeatherOverride} features={features} saveFeatures={saveFeatures} reportData={reportData} showToast={showToast} />}
       </div>
     </div>
   );
@@ -1171,7 +2012,15 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
           </button>
         )
       )}
-      {sorted.length === 0 && <Card><p className="text-sm text-center py-4" style={{ color: MUTE }}>등록된 공지가 없어요.</p></Card>}
+      {sorted.length === 0 && (
+        <Card>
+          <div className="text-center py-4">
+            <div style={{ fontSize: 26 }} aria-hidden="true">📢</div>
+            <p className="text-sm mt-1" style={{ color: MUTE }}>아직 등록된 공지가 없어요.</p>
+            {canManage && !showForm && <button onClick={() => setShowForm(true)} className="mt-3 rounded-full px-4 py-2 text-xs font-semibold" style={{ background: BTN_BG, color: BTN_TEXT }}>+ 첫 공지 작성하기</button>}
+          </div>
+        </Card>
+      )}
       {sorted.map((n) => {
         const views = noticeViews.filter((v) => v.notice_id === n.id);
         const expanded = expandedViewsId === n.id;
@@ -1344,6 +2193,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
 
   const navList = q ? filtered : sorted;
   const viewingIdx = navList.findIndex((p) => p.id === viewingId);
+  const swipeStartRef = React.useRef(null); // 사진 크게 보기에서 좌우로 밀어서 넘기기
   const viewing = viewingIdx >= 0 ? navList[viewingIdx] : null;
   const showPrev = () => { if (viewingIdx > 0) { setViewingId(navList[viewingIdx - 1].id); setEditingDate(false); setEditingCaption(false); } };
   const showNext = () => { if (viewingIdx >= 0 && viewingIdx < navList.length - 1) { setViewingId(navList[viewingIdx + 1].id); setEditingDate(false); setEditingCaption(false); } };
@@ -1766,7 +2616,16 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         )}
         <div className="mt-3">
           {sorted.length === 0 ? (
-            <p className="text-sm text-center py-6" style={{ color: MUTE }}>아직 올라온 사진이 없어요.</p>
+            <div className="text-center py-6">
+              <div style={{ fontSize: 26 }} aria-hidden="true">📷</div>
+              <p className="text-sm mt-1" style={{ color: MUTE }}>아직 올라온 사진이 없어요.</p>
+              {currentMember && (
+                <label className="inline-block mt-3 rounded-full px-4 py-2 text-xs font-semibold cursor-pointer" style={{ background: BTN_BG, color: BTN_TEXT }}>
+                  + 첫 모임 사진 올리기
+                  <input type="file" accept="image/*" onChange={handleFile} className="hidden" disabled={uploading} />
+                </label>
+              )}
+            </div>
           ) : filtered.length === 0 ? (
             <p className="text-sm text-center py-6" style={{ color: MUTE }}>검색 결과가 없어요.</p>
           ) : (
@@ -1858,7 +2717,12 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         {showShareForm && <div className="text-[10px] font-semibold mb-2" style={{ color: MUTE }}>등록된 글 목록</div>}
         <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold" style={{ color: SHARE_OFFER_COLOR }}><span style={{ fontSize: 13, lineHeight: 1 }} role="img" aria-label="손 내미는 사람">💁‍♀️</span> 빌려줄까요? ({offers.length})</div>
         <div className="space-y-1.5 mb-3">
-          {offers.length === 0 && <p className="text-xs" style={{ color: MUTE }}>등록된 글이 없어요.</p>}
+          {offers.length === 0 && (
+            <div className="flex items-center justify-between gap-2 rounded-xl px-3 py-2.5" style={{ border: `1px dashed ${LINE}` }}>
+              <span className="text-xs" style={{ color: MUTE }}>아직 빌려줄 책이 없어요.</span>
+              {currentMember && <button onClick={() => { setShareKind('offer'); setShowShareForm(true); }} className="shrink-0 text-[11px] font-semibold rounded-full px-2.5 py-1" style={{ background: NEUTRAL_BG, color: SHARE_OFFER_COLOR }}>+ 책 빌려주기</button>}
+            </div>
+          )}
           {offers.map((s) => {
             const poster = members.find((m) => m.id === s.posted_by);
             return (
@@ -1874,7 +2738,12 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         </div>
         <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold" style={{ color: SHARE_REQUEST_COLOR }}><span style={{ fontSize: 13, lineHeight: 1 }} role="img" aria-label="손 흔드는 사람">🙋</span> 빌려주실 수 있나요? ({requests.length})</div>
         <div className="space-y-1.5">
-          {requests.length === 0 && <p className="text-xs" style={{ color: MUTE }}>등록된 글이 없어요.</p>}
+          {requests.length === 0 && (
+            <div className="flex items-center justify-between gap-2 rounded-xl px-3 py-2.5" style={{ border: `1px dashed ${LINE}` }}>
+              <span className="text-xs" style={{ color: MUTE }}>빌리고 싶은 책이 있나요?</span>
+              {currentMember && <button onClick={() => { setShareKind('request'); setShowShareForm(true); }} className="shrink-0 text-[11px] font-semibold rounded-full px-2.5 py-1" style={{ background: NEUTRAL_BG, color: SHARE_REQUEST_COLOR }}>+ 빌려달라고 요청</button>}
+            </div>
+          )}
           {requests.map((s) => {
             const poster = members.find((m) => m.id === s.posted_by);
             return (
@@ -2192,7 +3061,13 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
         </div>
         {(() => {
           const list = towerView === 'mine' ? myTower : groupTower;
-          if (list.length === 0) return <p className="text-xs text-center py-6" style={{ color: MUTE }}>아직 쌓인 책이 없어요.</p>;
+          if (list.length === 0) return (
+            <div className="text-center py-6">
+              <div style={{ fontSize: 26 }} aria-hidden="true">📚</div>
+              <p className="text-xs mt-1" style={{ color: MUTE }}>{towerView === 'mine' ? '아직 쌓인 책이 없어요. 읽고 있는 책부터 쌓아보세요!' : '모임 책장에 공개된 책이 아직 없어요.'}</p>
+              {towerView === 'mine' && currentMember && !showTowerAdd && <button onClick={() => { setShowTowerAdd(true); setEditingTowerId(null); }} className="mt-3 rounded-full px-4 py-2 text-xs font-semibold" style={{ background: BTN_BG, color: BTN_TEXT }}>+ 첫 책 쌓기</button>}
+            </div>
+          );
           // 최근 10권만 먼저 보여주고, 나머지(오래된 책)는 '더보기'로 펼침 - 목록 안에 스크롤이 겹치지 않게 함
           const hiddenCount = showAllTower ? 0 : Math.max(0, list.length - TOWER_PREVIEW_COUNT);
           const visibleList = list.slice(hiddenCount);
@@ -2361,14 +3236,22 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
 
       {viewing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)' }} onClick={() => setViewingId(null)}>
-          <div className="relative max-w-full max-h-full flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
+          <div className="relative max-w-full max-h-full flex flex-col items-center" onClick={(e) => e.stopPropagation()}
+            onTouchStart={(e) => { swipeStartRef.current = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }}
+            onTouchEnd={(e) => {
+              const st = swipeStartRef.current; swipeStartRef.current = null;
+              if (!st || editingCaption || editingDate) return;
+              const t = e.changedTouches[0]; const dx = t.clientX - st.x; const dy = t.clientY - st.y;
+              if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) { if (dx < 0) showNext(); else showPrev(); }
+            }}>
             {viewingIdx > 0 && (
               <button onClick={showPrev} className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 p-2 rounded-full" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }} aria-label="이전 사진"><ChevronLeft size={20} /></button>
             )}
-            {viewingIdx < sorted.length - 1 && (
+            {viewingIdx < navList.length - 1 && (
               <button onClick={showNext} className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1 p-2 rounded-full" style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }} aria-label="다음 사진"><ChevronRight size={20} /></button>
             )}
-            <img src={publicUrl('photos', viewing.file_path)} className="max-w-full max-h-[65vh] rounded-xl" alt="" />
+            <img src={publicUrl('photos', viewing.file_path)} className="max-w-full max-h-[65vh] rounded-xl select-none" alt="" draggable={false} />
+            {navList.length > 1 && <div className="text-[11px] mt-2" style={{ color: 'rgba(255,255,255,0.55)', fontFamily: "'IBM Plex Mono', monospace" }}>{viewingIdx + 1} / {navList.length} · 좌우로 밀어서 넘기기</div>}
             <div className="flex items-center gap-3 mt-3">
               <span className="text-sm" style={{ color: '#FFFFFF' }}>{dispName(viewing.uploader_name, isLoggedIn)} · {fmtDate(viewing.created_at)} {fmtTime(viewing.created_at)}</span>
               {(canManage || viewing.uploader_id === currentMember?.id) && (
@@ -3388,8 +4271,11 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
 }
 
 /* ---------------- 사용자관리 ---------------- */
-function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canManage, notices, sessions, checkins, reload, requestDelete, showToast, membershipApplications, membershipVotes, showApplyForm, setShowApplyForm }) {
+function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canManage, notices, sessions, checkins, reload, requestDelete, showToast, membershipApplications, membershipVotes, showApplyForm, setShowApplyForm, praiseOn = false, memberStats = {}, praises = [] }) {
   const isLoggedIn = !!currentUserId;
+  const me = members.find((m) => m.id === currentUserId) || null;
+  const [praiseTarget, setPraiseTarget] = useState(null); // 칭찬 보낼 회원
+  const [profileMember, setProfileMember] = useState(null); // 칭찬 프로필(등급·배지) 볼 회원
   const isSecretary = members.find((m) => m.id === currentUserId)?.role === '간사'; // 신청 진행현황(운영진별 승인 여부)은 간사만 상세히 볼 수 있음
   const currentManagers = members.filter((m) => MANAGE_ROLES.includes(m.role));
   const pendingApplications = membershipApplications.filter((a) => a.status !== 'approved' && a.status !== 'rejected');
@@ -3579,6 +4465,15 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
       )}
       {!canManage && members.length > 0 && <div className="flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-sm" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}><Lock size={15} /> 이름·직급 변경은 회장·간사·총무만 가능해요. 본인의 생일·PIN은 각자 수정할 수 있어요.</div>}
 
+      {praiseOn && displayMembers.length > 0 && <PraiseRankingCard members={displayMembers} memberStats={memberStats} isLoggedIn={isLoggedIn} onOpenProfile={setProfileMember} />}
+      {praiseOn && praiseTarget && me && (
+        <PraiseModal target={praiseTarget} me={me} praises={praises} showToast={showToast} onClose={() => setPraiseTarget(null)}
+          onSent={async () => { setPraiseTarget(null); await reload(['praises', 'notifications']); }} />
+      )}
+      {praiseOn && profileMember && memberStats[profileMember.id] && (
+        <MemberProfileModal member={profileMember} stat={memberStats[profileMember.id]} members={members} isLoggedIn={isLoggedIn}
+          canPraise={!!me && me.id !== profileMember.id} onPraise={() => { setPraiseTarget(profileMember); setProfileMember(null); }} onClose={() => setProfileMember(null)} />
+      )}
       <Card className="!p-0 overflow-hidden">
         {displayMembers.length === 0 && <div className="px-4 py-8 text-center text-sm" style={{ color: MUTE }}>등록된 멤버가 없어요.</div>}
         {displayMembers.map((m, idx) => (
@@ -3636,10 +4531,17 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
                         <RoleChip role={m.role} />
                         {m.birthday && isLoggedIn && <span className="text-[11px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtMD(mdOf(m.birthday))}</span>}
                         {m.has_pin && <Lock size={11} style={{ color: MUTE }} />}
+                        {praiseOn && memberStats[m.id] && (
+                          <button onClick={() => setProfileMember(m)} className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: 'rgba(239,201,76,0.1)', color: '#EFC94C' }} aria-label={`${m.name} 칭찬 프로필 보기`}>
+                            <span aria-hidden="true">{memberStats[m.id].level.icon}</span>{memberStats[m.id].points}P
+                            {memberStats[m.id].badges.length > 0 && <span className="ml-0.5 tracking-tight" aria-hidden="true">{memberStats[m.id].badges.slice(-3).map((b) => b.icon).join('')}</span>}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0 pl-2 ml-1" style={{ borderLeft: `1px solid ${ROW_LINE}` }}>
+                    {praiseOn && me && m.id !== me.id && <button onClick={() => setPraiseTarget(m)} className="p-2 rounded-lg" style={{ fontSize: 16, lineHeight: 1 }} aria-label={`${m.name} 칭찬하기`}>👏</button>}
                     {canManage && <button onClick={() => startEdit(m)} className="p-2 rounded-lg" style={{ color: MUTE }} aria-label="회원 정보 수정"><Pencil size={16} /></button>}
                     {!canManage && m.id === currentUserId && <button onClick={() => startSelfEdit(m)} className="p-2 rounded-lg" style={{ color: MUTE }} aria-label="내 정보 수정"><Pencil size={16} /></button>}
                     {canManage && <button onClick={() => requestDelete(() => removeMember(m.id), `${m.name}님을 삭제할까요? 관련 기록도 함께 사라져요.`)} className="p-2 rounded-lg" style={{ color: '#F0A87C' }} aria-label="회원 삭제"><Trash2 size={16} /></button>}
@@ -4203,7 +5105,9 @@ function TreasuryScreen({ members, duesPayments, expenses, dinnerCollections, cu
   );
 }
 
-function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule, penaltyCompletions, reload, calendarDays, absenceExcuses, requestDelete, currentMember, weatherOverride, setWeatherOverride }) {
+function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule, penaltyCompletions, reload, calendarDays, absenceExcuses, requestDelete, currentMember, weatherOverride, setWeatherOverride, features, saveFeatures, reportData, showToast }) {
+  // 기능 설정은 간사 전용 (간사가 아직 없으면 운영진 누구나)
+  const canEditFeatures = currentMember?.role === '간사' || !members.some((m) => m.role === '간사');
   const [date, setDate] = useState(todayStr());
   const session = sessions.find((s) => s.date === date);
   const dayCheckins = session ? checkins.filter((c) => c.session_id === session.id) : [];
@@ -4316,6 +5220,7 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
 
   return (
     <div className="space-y-4">
+      {canEditFeatures && features && <FeatureSettingsCard features={features} saveFeatures={saveFeatures} reportData={reportData} currentMember={currentMember} showToast={showToast} />}
       <Card>
         <div className="flex items-center gap-2">
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="rounded-xl border px-3 py-2 text-sm outline-none flex-1" style={inputStyle} />
