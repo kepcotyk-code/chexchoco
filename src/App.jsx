@@ -1712,7 +1712,7 @@ export default function App() {
           <div className="mb-4">
             <div className="grid grid-cols-6 gap-1.5">
               {recentPhotos.map((p) => (
-                <button key={p.id} onClick={() => setTab('gallery')} className="aspect-square rounded-lg overflow-hidden" style={{ background: NEUTRAL_BG }}>
+                <button key={p.id} onClick={() => setTab('photos')} className="aspect-square rounded-lg overflow-hidden" style={{ background: NEUTRAL_BG }}>
                   <PhotoThumb filePath={p.file_path} />
                 </button>
               ))}
@@ -3261,14 +3261,11 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
                       </div>
                     </div>
                   )}
-                  {/* 도서명(왼쪽) · 저자·출판사(오른쪽)를 한 줄에 */}
-                  <div className="flex items-baseline justify-between gap-3">
-                    <div className="text-base font-semibold min-w-0" style={{ color: INK }}>{t.book_title}</div>
-                    {(t.book_author || t.book_publisher) && (
-                      <div className="text-xs text-right shrink-0" style={{ color: MUTE, maxWidth: '45%' }}>{[t.book_author, t.book_publisher].filter(Boolean).join(' · ')}</div>
-                    )}
-                  </div>
+                  {/* 도서명 - 저자·출판사는 아래 속성 목록에 각각 한 줄로 표시(길어도 줄바꿈되지 않도록 말줄임 처리) */}
+                  <div className="text-base font-semibold" style={{ color: INK }}>{t.book_title}</div>
                   <div className="space-y-1.5 text-xs mt-3" style={{ color: NEUTRAL_TEXT }}>
+                    {t.book_author && <div className="flex justify-between gap-3 min-w-0"><span className="shrink-0" style={{ color: MUTE }}>저자</span><span className="text-right truncate min-w-0">{t.book_author}</span></div>}
+                    {t.book_publisher && <div className="flex justify-between gap-3 min-w-0"><span className="shrink-0" style={{ color: MUTE }}>출판사</span><span className="text-right truncate min-w-0">{t.book_publisher}</span></div>}
                     {ownerText && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>등록자</span><span className="text-right">{ownerText}</span></div>}
                     {t.event_tag && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>토론회</span><span className="text-right">{t.event_tag}</span></div>}
                     {t.start_date && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>시작일</span><span>{fmtDate(t.start_date)}</span></div>}
