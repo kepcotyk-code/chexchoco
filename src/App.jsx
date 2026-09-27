@@ -1458,6 +1458,31 @@ export default function App() {
     setLoaded(true);
   };
   useEffect(() => { reload(); }, []);
+  // 알림 만들기 + 도서 공유 수락/거절/거절취소 - 서재 화면(GalleryScreen)뿐 아니라 알림함(아래)에서도 그 자리에서 바로 눌러야 해서 App 레벨 공통 함수로 둠
+  const notify = async (memberId, message, linkId) => {
+    await insertRow('notifications', { id: uid('nt'), member_id: memberId, message, link_id: linkId, created_at: new Date().toISOString() });
+  };
+  const confirmMatch = async (share) => {
+    const today = todayStr();
+    const due = new Date(); due.setDate(due.getDate() + 14);
+    const dueStr = `${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())}`;
+    await updateRow('book_shares', 'id', share.id, { status: 'matched', borrowed_at: today, due_date: dueStr });
+    await notify(shareBorrowerId(share), `[${share.book_title}] 대여가 확정됐어요. 반납기한: ${dueStr}`, share.id); // matched_by는 kind에 따라 주인/대여자가 뒤바뀌므로 항상 빌리는 사람(borrowerId) 기준으로 알림
+    await reload(['book_shares', 'notifications']);
+  };
+  // 거절 — 주인이 이 요청을 거절함. status만 'declined'로 바꾸고 posted_by/matched_by는 그대로 둬서, 잘못 눌렀을 때 되돌릴 수 있게 함
+  const declineRequest = async (share) => {
+    await updateRow('book_shares', 'id', share.id, { status: 'declined' });
+    await notify(shareBorrowerId(share), `[${share.book_title}] 대여요청이 거절됐어요.`, share.id);
+    await reload(['book_shares', 'notifications']);
+  };
+  // 거절 취소 — 실수로 거절을 눌렀을 때, 다시 요청 대기 상태로 되돌려서 수락할 수 있게 함
+  const undeclineRequest = async (share) => {
+    await updateRow('book_shares', 'id', share.id, { status: 'requested' });
+    await reload(['book_shares']);
+  };
+  // 알림함에서 도서 대여요청 알림을 누르면, 서재 탭으로 이동하면서 그 책 상세보기를 바로 열어주기 위한 대상 id
+  const [pendingShareId, setPendingShareId] = useState(null);
   // 로그인/로그아웃(또는 기기 등록으로 자동 인식)되면 그 사람 알림만 다시 받아옴
   const firstUserEffectRef = React.useRef(true);
   useEffect(() => {
@@ -1527,7 +1552,9 @@ export default function App() {
   const openNotification = async (n) => {
     if (!n.read_at) await updateRow('notifications', 'id', n.id, { read_at: new Date().toISOString() });
     setShowNotifications(false);
-    setTab(n.link_id && String(n.link_id).startsWith('tab:') ? String(n.link_id).slice(4) : 'gallery'); // 자동 알림·칭찬은 해당 탭으로, 도서 공유 알림은 서재로
+    const isTabLink = n.link_id && String(n.link_id).startsWith('tab:');
+    setTab(isTabLink ? String(n.link_id).slice(4) : 'gallery'); // 자동 알림·칭찬은 해당 탭으로, 도서 공유 알림은 서재로
+    if (!isTabLink && n.link_id) setPendingShareId(n.link_id); // 도서 공유 알림이면, 책이 많아도 직접 찾을 필요 없이 그 책 상세보기가 바로 열리게 함
     await reload(['notifications']);
   };
   // 알림 삭제 - 화면에서 먼저 지우고(즉시 반영) 서버에서도 삭제
@@ -1941,15 +1968,29 @@ export default function App() {
                 <p className="text-sm text-center py-6 leading-relaxed" style={{ color: MUTE }}>새 알림이 없어요.<br /><span className="text-xs">대여신청·반납·벌칙·칭찬 소식이 여기로 와요.</span></p>
               ) : (
                 <div className="space-y-1.5">
-                  {myNotifications.map((n) => (
-                    <div key={n.id} className="flex items-stretch rounded-xl" style={{ background: n.read_at ? 'transparent' : 'rgba(240,168,124,0.08)', border: `1px solid ${n.read_at ? LINE : 'rgba(240,168,124,0.3)'}` }}>
-                      <button onClick={() => openNotification(n)} className="flex-1 min-w-0 text-left p-2.5">
-                        <div className="text-xs" style={{ color: n.read_at ? MUTE : INK }}>{n.message}</div>
-                        <div className="text-[10px] mt-0.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(n.created_at.slice(0, 10))}</div>
-                      </button>
-                      <button onClick={() => deleteNotification(n)} className="shrink-0 px-3 flex items-center" aria-label="알림 삭제"><Trash2 size={13} style={{ color: MUTE }} /></button>
-                    </div>
-                  ))}
+                  {myNotifications.map((n) => {
+                    // 도서 대여요청 알림이고, 내가 그 책의 소유자이고, 아직 수락/거절 전이면 알림함에서 바로 수락/거절할 수 있게 함 (서재까지 안 가도 됨)
+                    const relatedShare = n.link_id && !String(n.link_id).startsWith('tab:') ? bookShares.find((s) => s.id === n.link_id) : null;
+                    const canActInline = relatedShare && relatedShare.status === 'requested' && shareOwnerId(relatedShare) === currentMember.id;
+                    const markThisRead = async () => { if (!n.read_at) await updateRow('notifications', 'id', n.id, { read_at: new Date().toISOString() }); };
+                    return (
+                      <div key={n.id} className="rounded-xl" style={{ background: n.read_at ? 'transparent' : 'rgba(240,168,124,0.08)', border: `1px solid ${n.read_at ? LINE : 'rgba(240,168,124,0.3)'}` }}>
+                        <div className="flex items-stretch">
+                          <button onClick={() => openNotification(n)} className="flex-1 min-w-0 text-left p-2.5">
+                            <div className="text-xs" style={{ color: n.read_at ? MUTE : INK }}>{n.message}</div>
+                            <div className="text-[10px] mt-0.5" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{fmtDate(n.created_at.slice(0, 10))}</div>
+                          </button>
+                          <button onClick={() => deleteNotification(n)} className="shrink-0 px-3 flex items-center" aria-label="알림 삭제"><Trash2 size={13} style={{ color: MUTE }} /></button>
+                        </div>
+                        {canActInline && (
+                          <div className="flex gap-1.5 px-2.5 pb-2.5 -mt-0.5">
+                            <button onClick={async () => { await markThisRead(); await confirmMatch(relatedShare); }} className="flex-1 text-[11px] font-semibold rounded-full py-1.5" style={{ background: BTN_BG, color: BTN_TEXT }}>수락</button>
+                            <button onClick={async () => { await markThisRead(); await declineRequest(relatedShare); }} className="flex-1 text-[11px] font-semibold rounded-full py-1.5" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>거절</button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -2022,7 +2063,7 @@ export default function App() {
         )}
         {tab === 'notice' && <NoticeScreen notices={notices} noticeViews={noticeViews} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} requestDelete={requestDelete} birthdayBalloons={birthdayBalloons} />}
         {tab === 'photos' && <GalleryScreen section="photos" photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} requestDelete={requestDelete} showToast={showToast} bookShares={bookShares} bookTowerEntries={bookTowerEntries} />}
-        {tab === 'gallery' && <GalleryScreen section="library" photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} requestDelete={requestDelete} showToast={showToast} bookShares={bookShares} bookTowerEntries={bookTowerEntries} />}
+        {tab === 'gallery' && <GalleryScreen section="library" photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} requestDelete={requestDelete} showToast={showToast} bookShares={bookShares} bookTowerEntries={bookTowerEntries} notify={notify} confirmMatch={confirmMatch} declineRequest={declineRequest} undeclineRequest={undeclineRequest} pendingShareId={pendingShareId} clearPendingShareId={() => setPendingShareId(null)} />}
         {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} meetingLocations={meetingLocations} />}
         {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} currentMember={currentMember} />}
         {tab === 'users' && <UsersScreen members={members} sortedMembers={sortedMembers} currentUserId={currentUserId} setIdentity={setIdentity} canManage={canManageUsers} notices={notices} sessions={sessions} checkins={checkins} reload={reload} requestDelete={requestDelete} showToast={showToast} membershipApplications={membershipApplications} membershipVotes={membershipVotes} showApplyForm={showApplyForm} setShowApplyForm={setShowApplyForm} praiseOn={features.praise} memberStats={memberStats} praises={praises} />}
@@ -2320,7 +2361,7 @@ function PhotoThumb({ filePath, className = 'w-full h-full object-cover' }) {
       onError={() => { if (!useFull) { setUseFull(true); healMissingThumb(filePath); } }} />
   );
 }
-function GalleryScreen({ section = 'both', photos, currentMember, canManage, reload, members, sessions, checkins, requestDelete, showToast, bookShares, bookTowerEntries }) {
+function GalleryScreen({ section = 'both', photos, currentMember, canManage, reload, members, sessions, checkins, requestDelete, showToast, bookShares, bookTowerEntries, notify, confirmMatch, declineRequest, undeclineRequest, pendingShareId, clearPendingShareId }) {
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [viewingId, setViewingId] = useState(null);
@@ -2411,6 +2452,12 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
   const [shareAuthor, setShareAuthor] = useState('');
   const [sharePublisher, setSharePublisher] = useState('');
   const [viewingShareId, setViewingShareId] = useState(null);
+  // 알림함에서 특정 책의 대여요청 알림을 눌렀을 때, 서재 안 여러 책 중에서 직접 찾을 필요 없이 그 책 상세보기가 바로 열리게 함
+  useEffect(() => {
+    if (!pendingShareId) return;
+    setViewingShareId(pendingShareId);
+    clearPendingShareId?.();
+  }, [pendingShareId]);
   const [dueDateInput, setDueDateInput] = useState('');
   const [borrowedDateInput, setBorrowedDateInput] = useState('');
   const [editingShare, setEditingShare] = useState(false);
@@ -2478,9 +2525,6 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
     }
     setLoading(false);
   };
-  const notify = async (memberId, message, linkId) => {
-    await insertRow('notifications', { id: uid('nt'), member_id: memberId, message, link_id: linkId, created_at: new Date().toISOString() });
-  };
   const submitBookShare = async () => {
     if (!currentMember || !shareTitle.trim()) return;
     await insertRow('book_shares', {
@@ -2506,36 +2550,24 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
     await notify(share.posted_by, `${currentMember.name}님이 [${share.book_title}] ${share.kind === 'offer' ? '제공' : '요청'}에 응답했어요. 확인 후 확정해주세요.`, share.id);
     await reload(['book_shares', 'notifications']);
   };
-  // 거절 — 주인이 이 요청을 거절함. status만 'declined'로 바꾸고 posted_by/matched_by는 그대로 둬서, 잘못 눌렀을 때 되돌릴 수 있게 함
-  const declineRequest = async (share) => {
-    await updateRow('book_shares', 'id', share.id, { status: 'declined' });
-    await notify(shareBorrowerId(share), `[${share.book_title}] 대여요청이 거절됐어요.`, share.id);
-    await reload(['book_shares', 'notifications']);
-  };
-  // 거절 취소 — 실수로 거절을 눌렀을 때, 다시 요청 대기 상태로 되돌려서 수락할 수 있게 함
-  const undeclineRequest = async (share) => {
-    await updateRow('book_shares', 'id', share.id, { status: 'requested' });
-    await reload(['book_shares']);
-  };
-  // 2단계: 확정 — 이때 대여일/반납기한이 정해짐
-  const confirmMatch = async (share) => {
-    const today = todayStr();
-    const due = new Date(); due.setDate(due.getDate() + 14);
-    const dueStr = `${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())}`;
-    await updateRow('book_shares', 'id', share.id, { status: 'matched', borrowed_at: today, due_date: dueStr });
-    await notify(shareBorrowerId(share), `[${share.book_title}] 대여가 확정됐어요. 반납기한: ${dueStr}`, share.id); // matched_by는 kind에 따라 주인/대여자가 뒤바뀌므로 항상 빌리는 사람(borrowerId) 기준으로 알림
-    await reload(['book_shares', 'notifications']);
+  // notify/confirmMatch/declineRequest/undeclineRequest는 알림함(App 컴포넌트, 서재 밖)에서도 그 자리에서 바로 수락/거절할 수 있어야 해서 App 쪽 공통 함수로 옮기고 여기서는 props로 받아씀
+  // 반납기한을 바꾼 사람 말고 상대방(소유자·대여자 중 나 아닌 쪽)에게 변경 사실을 알림
+  const notifyDueDateChange = async (share, dueStr) => {
+    const recipients = [...new Set([shareOwnerId(share), shareBorrowerId(share)])].filter((id) => id && id !== currentMember?.id);
+    for (const id of recipients) await notify(id, `[${share.book_title}] 반납기한이 ${fmtDate(dueStr)}로 변경됐어요.`, share.id);
   };
   const updateDueDate = async (share, newDate) => {
     await updateRow('book_shares', 'id', share.id, { due_date: newDate });
-    await reload(['book_shares']);
+    await notifyDueDateChange(share, newDate);
+    await reload(['book_shares', 'notifications']);
   };
   const updateBorrowedDate = async (share, newDate) => {
     const due = new Date(`${newDate}T00:00:00`); due.setDate(due.getDate() + 14);
     const dueStr = `${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())}`;
     await updateRow('book_shares', 'id', share.id, { borrowed_at: newDate, due_date: dueStr });
     setDueDateInput('');
-    await reload(['book_shares']);
+    await notifyDueDateChange(share, dueStr);
+    await reload(['book_shares', 'notifications']);
   };
   const randomPastel = () => {
     // 레퍼런스처럼 채도 낮은 차분한 톤(크림, 모브, 브라운, 더스티핑크 등)
