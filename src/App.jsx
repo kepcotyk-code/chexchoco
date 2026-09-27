@@ -3101,7 +3101,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
           {requests.length === 0 && (
             <div className="flex items-center justify-between gap-2 rounded-xl px-3 py-2.5" style={{ border: `1px dashed ${LINE}` }}>
               <span className="text-xs" style={{ color: MUTE }}>빌리고 싶은 책이 있나요?</span>
-              {currentMember && <button onClick={() => { setShareKind('request'); setShowShareForm(true); }} className="shrink-0 text-[11px] font-semibold rounded-full px-2.5 py-1" style={{ background: '#36454F', color: '#E2725B' }}>+ 빌려달라고 요청</button>}
+              {currentMember && <button onClick={() => { setShareKind('request'); setShowShareForm(true); }} className="shrink-0 text-[11px] font-semibold rounded-full px-2.5 py-1" style={{ background: '#3A2213', color: '#F0A87C' }}>+ 빌려달라고 요청</button>}
             </div>
           )}
           {requests.map((s) => {
