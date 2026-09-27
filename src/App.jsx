@@ -79,7 +79,8 @@ if (typeof document !== 'undefined') {
     st.id = 'chexchoco-zoom-style';
     // touch-action: manipulation → 두 번 탭 확대는 막고, 두 손가락 확대(핀치)는 그대로 허용
     // iOS 사파리는 글자 16px 미만 입력칸을 누르면 자동 확대하므로, iOS에서만 입력칸 글자를 16px로 맞춤
-    st.textContent = 'html{touch-action:manipulation;}@supports (-webkit-touch-callout: none){input,select,textarea{font-size:16px !important;}}';
+    // select(드롭다운)는 touch-action을 기본값(auto)으로 되돌림 - iOS에서 manipulation이 걸려있으면 네이티브 선택창이 안 열리는 버그가 있음
+    st.textContent = 'html{touch-action:manipulation;}select{touch-action:auto;}@supports (-webkit-touch-callout: none){input,select,textarea{font-size:16px !important;}}';
     document.head.appendChild(st);
   }
   // 홈 화면 설치(앱처럼 쓰기)용 정보 - public 폴더의 manifest.webmanifest / 아이콘 파일과 연결
