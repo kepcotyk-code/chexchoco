@@ -2517,7 +2517,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
     const due = new Date(); due.setDate(due.getDate() + 14);
     const dueStr = `${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())}`;
     await updateRow('book_shares', 'id', share.id, { status: 'matched', borrowed_at: today, due_date: dueStr });
-    await notify(share.matched_by, `[${share.book_title}] 대여가 확정됐어요. 반납기한: ${dueStr}`, share.id);
+    await notify(shareBorrowerId(share), `[${share.book_title}] 대여가 확정됐어요. 반납기한: ${dueStr}`, share.id); // matched_by는 kind에 따라 주인/대여자가 뒤바뀌므로 항상 빌리는 사람(borrowerId) 기준으로 알림
     await reload(['book_shares', 'notifications']);
   };
   const updateDueDate = async (share, newDate) => {
@@ -3030,7 +3030,6 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
       {/* ---------- 도서 공유함 상세보기 ---------- */}
       {viewingShare && (() => {
         const poster = members.find((m) => m.id === viewingShare.posted_by);
-        const matcher = members.find((m) => m.id === viewingShare.matched_by);
         const ownerId = shareOwnerId(viewingShare);
         const borrowerId = shareBorrowerId(viewingShare);
         const isOwner = currentMember?.id === ownerId;
@@ -3134,7 +3133,12 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
                   <div className="text-xs space-y-1 mb-3" style={{ color: NEUTRAL_TEXT }}>
                     {viewingShare.book_author && <div>저자: {viewingShare.book_author}</div>}
                     {viewingShare.book_publisher && <div>출판사: {viewingShare.book_publisher}</div>}
-                    <div style={{ color: MUTE }}>작성자: {dispName(poster?.name || '', isLoggedIn)}</div>
+                    {/* 책 주인이 정해진 상태(제공글이거나, 요청글에 누군가 응답해서 주인이 확정된 상태)면 "소유자"로, 아직 주인이 안 정해진 요청글(작성 직후, 아무도 응답 전)이면 "작성자"로 보여줌 */}
+                    {(viewingShare.kind === 'offer' || viewingShare.status !== 'open') ? (
+                      <div style={{ color: MUTE }}>소유자: {dispName(members.find((m) => m.id === ownerId)?.name || '', isLoggedIn)}</div>
+                    ) : (
+                      <div style={{ color: MUTE }}>작성자: {dispName(poster?.name || '', isLoggedIn)}</div>
+                    )}
                   </div>
                 </>
               )}
@@ -3152,20 +3156,21 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
               {viewingShare.status === 'requested' && !editingShare && (
                 <div className="space-y-2 pt-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
                   <span className="inline-flex items-center text-[11px] rounded-full px-2 py-0.5 font-semibold" style={shareStatusInfo(viewingShare).style}>{shareStatusInfo(viewingShare).label}</span>
-                  <div className="text-xs" style={{ color: NEUTRAL_TEXT }}>대여요청자: {dispName(matcher?.name || '', isLoggedIn)}</div>
-                  {currentMember?.id === viewingShare.posted_by ? (
+                  {/* 빌리는 사람(대여요청자)과 확정 권한은 kind(offer/request)에 따라 posted_by/matched_by가 서로 바뀌므로, 항상 shareOwnerId/shareBorrowerId로 계산한 ownerId·borrowerId를 기준으로 표시함 */}
+                  <div className="text-xs" style={{ color: NEUTRAL_TEXT }}>대여요청자: {dispName(members.find((m) => m.id === borrowerId)?.name || '', isLoggedIn)}</div>
+                  {currentMember?.id === ownerId ? (
                     <div className="flex gap-2">
                       <PrimaryBtn onClick={() => { confirmMatch(viewingShare); setViewingShareId(null); }} icon={Check}>확정하기</PrimaryBtn>
                       <GhostBtn onClick={() => cancelRequest(viewingShare)}>취소</GhostBtn>
                     </div>
                   ) : (
-                    <p className="text-xs" style={{ color: MUTE }}>작성자가 확인 후 확정하면 대여가 시작돼요.</p>
+                    <p className="text-xs" style={{ color: MUTE }}>책 주인이 확인 후 확정하면 대여가 시작돼요.</p>
                   )}
                 </div>
               )}
               {(viewingShare.status === 'matched' || viewingShare.status === 'returned') && !editingShare && (
                 <div className="space-y-2 pt-2" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-                  <div className="text-xs" style={{ color: NEUTRAL_TEXT }}>대여요청자: {dispName(matcher?.name || '', isLoggedIn)}</div>
+                  <div className="text-xs" style={{ color: NEUTRAL_TEXT }}>대여요청자: {dispName(members.find((m) => m.id === borrowerId)?.name || '', isLoggedIn)}</div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs" style={{ color: MUTE }}>대여일:</span>
                     {viewingShare.status === 'matched' && (isOwner || currentMember?.id === borrowerId || canManage) ? (
