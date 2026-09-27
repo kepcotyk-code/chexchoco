@@ -116,12 +116,19 @@ export async function flushPendingPushes(env, vapid) {
   if (!claimed || claimed.length === 0) return { sent: 0, claimed: 0 };
   const memberIds = [...new Set(claimed.map((n) => n.member_id))];
   const subs = await sb(env, 'GET', `push_subscriptions?member_id=in.(${memberIds.map((id) => `"${id}"`).join(',')})&select=endpoint,member_id,p256dh,auth`);
+  // 홈 화면 아이콘 배지 숫자를 "지금 실제로 안 읽은 개수"로 정확히 맞추기 위해, 회원별 안 읽은 알림 수를 서버에서 직접 세어서 같이 보냄
+  // (화면을 안 열어둔 상태에서 알림이 와도, 서비스워커가 이 숫자로 바로 배지를 갱신해서 실제 개수와 어긋나지 않게 함)
+  const unreadCounts = {};
+  await Promise.all(memberIds.map(async (id) => {
+    const rows = await sb(env, 'GET', `notifications?member_id=eq.${encodeURIComponent(id)}&read_at=is.null&select=id`);
+    unreadCounts[id] = (rows || []).length;
+  }));
   let sent = 0;
   const goneEndpoints = [];
   for (const n of claimed) {
     for (const s of (subs || []).filter((x) => x.member_id === n.member_id)) {
       try {
-        const r = await sendWebPush(s, { title: pushTitleFor(n.message), body: n.message, url: linkToUrl(n.link_id), tag: n.id }, vapid);
+        const r = await sendWebPush(s, { title: pushTitleFor(n.message), body: n.message, url: linkToUrl(n.link_id), tag: n.id, badge_count: unreadCounts[n.member_id] ?? undefined }, vapid);
         if (r.ok) sent += 1;
         if (r.gone) goneEndpoints.push(s.endpoint);
       } catch (e) { /* 한 기기 실패가 다른 기기 발송을 막지 않도록 */ }
