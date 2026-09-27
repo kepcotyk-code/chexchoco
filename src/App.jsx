@@ -1225,7 +1225,7 @@ export default function App() {
   const [deviceRegMemberId, setDeviceRegMemberId] = useState(null);
   const [registerOfferMember, setRegisterOfferMember] = useState(null); // 방금 로그인한 멤버 — "이 기기 등록할까요?" 제안용
   // 현재 탭을 주소(#gallery 등)에 기억 - 새로고침해도 보던 탭 유지, 폰 뒤로가기 누르면 이전 탭으로 돌아감
-  const TAB_KEYS = ['notice', 'qr', 'dashboard', 'gallery', 'users', 'treasury', 'admin'];
+  const TAB_KEYS = ['notice', 'qr', 'dashboard', 'photos', 'gallery', 'users', 'treasury', 'admin'];
   const tabFromHash = () => { const h = window.location.hash.replace('#', ''); return TAB_KEYS.includes(h) ? h : null; };
   const [tab, setTab] = useState(() => tabFromHash() || 'notice');
   useEffect(() => {
@@ -1257,6 +1257,7 @@ export default function App() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showAccountMenu, setShowAccountMenu] = useState(false); // 상단 이름 버튼을 누르면 "인원 보기 / 로그아웃" 중 고르는 작은 메뉴
   const loginSelectRef = React.useRef(null);
   // 아이폰 버그 대응: 로그인창이 막 열렸을 때 이름 선택창을 누르면, 첫 탭은 포커스만 잡고 목록은 안 열려서 두 번 눌러야 하는 경우가 있음
   // → 창이 열리자마자 미리 포커스를 걸어둬서, 사용자의 첫 탭에서 바로 목록이 열리도록 함
@@ -1503,12 +1504,14 @@ export default function App() {
     }).catch(() => {});
   }, [currentUserId]);
 
+  // 인원은 탭 목록에서 빼고, 상단 이름 버튼 눌렀을 때 뜨는 선택창(인원 보기/로그아웃)으로 이동
+  // (되돌리고 싶으면 이 배열 마지막에 { key: 'users', label: '인원', icon: Users } 한 줄만 다시 추가하면 원래대로 복구됨)
   const TABS = [
     { key: 'notice', label: '공지', icon: Megaphone },
     { key: 'qr', label: '출석', icon: QrCode },
     { key: 'dashboard', label: '현황', icon: BarChart3 },
+    { key: 'photos', label: '사진', icon: ImageIcon },
     { key: 'gallery', label: '서재', icon: Library },
-    { key: 'users', label: '인원', icon: Users },
   ];
 
   // 오늘 생일인 멤버가 있으면 00시~24시 하루 종일 화면 전체에 꽃가루 효과
@@ -1675,12 +1678,30 @@ export default function App() {
                   <Lock size={11} className="shrink-0" />{currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} /><span className="truncate whitespace-nowrap">{currentMember.name}</span></> : <span className="truncate whitespace-nowrap">등록된 기기</span>}
                 </span>
               ) : (
-                <button onClick={() => (currentMember ? logout() : openLogin())}
-                  className="flex items-center gap-1 rounded-full font-semibold min-w-0"
-                  aria-label={currentMember ? '로그아웃' : '로그인'}
-                  style={{ background: currentMember ? BTN_BG : NEUTRAL_BG, color: currentMember ? BTN_TEXT : NEUTRAL_TEXT, padding: 'clamp(5px, 1.6vw, 6px) clamp(8px, 2.6vw, 12px)', fontSize: 'clamp(10px, 3vw, 12px)' }}>
-                  {currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} /><span className="truncate whitespace-nowrap">{currentMember.name}</span></> : <>로그인</>}
-                </button>
+                <div className="relative">
+                  <button onClick={() => (currentMember ? setShowAccountMenu((v) => !v) : openLogin())}
+                    className="flex items-center gap-1 rounded-full font-semibold min-w-0"
+                    aria-label={currentMember ? '내 메뉴' : '로그인'}
+                    style={{ background: currentMember ? BTN_BG : NEUTRAL_BG, color: currentMember ? BTN_TEXT : NEUTRAL_TEXT, padding: 'clamp(5px, 1.6vw, 6px) clamp(8px, 2.6vw, 12px)', fontSize: 'clamp(10px, 3vw, 12px)' }}>
+                    {currentMember ? <><Stamp role={currentMember.role} size={16} tilt={0} /><span className="truncate whitespace-nowrap">{currentMember.name}</span></> : <>로그인</>}
+                  </button>
+                  {/* 이름 버튼을 누르면 "인원 보기 / 로그아웃" 중 고르는 작은 메뉴 - 예전처럼 누르자마자 바로 로그아웃하게 되돌리려면,
+                      이 드롭다운을 지우고 위 onClick을 다시 () => (currentMember ? logout() : openLogin()) 로 바꾸면 됨 */}
+                  {showAccountMenu && currentMember && (<>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowAccountMenu(false)} />
+                    <div className="absolute right-0 top-full mt-1.5 z-50 rounded-xl border overflow-hidden" style={{ background: CARD_BG, borderColor: LINE, minWidth: 132 }} onClick={(e) => e.stopPropagation()}>
+                      <button onClick={() => { setTab('users'); setShowAccountMenu(false); }}
+                        className="w-full flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold text-left" style={{ color: INK }}>
+                        <Users size={14} /> 인원 보기
+                      </button>
+                      <div style={{ height: 1, background: LINE }} />
+                      <button onClick={() => { setShowAccountMenu(false); logout(); }}
+                        className="w-full flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold text-left" style={{ color: '#F0A87C' }}>
+                        <LogOut size={14} /> 로그아웃
+                      </button>
+                    </div>
+                  </>)}
+                </div>
               )}
             </div>
           </div>
@@ -1863,7 +1884,8 @@ export default function App() {
           </div>
         )}
         {tab === 'notice' && <NoticeScreen notices={notices} noticeViews={noticeViews} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} requestDelete={requestDelete} birthdayBalloons={birthdayBalloons} />}
-        {tab === 'gallery' && <GalleryScreen photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} requestDelete={requestDelete} showToast={showToast} bookShares={bookShares} bookTowerEntries={bookTowerEntries} />}
+        {tab === 'photos' && <GalleryScreen section="photos" photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} requestDelete={requestDelete} showToast={showToast} bookShares={bookShares} bookTowerEntries={bookTowerEntries} />}
+        {tab === 'gallery' && <GalleryScreen section="library" photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} requestDelete={requestDelete} showToast={showToast} bookShares={bookShares} bookTowerEntries={bookTowerEntries} />}
         {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} meetingLocations={meetingLocations} />}
         {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} currentMember={currentMember} />}
         {tab === 'users' && <UsersScreen members={members} sortedMembers={sortedMembers} currentUserId={currentUserId} setIdentity={setIdentity} canManage={canManageUsers} notices={notices} sessions={sessions} checkins={checkins} reload={reload} requestDelete={requestDelete} showToast={showToast} membershipApplications={membershipApplications} membershipVotes={membershipVotes} showApplyForm={showApplyForm} setShowApplyForm={setShowApplyForm} praiseOn={features.praise} memberStats={memberStats} praises={praises} />}
@@ -2161,7 +2183,7 @@ function PhotoThumb({ filePath, className = 'w-full h-full object-cover' }) {
       onError={() => { if (!useFull) { setUseFull(true); healMissingThumb(filePath); } }} />
   );
 }
-function GalleryScreen({ photos, currentMember, canManage, reload, members, sessions, checkins, requestDelete, showToast, bookShares, bookTowerEntries }) {
+function GalleryScreen({ section = 'both', photos, currentMember, canManage, reload, members, sessions, checkins, requestDelete, showToast, bookShares, bookTowerEntries }) {
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [viewingId, setViewingId] = useState(null);
@@ -2627,6 +2649,7 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
   );
   return (
     <div className="space-y-4">
+      {section !== 'library' && (
       <Card>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: INK }}><ImageIcon size={16} style={{ color: '#7FDCCF' }} /> 사진</div>
@@ -2684,7 +2707,9 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           </div>
         )}
       </Card>
+      )}
 
+      {section !== 'photos' && (<>
       {/* ---------- 도서 공유함 ---------- */}
       <Card>
         <div className="flex items-center justify-between mb-3">
@@ -3266,8 +3291,9 @@ function GalleryScreen({ photos, currentMember, canManage, reload, members, sess
           </div>
         );
       })()}
+      </>)}
 
-      {viewing && (
+      {section !== 'library' && viewing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)' }} onClick={() => setViewingId(null)}>
           <div className="relative max-w-full max-h-full flex flex-col items-center" onClick={(e) => e.stopPropagation()}
             onTouchStart={(e) => { swipeStartRef.current = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }}
