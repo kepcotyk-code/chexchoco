@@ -1,0 +1,17 @@
+{
+  "name": "책스초코 · KEPCO Reading Club",
+  "short_name": "책스초코",
+  "description": "한전 독서동아리 책스초코 출석·서재·공지",
+  "start_url": "/#notice",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#141310",
+  "theme_color": "#141310",
+  "lang": "ko",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
