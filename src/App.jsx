@@ -1483,6 +1483,17 @@ export default function App() {
   };
   // 알림함에서 도서 대여요청 알림을 누르면, 서재 탭으로 이동하면서 그 책 상세보기를 바로 열어주기 위한 대상 id
   const [pendingShareId, setPendingShareId] = useState(null);
+  // 출결에서 체크아웃하면, 서재 탭 내 책장으로 이동하면서 지금 읽고 있는 책의 쪽수 입력칸을 바로 열어주기 위한 대상 id
+  const [pendingQuickPageEntryId, setPendingQuickPageEntryId] = useState(null);
+  const openMyTowerAfterCheckout = () => {
+    setTab('gallery');
+    const readingEntry = currentMember ? bookTowerEntries.find((t) => {
+      if (t.member_id !== currentMember.id) return false;
+      const statusKey = t.read_status || (t.finished_date ? 'done' : 'reading');
+      return statusKey === 'reading' || statusKey === 'paused';
+    }) : null;
+    if (readingEntry) setPendingQuickPageEntryId(readingEntry.id);
+  };
   // 로그인/로그아웃(또는 기기 등록으로 자동 인식)되면 그 사람 알림만 다시 받아옴
   const firstUserEffectRef = React.useRef(true);
   useEffect(() => {
@@ -2063,8 +2074,8 @@ export default function App() {
         )}
         {tab === 'notice' && <NoticeScreen notices={notices} noticeViews={noticeViews} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} requestDelete={requestDelete} birthdayBalloons={birthdayBalloons} />}
         {tab === 'photos' && <GalleryScreen section="photos" photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} requestDelete={requestDelete} showToast={showToast} bookShares={bookShares} bookTowerEntries={bookTowerEntries} />}
-        {tab === 'gallery' && <GalleryScreen section="library" photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} requestDelete={requestDelete} showToast={showToast} bookShares={bookShares} bookTowerEntries={bookTowerEntries} notify={notify} confirmMatch={confirmMatch} declineRequest={declineRequest} undeclineRequest={undeclineRequest} pendingShareId={pendingShareId} clearPendingShareId={() => setPendingShareId(null)} />}
-        {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} meetingLocations={meetingLocations} />}
+        {tab === 'gallery' && <GalleryScreen section="library" photos={photos} currentMember={currentMember} canManage={canManageUsers} reload={reload} members={members} sessions={sessions} checkins={checkins} requestDelete={requestDelete} showToast={showToast} bookShares={bookShares} bookTowerEntries={bookTowerEntries} notify={notify} confirmMatch={confirmMatch} declineRequest={declineRequest} undeclineRequest={undeclineRequest} pendingShareId={pendingShareId} clearPendingShareId={() => setPendingShareId(null)} pendingQuickPageEntryId={pendingQuickPageEntryId} clearPendingQuickPageEntryId={() => setPendingQuickPageEntryId(null)} />}
+        {tab === 'qr' && <QrScreen members={sortedMembers} currentMember={currentMember} sessions={sessions} checkins={checkins} canManage={canManageUsers} canManageAttendance={canManageAttendance} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} meetingLocations={meetingLocations} onCheckedOut={openMyTowerAfterCheckout} />}
         {tab === 'dashboard' && <DashboardScreen members={sortedMembers} sessions={sessions} checkins={checkins} penaltyRule={penaltyRule} penaltyCompletions={penaltyCompletions} canManage={canManageUsers} calendarDays={calendarDays} reload={reload} absenceExcuses={absenceExcuses} currentMember={currentMember} />}
         {tab === 'users' && <UsersScreen members={members} sortedMembers={sortedMembers} currentUserId={currentUserId} setIdentity={setIdentity} canManage={canManageUsers} notices={notices} sessions={sessions} checkins={checkins} reload={reload} requestDelete={requestDelete} showToast={showToast} membershipApplications={membershipApplications} membershipVotes={membershipVotes} showApplyForm={showApplyForm} setShowApplyForm={setShowApplyForm} praiseOn={features.praise} memberStats={memberStats} praises={praises} />}
         {tab === 'treasury' && canManageUsers && <TreasuryScreen members={sortedMembers} duesPayments={duesPayments} expenses={expenses} dinnerCollections={dinnerCollections} currentMember={currentMember} reload={reload} requestDelete={requestDelete} showToast={showToast} />}
@@ -2361,7 +2372,7 @@ function PhotoThumb({ filePath, className = 'w-full h-full object-cover' }) {
       onError={() => { if (!useFull) { setUseFull(true); healMissingThumb(filePath); } }} />
   );
 }
-function GalleryScreen({ section = 'both', photos, currentMember, canManage, reload, members, sessions, checkins, requestDelete, showToast, bookShares, bookTowerEntries, notify, confirmMatch, declineRequest, undeclineRequest, pendingShareId, clearPendingShareId }) {
+function GalleryScreen({ section = 'both', photos, currentMember, canManage, reload, members, sessions, checkins, requestDelete, showToast, bookShares, bookTowerEntries, notify, confirmMatch, declineRequest, undeclineRequest, pendingShareId, clearPendingShareId, pendingQuickPageEntryId, clearPendingQuickPageEntryId }) {
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [viewingId, setViewingId] = useState(null);
@@ -2465,6 +2476,8 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
   const [editShareAuthor, setEditShareAuthor] = useState('');
   const [editSharePublisher, setEditSharePublisher] = useState('');
   const [coverCache, setCoverCache] = useState({}); // { [shareId]: 'loading' | url | 'none' }
+  // 모임 책장에서 완독한 책 골라서 "빌려주실 수 있나요?" 글에 바로 채워넣기
+  const [towerPickerOpen, setTowerPickerOpen] = useState(false);
   // 책 검색 (등록 폼)
   const [shareCoverUrl, setShareCoverUrl] = useState('');
   const [bookSearchOpen, setBookSearchOpen] = useState(false);
@@ -2533,7 +2546,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
       cover_url: shareCoverUrl || null,
       status: 'open', created_at: new Date().toISOString(),
     });
-    setShareTitle(''); setShareAuthor(''); setSharePublisher(''); setShareCoverUrl(''); setBookSearchResults([]); setBookSearchOpen(false); setShowShareForm(false);
+    setShareTitle(''); setShareAuthor(''); setSharePublisher(''); setShareCoverUrl(''); setBookSearchResults([]); setBookSearchOpen(false); setTowerPickerOpen(false); setShowShareForm(false);
     await reload(['book_shares']);
   };
   const saveShareEdit = async (share) => {
@@ -2547,7 +2560,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
   const requestShare = async (share) => {
     if (!currentMember) return;
     await updateRow('book_shares', 'id', share.id, { status: 'requested', matched_by: currentMember.id });
-    await notify(share.posted_by, `${currentMember.name}님이 [${share.book_title}] ${share.kind === 'offer' ? '제공' : '요청'}에 응답했어요. 확인 후 확정해주세요.`, share.id);
+    await notify(share.posted_by, `${currentMember.name}님이 [${share.book_title}] ${share.kind === 'offer' ? '제공' : '요청'}에 응답했어요.`, share.id);
     await reload(['book_shares', 'notifications']);
   };
   // notify/confirmMatch/declineRequest/undeclineRequest는 알림함(App 컴포넌트, 서재 밖)에서도 그 자리에서 바로 수락/거절할 수 있어야 해서 App 쪽 공통 함수로 옮기고 여기서는 props로 받아씀
@@ -2593,12 +2606,17 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
     await reload(['book_shares']);
   };
   const shareStatusInfo = (s) => {
-    if (s.status === 'open') return { label: s.kind === 'offer' ? '대여가능' : '대기중', style: { background: '#12302C', color: '#7FDCCF' } };
+    if (s.status === 'open') return s.kind === 'offer'
+      ? { label: '대여가능', style: { background: '#001F5B', color: '#DAA520' } }
+      : { label: '대기중', style: { background: '#12302C', color: '#7FDCCF' } };
     if (s.status === 'requested') return { label: '대여신청중', style: { background: '#332815', color: '#EFC94C' } };
     if (s.status === 'matched') return { label: '대여중', style: { background: '#3A2E10', color: '#EFC94C' } };
     if (s.status === 'declined') return { label: '거절됨', style: { background: '#3A1F1F', color: '#E38B7A' } };
     return { label: '반납완료', style: { background: NEUTRAL_BG, color: MUTE, border: `1px solid ${LINE}` } };
   };
+  // 글쓴 사람이든(posted_by) 응답해서 대여요청한 사람이든(matched_by) - 내가 이 글에 관여돼 있으면 목록에서 은은하게 빛나는 테두리로 표시
+  const isMyShare = (s) => !!currentMember && (s.posted_by === currentMember.id || s.matched_by === currentMember.id);
+  const myShareRowStyle = (s) => (isMyShare(s) ? { background: NEUTRAL_BG, border: '1px solid rgba(127,220,207,0.6)', animation: 'shareRowGlow 2.4s ease-in-out infinite' } : { background: NEUTRAL_BG, border: '1px solid transparent' });
   const offers = bookShares.filter((s) => s.kind === 'offer' && s.status !== 'returned').sort((a, b) => b.created_at.localeCompare(a.created_at));
   const requests = bookShares.filter((s) => s.kind === 'request' && s.status !== 'returned').sort((a, b) => b.created_at.localeCompare(a.created_at));
   const returnedShares = bookShares.filter((s) => s.status === 'returned').sort((a, b) => (b.returned_at || '').localeCompare(a.returned_at || ''));
@@ -2658,6 +2676,18 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
   const [showAllTower, setShowAllTower] = useState(false); // 북적북적 목록 '더보기' 펼침 여부
   const [quickPageEditId, setQuickPageEditId] = useState(null); // 내 책장에서 쪽수만 빠르게 고칠 때, 지금 입력 중인 항목 id
   const [quickPageValue, setQuickPageValue] = useState('');
+  // 출결에서 체크아웃하면, 내 책장으로 이동해서 지금 읽는 중인 책의 쪽수 입력칸이 바로 열리게 함
+  useEffect(() => {
+    if (!pendingQuickPageEntryId) return;
+    const entry = bookTowerEntries.find((t) => t.id === pendingQuickPageEntryId);
+    if (entry) {
+      setTowerView('mine');
+      setShowAllTower(true); // 목록이 길어 '더보기'에 가려져 있어도 바로 보이게
+      setQuickPageValue(entry.current_page ? String(entry.current_page) : '');
+      setQuickPageEditId(entry.id);
+    }
+    clearPendingQuickPageEntryId?.();
+  }, [pendingQuickPageEntryId]);
   // 상세보기 창이 열려 있는 동안 뒤 화면이 스크롤되지 않게 고정 (스크롤로 주소창이 움직이며 음영 위치가 틀어지는 것도 방지)
   useEffect(() => {
     if (!viewingShareId && !viewingTowerId) return undefined;
@@ -2773,9 +2803,9 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
         cover_url: entry.cover_url || null, status: 'requested', matched_by: entry.member_id,
         created_at: new Date().toISOString(),
       });
-      await notify(entry.member_id, `${currentMember.name}님이 [${entry.book_title}] 대여를 요청했어요. 도서 공유함에서 확인 후 확정해주세요.`, shareId);
+      await notify(entry.member_id, `${currentMember.name}님이 [${entry.book_title}] 대여를 요청했어요.`, shareId);
       await reload(['book_shares', 'notifications']);
-      showToast?.('대여 요청을 보냈어요. 도서 공유함에서 진행 상황을 볼 수 있어요.', 'success');
+      showToast?.('대여요청을 보냈어요. 도서 공유함에서 진행현황 파악이 가능해요.', 'success');
     } finally {
       setBorrowRequestingIds((prev) => { const next = new Set(prev); next.delete(entry.id); return next; });
     }
@@ -2945,6 +2975,12 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
       {section !== 'photos' && (<>
       {/* ---------- 도서 공유함 ---------- */}
       <Card>
+        <style>{`
+          @keyframes shareRowGlow {
+            0%, 100% { box-shadow: 0 0 0 1px rgba(127,220,207,0.35), 0 0 6px rgba(127,220,207,0.2); }
+            50% { box-shadow: 0 0 0 1.5px rgba(127,220,207,0.9), 0 0 14px rgba(127,220,207,0.55); }
+          }
+        `}</style>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: INK }}><BookOpen size={16} style={{ color: '#7FA8D9' }} /> 도서 공유함</div>
           {currentMember && <button onClick={() => setShowShareForm((v) => !v)} className="text-xs rounded-full px-3 py-1.5 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{showShareForm ? '취소' : '글쓰기'}</button>}
@@ -2956,6 +2992,37 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
               <button onClick={() => setShareKind('offer')} className="flex-1 min-w-0 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'offer' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'offer' ? BTN_TEXT : NEUTRAL_TEXT }}>빌려줄까요?</button>
               <button onClick={() => setShareKind('request')} className="flex-1 min-w-0 rounded-xl py-2 text-xs font-semibold" style={{ background: shareKind === 'request' ? BTN_BG : NEUTRAL_BG, color: shareKind === 'request' ? BTN_TEXT : NEUTRAL_TEXT }}>빌려주실 수 있나요?</button>
             </div>
+            {shareKind === 'request' && (
+              <div className="relative min-w-0">
+                <button onClick={() => setTowerPickerOpen((v) => !v)} className="w-full flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT, border: `1px dashed ${LINE}` }}><Library size={13} /> {towerPickerOpen ? '접기' : '모임 책장에서 완독한 책 고르기'}</button>
+                {towerPickerOpen && (() => {
+                  const doneBooks = groupTower.filter((t) => (t.read_status || (t.finished_date ? 'done' : 'reading')) === 'done');
+                  return (
+                    <div className="absolute z-10 left-0 right-0 mt-1 rounded-xl border overflow-hidden" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 300, overflowY: 'auto' }}>
+                      <div className="flex items-center justify-between px-2 py-1" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
+                        <span className="text-[11px]" style={{ color: MUTE }}>완독한 책 {doneBooks.length}권</span>
+                        <button onClick={() => setTowerPickerOpen(false)} className="p-1" aria-label="목록 닫기"><X size={12} style={{ color: MUTE }} /></button>
+                      </div>
+                      {doneBooks.length === 0 && (
+                        <div className="px-3 py-3 text-xs" style={{ color: MUTE }}>아직 모임 책장에 완독한 책이 없어요.</div>
+                      )}
+                      {doneBooks.map((t) => {
+                        const owner = members.find((m) => m.id === t.member_id);
+                        return (
+                          <button key={t.id} onClick={() => { setShareTitle(t.book_title); setShareAuthor(t.book_author || ''); setSharePublisher(t.book_publisher || ''); setShareCoverUrl(t.cover_url || ''); setTowerPickerOpen(false); }} className="w-full flex items-center gap-2.5 px-2.5 py-2 text-left" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
+                            {t.cover_url ? <img src={t.cover_url} alt="" className="rounded shrink-0" style={{ width: 32, height: 46, objectFit: 'cover' }} /> : <div className="rounded shrink-0" style={{ width: 32, height: 46, background: NEUTRAL_BG }} />}
+                            <div className="min-w-0">
+                              <div className="text-xs font-semibold truncate" style={{ color: INK }}>{t.book_title}</div>
+                              <div className="text-[11px] truncate" style={{ color: MUTE }}>{[t.book_author, owner ? `${owner.name} 완독` : null].filter(Boolean).join(' · ')}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
             <div className="relative min-w-0">
               <div className="flex gap-2 min-w-0">
                 <input value={shareTitle} onChange={(e) => { setShareTitle(e.target.value); setShareCoverUrl(''); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); searchBooks(shareTitle, setBookSearchResults, setBookSearchLoading, setBookSearchOpen); } }} placeholder="책 제목 (필수)" className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} />
@@ -3006,7 +3073,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
         )}
         {!currentMember && !showShareForm && <p className="text-xs mb-2" style={{ color: MUTE }}>상단에서 본인을 먼저 선택해야 글을 올릴 수 있어요.</p>}
         {showShareForm && <div className="text-[10px] font-semibold mb-2" style={{ color: MUTE }}>등록된 글 목록</div>}
-        <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold" style={{ color: SHARE_OFFER_COLOR }}><span style={{ fontSize: 13, lineHeight: 1 }} role="img" aria-label="손 내미는 사람">💁‍♀️</span> 빌려줄까요? ({offers.length})</div>
+        <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold" style={{ color: '#FFFFFF' }}><span style={{ fontSize: 13, lineHeight: 1 }} role="img" aria-label="손 내미는 사람">💁‍♀️</span> 빌려줄까요? ({offers.length})</div>
         <div className="space-y-1.5 mb-3">
           {offers.length === 0 && (
             <div className="flex items-center justify-between gap-2 rounded-xl px-3 py-2.5" style={{ border: `1px dashed ${LINE}` }}>
@@ -3017,7 +3084,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
           {offers.map((s) => {
             const poster = members.find((m) => m.id === s.posted_by);
             return (
-              <button key={s.id} onClick={() => { setViewingShareId(s.id); setDueDateInput(''); setBorrowedDateInput(''); setEditingShare(false); }} className="w-full flex items-center justify-between rounded-xl px-3 py-2 text-left" style={{ background: NEUTRAL_BG }}>
+              <button key={s.id} onClick={() => { setViewingShareId(s.id); setDueDateInput(''); setBorrowedDateInput(''); setEditingShare(false); }} className="w-full flex items-center justify-between rounded-xl px-3 py-2 text-left" style={myShareRowStyle(s)}>
                 <div className="min-w-0">
                   <div className="text-sm truncate" style={{ color: INK }}>{s.book_title}</div>
                   <div className="text-[10px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{dispName(poster?.name || '', isLoggedIn)}</div>
@@ -3027,18 +3094,18 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
             );
           })}
         </div>
-        <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold" style={{ color: SHARE_REQUEST_COLOR }}><span style={{ fontSize: 13, lineHeight: 1 }} role="img" aria-label="손 흔드는 사람">🙋</span> 빌려주실 수 있나요? ({requests.length})</div>
+        <div className="inline-flex items-center gap-1.5 mb-1.5 text-xs font-bold" style={{ color: '#FFFFFF' }}><span style={{ fontSize: 13, lineHeight: 1 }} role="img" aria-label="손 흔드는 사람">🙋</span> 빌려주실 수 있나요? ({requests.length})</div>
         <div className="space-y-1.5">
           {requests.length === 0 && (
             <div className="flex items-center justify-between gap-2 rounded-xl px-3 py-2.5" style={{ border: `1px dashed ${LINE}` }}>
               <span className="text-xs" style={{ color: MUTE }}>빌리고 싶은 책이 있나요?</span>
-              {currentMember && <button onClick={() => { setShareKind('request'); setShowShareForm(true); }} className="shrink-0 text-[11px] font-semibold rounded-full px-2.5 py-1" style={{ background: NEUTRAL_BG, color: SHARE_REQUEST_COLOR }}>+ 빌려달라고 요청</button>}
+              {currentMember && <button onClick={() => { setShareKind('request'); setShowShareForm(true); }} className="shrink-0 text-[11px] font-semibold rounded-full px-2.5 py-1" style={{ background: '#36454F', color: '#E2725B' }}>+ 빌려달라고 요청</button>}
             </div>
           )}
           {requests.map((s) => {
             const poster = members.find((m) => m.id === s.posted_by);
             return (
-              <button key={s.id} onClick={() => { setViewingShareId(s.id); setDueDateInput(''); setBorrowedDateInput(''); setEditingShare(false); }} className="w-full flex items-center justify-between rounded-xl px-3 py-2 text-left" style={{ background: NEUTRAL_BG }}>
+              <button key={s.id} onClick={() => { setViewingShareId(s.id); setDueDateInput(''); setBorrowedDateInput(''); setEditingShare(false); }} className="w-full flex items-center justify-between rounded-xl px-3 py-2 text-left" style={myShareRowStyle(s)}>
                 <div className="min-w-0">
                   <div className="text-sm truncate" style={{ color: INK }}>{s.book_title}</div>
                   <div className="text-[10px]" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{dispName(poster?.name || '', isLoggedIn)}</div>
@@ -3520,6 +3587,8 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
                                   onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } if (e.key === 'Escape') setQuickPageEditId(null); }}
                                   className="rounded border text-right outline-none" style={{ width: 40, fontSize: 10, padding: '1px 3px', background: '#FFFFFF', color: '#2A2015', borderColor: '#6B4E2A' }} aria-label="현재 쪽수 입력" />
                                 <span style={{ fontSize: 9, color: '#6B4E2A' }}>쪽</span>
+                                {/* onBlur로도 저장되지만, 눌러서 명확히 마칠 수 있게 완료 버튼도 둠 (blur보다 먼저 처리되도록 mousedown에서 막음) */}
+                                <button onMouseDown={(e) => e.preventDefault()} onClick={() => saveQuickPage(t)} className="rounded-full flex items-center justify-center shrink-0" style={{ width: 14, height: 14, background: '#6B4E2A' }} aria-label="쪽수 입력 완료"><Check size={9} style={{ color: '#F2EAD6' }} /></button>
                               </div>
                             ) : isMine && (statusKey === 'reading' || statusKey === 'paused') ? (
                               <button onClick={(e) => { e.stopPropagation(); setQuickPageValue(t.current_page ? String(t.current_page) : ''); setQuickPageEditId(t.id); }}
@@ -3705,7 +3774,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
 }
 
 /* ---------------- QR 출결 ---------------- */
-function QrScreen({ members, currentMember, sessions, checkins, canManage, canManageAttendance, calendarDays, reload, absenceExcuses, meetingLocations }) {
+function QrScreen({ members, currentMember, sessions, checkins, canManage, canManageAttendance, calendarDays, reload, absenceExcuses, meetingLocations, onCheckedOut }) {
   const [showLocEdit, setShowLocEdit] = useState(false);
   const [locCustomMode, setLocCustomMode] = useState(false);
   const [locCustomInput, setLocCustomInput] = useState('');
@@ -3765,6 +3834,7 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
     setLocChecking(false);
     await updateRow('checkins', 'id', myCheckin.id, { check_out_at: new Date().toISOString(), checkout_loc_ok: locResult.ok });
     await reload(['checkins']);
+    onCheckedOut?.(); // 체크아웃하면 서재 내 책장으로 이동해서, 오늘 읽은 책 쪽수를 바로 기록할 수 있게 함
   };
   const resetMyCheckin = async () => {
     if (!myCheckin) return;
