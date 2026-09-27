@@ -3150,10 +3150,10 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
         const isOwner = currentMember?.id === ownerId;
         const canEditPost = currentMember?.id === viewingShare.posted_by || canManage;
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ padding: '8px 12px calc(8px + 6vh)' }} onClick={() => setViewingShareId(null)}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ padding: '8px 12px calc(8px + 2vh)' }} onClick={() => setViewingShareId(null)}>
             {/* 음영은 화면보다 위아래로 넉넉히 크게 깔아서, 모바일 브라우저 주소창이 움직여도 상단에 음영 없는 틈이 생기지 않게 함 */}
             <div aria-hidden="true" className="fixed pointer-events-none" style={{ top: '-30vh', bottom: '-30vh', left: 0, right: 0, background: 'rgba(0,0,0,0.7)' }} />
-            <div className="relative w-full max-w-sm rounded-2xl border p-4" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 'calc(100dvh - 16px - 6vh)', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+            <div className="relative w-full max-w-sm rounded-2xl border p-4" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 'calc(100dvh - 16px - 2vh)', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: viewingShare.kind === 'offer' ? SHARE_OFFER_BG : SHARE_REQUEST_BG, color: viewingShare.kind === 'offer' ? SHARE_OFFER_COLOR : SHARE_REQUEST_COLOR }}>{viewingShare.kind === 'offer' ? '빌려줄까요?' : '빌려주실 수 있나요?'}</span>
                 <div className="flex items-center gap-3.5">
@@ -3638,9 +3638,9 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
         const editingHere = editingTowerId === t.id;
         const closeTowerModal = () => { setViewingTowerId(null); setEditingTowerId(null); };
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ padding: '8px 12px calc(8px + 6vh)' }} onClick={() => { if (!editingHere) closeTowerModal(); }}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ padding: '8px 12px calc(8px + 2vh)' }} onClick={() => { if (!editingHere) closeTowerModal(); }}>
             <div aria-hidden="true" className="fixed pointer-events-none" style={{ top: '-30vh', bottom: '-30vh', left: 0, right: 0, background: 'rgba(0,0,0,0.7)' }} />
-            <div className="relative w-full max-w-sm rounded-2xl border p-4" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 'calc(100dvh - 16px - 6vh)', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+            <div className="relative w-full max-w-sm rounded-2xl border p-4" style={{ background: CARD_BG, borderColor: LINE, maxHeight: 'calc(100dvh - 16px - 2vh)', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-[11px] rounded-full px-2 py-0.5 font-semibold" style={{ background: statusMeta.color, color: '#F2EEE3' }}>{statusMeta.label}</span>
                 <div className="flex items-center gap-3.5">
