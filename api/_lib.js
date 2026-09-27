@@ -118,11 +118,11 @@ export async function flushPendingPushes(env, vapid) {
   const subs = await sb(env, 'GET', `push_subscriptions?member_id=in.(${memberIds.map((id) => `"${id}"`).join(',')})&select=endpoint,member_id,p256dh,auth`);
   // 홈 화면 아이콘 배지 숫자를 "지금 실제로 안 읽은 개수"로 정확히 맞추기 위해, 회원별 안 읽은 알림 수를 서버에서 직접 세어서 같이 보냄
   // (화면을 안 열어둔 상태에서 알림이 와도, 서비스워커가 이 숫자로 바로 배지를 갱신해서 실제 개수와 어긋나지 않게 함)
+  // 회원 수만큼 쿼리를 따로 날리지 않고, 대상 회원들의 안 읽은 알림을 한 번에 받아와서 회원별로 세기만 함(쿼리 1번)
   const unreadCounts = {};
-  await Promise.all(memberIds.map(async (id) => {
-    const rows = await sb(env, 'GET', `notifications?member_id=eq.${encodeURIComponent(id)}&read_at=is.null&select=id`);
-    unreadCounts[id] = (rows || []).length;
-  }));
+  memberIds.forEach((id) => { unreadCounts[id] = 0; }); // 안 읽은 알림이 하나도 없는 회원도 배지가 0으로 명확히 찍히도록 미리 채워둠
+  const unreadRows = await sb(env, 'GET', `notifications?member_id=in.(${memberIds.map((id) => `"${id}"`).join(',')})&read_at=is.null&select=member_id`);
+  for (const row of (unreadRows || [])) unreadCounts[row.member_id] = (unreadCounts[row.member_id] || 0) + 1;
   let sent = 0;
   const goneEndpoints = [];
   for (const n of claimed) {
