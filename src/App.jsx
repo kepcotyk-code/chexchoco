@@ -2494,6 +2494,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
   }, [viewingShareId, viewingTowerId]);
   const [towerOwnerMemberId, setTowerOwnerMemberId] = useState(''); // 간사가 모임 명단에서 등록자를 고르면 그 회원 책장에 실제로 등록됨
   const [editingTowerOwnerMemberId, setEditingTowerOwnerMemberId] = useState('');
+  const [editingTowerOffset, setEditingTowerOffset] = useState(null); // 책탑에서 이 책이 좌우로 얼마나 삐뚤어져 보일지 (간사가 수동 지정, null=자동)
   const addManualTowerEntry = async () => {
     if (!currentMember || !towerTitleInput.trim()) return;
     const pickedOwner = isSecretary && towerOwnerMemberId ? members.find((m) => m.id === towerOwnerMemberId) : null;
@@ -2523,6 +2524,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
           start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null,
           is_public: editingTowerPublic,
           event_tag: isSecretary ? (editingTowerTag.trim() || null) : entry.event_tag, // 행사/토론회 태그는 간사만 수정 가능
+          shelf_offset: isSecretary ? editingTowerOffset : entry.shelf_offset, // 책탑 안에서 좌우 위치 - 간사만 수동 조정 가능(null이면 자동)
           member_id: pickedOwner ? pickedOwner.id : entry.member_id, // 명단에서 등록자를 새로 고르면 그 회원 책장으로 옮겨감
           owner_name_override: pickedOwner ? null : entry.owner_name_override, // 등록자는 간사만 회원 명단에서 지정 가능
           color: editingTowerColor,
@@ -2553,6 +2555,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
     setEditingTowerNoteVisible(!!entry.note_visible);
     setEditingTowerStatus(entry.read_status || (entry.finished_date ? 'done' : 'reading'));
     setEditingTowerOwnerMemberId(''); // 비워두면 현재 등록자 그대로 유지 - 명단에서 새로 고를 때만 옮겨감
+    setEditingTowerOffset(entry.shelf_offset != null ? entry.shelf_offset : null);
   };
   const removeTowerEntry = async (entryId) => { await deleteRow('book_tower_entries', 'id', entryId); await reload(['book_tower_entries']); };
   // 내 책장 목록에서 전체 수정창을 열지 않고, 쪽수만 바로 입력하는 간편 기능
@@ -2668,6 +2671,19 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
                 <option value="">그대로 유지</option>
                 {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
+            </div>
+          )}
+          {isSecretary && (
+            <div>
+              <div className="text-[10px] mb-1" style={{ color: MUTE }}>책탑에서 좌우 위치 (안 건드리면 책마다 자동으로 살짝씩 다르게 삐뚤어져 보여요)</div>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setEditingTowerOffset((v) => Math.max(-20, (v ?? 0) - 5))} className="rounded-full p-1.5" style={{ background: NEUTRAL_BG }} aria-label="왼쪽으로 이동"><ChevronLeft size={14} style={{ color: NEUTRAL_TEXT }} /></button>
+                <span className="text-xs w-14 text-center shrink-0" style={{ color: INK }}>{editingTowerOffset == null ? '자동' : editingTowerOffset === 0 ? '중앙' : editingTowerOffset > 0 ? `우측 ${editingTowerOffset}` : `좌측 ${-editingTowerOffset}`}</span>
+                <button type="button" onClick={() => setEditingTowerOffset((v) => Math.min(20, (v ?? 0) + 5))} className="rounded-full p-1.5" style={{ background: NEUTRAL_BG }} aria-label="오른쪽으로 이동"><ChevronRight size={14} style={{ color: NEUTRAL_TEXT }} /></button>
+                {editingTowerOffset != null && (
+                  <button type="button" onClick={() => setEditingTowerOffset(null)} className="text-[11px] underline" style={{ color: MUTE }}>자동으로</button>
+                )}
+              </div>
             </div>
           )}
           <div className="flex gap-1.5 items-center pt-1">
@@ -3176,7 +3192,8 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
                 const ribbonW = Math.round(ribbonLabel.replace(/ /g, '').length * 9 + (ribbonLabel.split(' ').length - 1) * 2.5 + 10);
                 // 읽는 중·잠시 멈춤일 때만 페이지를 작은 동그라미로 표시 (모임 책장은 SHOW_PAGE_IN_GROUP 설정 따름)
                 const showPage = (statusKey === 'reading' || statusKey === 'paused') && t.current_page && (towerView === 'mine' || SHOW_PAGE_IN_GROUP);
-                const jitterX = ((hash % 7) - 3) * 5; // 중심에서 좌우로 살짝씩만 어긋나게 (쌓인 더미의 중심은 유지)
+                // 간사가 수동으로 좌우 위치를 지정해뒀으면 그 값을 쓰고, 없으면 책마다 자동으로 살짝씩 다르게 어긋나게 (쌓인 더미의 중심은 유지)
+                const jitterX = t.shelf_offset != null ? t.shelf_offset : ((hash % 7) - 3) * 5;
                 const lengthInset = 6 + (hash % 3) * 4; // 책마다 길이(폭)도 살짝 다르게 - 항상 가운데 기준으로 좁아짐 (제목이 잘리지 않도록 여백을 좁게)
                 const microY = (hash % 3) - 1; // -1~1px, 실제로 쌓았을 때 생기는 미세한 높이 오차
                 const barH = [42, 47, 53, 58][hash % 4] + (t.event_tag ? 8 : 0); // 책마다 두께를 다르게, 태그 있으면 한 줄만큼만 여유
