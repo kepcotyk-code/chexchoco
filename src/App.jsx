@@ -1510,7 +1510,7 @@ export default function App() {
     { key: 'notice', label: '공지', icon: Megaphone },
     { key: 'qr', label: '출석', icon: QrCode },
     { key: 'dashboard', label: '현황', icon: BarChart3 },
-    { key: 'photos', label: '사진', icon: ImageIcon },
+    { key: 'photos', label: '포토', icon: ImageIcon },
     { key: 'gallery', label: '서재', icon: Library },
   ];
 
@@ -1689,15 +1689,15 @@ export default function App() {
                       이 드롭다운을 지우고 위 onClick을 다시 () => (currentMember ? logout() : openLogin()) 로 바꾸면 됨 */}
                   {showAccountMenu && currentMember && (<>
                     <div className="fixed inset-0 z-40" onClick={() => setShowAccountMenu(false)} />
-                    <div className="absolute right-0 top-full mt-1.5 z-50 rounded-xl border overflow-hidden" style={{ background: CARD_BG, borderColor: LINE, minWidth: 132 }} onClick={(e) => e.stopPropagation()}>
+                    <div className="absolute right-0 top-full mt-1.5 z-50 rounded-xl border overflow-hidden" style={{ background: CARD_BG, borderColor: LINE, minWidth: 168 }} onClick={(e) => e.stopPropagation()}>
                       <button onClick={() => { setTab('users'); setShowAccountMenu(false); }}
-                        className="w-full flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold text-left" style={{ color: INK }}>
-                        <Users size={14} /> 인원 보기
+                        className="w-full flex items-center gap-2 px-4 py-3.5 text-sm font-semibold text-left" style={{ color: INK }}>
+                        <Users size={16} /> 멤버 현황
                       </button>
                       <div style={{ height: 1, background: LINE }} />
                       <button onClick={() => { setShowAccountMenu(false); logout(); }}
-                        className="w-full flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold text-left" style={{ color: '#F0A87C' }}>
-                        <LogOut size={14} /> 로그아웃
+                        className="w-full flex items-center gap-2 px-4 py-3.5 text-sm font-semibold text-left" style={{ color: '#F0A87C' }}>
+                        <LogOut size={16} /> 로그아웃
                       </button>
                     </div>
                   </>)}
@@ -2448,7 +2448,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
   }, [viewingShare?.id]);
 
   // ---------- 책탑 ----------
-  const isSecretary = currentMember?.role === '간사'; // 모임 책장(공개) 등록은 간사만 가능 - 회장·총무는 제외
+  const isSecretary = currentMember?.role === '간사'; // 토론회 태그·등록자 지정 등 일부 관리 항목만 간사 전용 (모임 책장 공개는 누구나 가능)
   const [towerView, setTowerView] = useState('mine'); // 'mine' | 'group'
   const [showTowerAdd, setShowTowerAdd] = useState(false);
   const [towerSettingsOpen, setTowerSettingsOpen] = useState(false); // 켜져 있을 때만 순서 이동·삭제 버튼이 보임 (평소엔 연필만)
@@ -2494,7 +2494,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
       id: uid('bt'), member_id: pickedOwner ? pickedOwner.id : currentMember.id, book_title: towerTitleInput.trim(),
       start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null,
       color: towerColorInput, source_share_id: null, created_at: new Date().toISOString(), sort_order: Date.now(),
-      is_public: isSecretary ? towerPublicInput : false, // 모임 책장 공개는 간사만 가능 - 그 외 회원 글은 항상 내 책장에만
+      is_public: towerPublicInput, // 모임 책장 공개는 누구나 가능 - 기본은 공개, 우측 상단 비공개 체크박스로 회원이 직접 선택
       event_tag: isSecretary ? (towerTagInput.trim() || null) : null, // 행사/토론회 태그는 간사만 입력 가능
       // 등록자는 간사만 회원 명단에서 지정 가능 - 고르면 그 회원 책장에 실제로 등록됨(member_id)
       owner_name_override: null,
@@ -2514,7 +2514,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
       const { data, error } = await supabase.from('book_tower_entries')
         .update({
           start_date: towerStartInput || null, current_page: towerPageInput ? parseInt(towerPageInput, 10) : null, finished_date: towerFinishedInput || null,
-          is_public: isSecretary ? editingTowerPublic : entry.is_public,
+          is_public: editingTowerPublic,
           event_tag: isSecretary ? (editingTowerTag.trim() || null) : entry.event_tag, // 행사/토론회 태그는 간사만 수정 가능
           member_id: pickedOwner ? pickedOwner.id : entry.member_id, // 명단에서 등록자를 새로 고르면 그 회원 책장으로 옮겨감
           owner_name_override: pickedOwner ? null : entry.owner_name_override, // 등록자는 간사만 회원 명단에서 지정 가능
@@ -2578,12 +2578,10 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
         <div className="rounded-2xl p-3 space-y-2" style={{ background: FORM_PANEL_BG, border: `1.5px solid ${FORM_PANEL_BORDER}`, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)' }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-xs font-bold" style={{ color: MUTE }}><Pencil size={11} /> 책 정보 수정</div>
-            {isSecretary && (
-              <label className="flex items-center gap-1.5 text-[11px]" style={{ color: MUTE }}>
-                <input type="checkbox" checked={editingTowerPublic} onChange={(e) => setEditingTowerPublic(e.target.checked)} />
-                모임 책장에 공개
-              </label>
-            )}
+            <label className="flex items-center gap-1.5 text-[11px]" style={{ color: MUTE }}>
+              <input type="checkbox" checked={!editingTowerPublic} onChange={(e) => setEditingTowerPublic(!e.target.checked)} />
+              비공개
+            </label>
           </div>
           <div className="text-sm font-bold truncate" style={{ color: INK }}>{t.book_title}</div>
           <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))' }}>
@@ -2600,7 +2598,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
           </div>
           <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
           {isSecretary && (
-            <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그</div><input value={editingTowerTag} onChange={(e) => setEditingTowerTag(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
+            <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>토론회 태그</div><input value={editingTowerTag} onChange={(e) => setEditingTowerTag(e.target.value)} className="w-full rounded-xl border px-2.5 py-1.5 text-[13px] outline-none" style={inputStyle} /></div>
           )}
           <div>
             <div className="text-[10px] mb-1" style={{ color: MUTE }}>비고</div>
@@ -3000,12 +2998,10 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
           <div className="rounded-2xl p-3 mb-3 space-y-2" style={{ background: FORM_PANEL_BG, border: `1.5px solid ${FORM_PANEL_BORDER}`, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)' }}>
             <div className="flex items-center justify-between mb-0.5">
               <div className="flex items-center gap-1.5 text-xs font-bold" style={{ color: MUTE }}><Pencil size={11} /> 새 책 추가</div>
-              {isSecretary && (
-                <label className="flex items-center gap-1.5 text-[11px]" style={{ color: MUTE }}>
-                  <input type="checkbox" checked={towerPublicInput} onChange={(e) => setTowerPublicInput(e.target.checked)} />
-                  모임 책장에도 공개
-                </label>
-              )}
+              <label className="flex items-center gap-1.5 text-[11px]" style={{ color: MUTE }}>
+                <input type="checkbox" checked={!towerPublicInput} onChange={(e) => setTowerPublicInput(!e.target.checked)} />
+                비공개
+              </label>
             </div>
             <div className="relative min-w-0">
               <div className="flex gap-2 min-w-0">
@@ -3066,7 +3062,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
             </div>
             <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>현재 읽고 있는 페이지 (선택)</div><input type="number" value={towerPageInput} onChange={(e) => setTowerPageInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
             {isSecretary && (
-              <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>행사/토론회 태그 (선택)</div><input value={towerTagInput} onChange={(e) => setTowerTagInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
+              <div><div className="text-[10px] mb-1" style={{ color: MUTE }}>토론회 태그 (선택)</div><input value={towerTagInput} onChange={(e) => setTowerTagInput(e.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={inputStyle} /></div>
             )}
             <div>
               <div className="text-[10px] mb-1" style={{ color: MUTE }}>비고 (선택)</div>
@@ -3097,9 +3093,6 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
                 ))}
               </div>
             </div>
-            {!isSecretary && (
-              <p className="text-[11px]" style={{ color: MUTE }}>* 모임 책장 공개는 간사만 가능해요. 이 책은 내 책장에만 기록돼요.</p>
-            )}
             {isSecretary && (
               <div>
                 <div className="text-[10px] mb-1" style={{ color: MUTE }}>등록자 (선택 · 회원 명단에서 지정)</div>
@@ -3277,7 +3270,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
                   </div>
                   <div className="space-y-1.5 text-xs mt-3" style={{ color: NEUTRAL_TEXT }}>
                     {ownerText && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>등록자</span><span className="text-right">{ownerText}</span></div>}
-                    {t.event_tag && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>행사/토론회</span><span className="text-right">{t.event_tag}</span></div>}
+                    {t.event_tag && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>토론회</span><span className="text-right">{t.event_tag}</span></div>}
                     {t.start_date && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>시작일</span><span>{fmtDate(t.start_date)}</span></div>}
                     {t.finished_date && <div className="flex justify-between gap-3"><span className="shrink-0" style={{ color: MUTE }}>완료일</span><span>{fmtDate(t.finished_date)}</span></div>}
                     {/* 현재 페이지는 본인 책이거나 모임 공개 설정일 때만 표시 */}
