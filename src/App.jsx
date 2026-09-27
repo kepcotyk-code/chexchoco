@@ -995,18 +995,19 @@ function ReadingReminderToggle({ currentMember, reload, showToast }) {
   };
 
   return (
-    <div className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 mb-3" style={{ background: on ? 'rgba(78,143,106,0.12)' : NEUTRAL_BG }}>
-      <span style={{ fontSize: 16 }} aria-hidden="true">📖</span>
-      <p className="flex-1 min-w-0 text-[12px] leading-snug" style={{ color: NEUTRAL_TEXT }}>
-        {on ? <>매일 <b style={{ color: INK }}>{time}</b>에 "곧 독서 시간이에요" 알림을 받아요.</> : '독서 시작 알림이 꺼져 있어요.'}
-      </p>
-      {on && (
-        <input type="time" value={draftTime} onChange={(e) => setDraftTime(e.target.value)} onBlur={saveTime} disabled={saving}
-          className="rounded-lg border px-1.5 py-1 text-xs outline-none" style={inputStyle} aria-label="독서 시작 알림 시각" />
-      )}
-      <button onClick={toggle} disabled={saving} className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold" style={{ background: on ? NEUTRAL_BG : BTN_BG, color: on ? NEUTRAL_TEXT : BTN_TEXT }}>
-        {on ? '끄기' : '켜기'}
-      </button>
+    <div className="rounded-xl px-3 py-2.5 mb-3" style={{ background: on ? 'rgba(78,143,106,0.12)' : NEUTRAL_BG }}>
+      <div className="flex items-center gap-2">
+        <span style={{ fontSize: 16 }} aria-hidden="true">📖</span>
+        <p className="flex-1 min-w-0 truncate text-[12px]" style={{ color: NEUTRAL_TEXT }}>독서 시작 알림{!on && ' (꺼짐)'}</p>
+        {on && (
+          <input type="time" value={draftTime} onChange={(e) => setDraftTime(e.target.value)} onBlur={saveTime} disabled={saving}
+            className="rounded-lg border px-1.5 py-1 text-xs outline-none" style={inputStyle} aria-label="독서 시작 알림 시각" />
+        )}
+        <button onClick={toggle} disabled={saving} className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold" style={{ background: on ? NEUTRAL_BG : BTN_BG, color: on ? NEUTRAL_TEXT : BTN_TEXT }}>
+          {on ? '끄기' : '켜기'}
+        </button>
+      </div>
+      <p className="text-[10.5px] mt-1.5 leading-snug" style={{ color: MUTE }}>출석 체크인 시, 12:55분에 종료 알림이 가요.</p>
     </div>
   );
 }
