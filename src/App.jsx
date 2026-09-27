@@ -1608,7 +1608,7 @@ export default function App() {
       )}
       <div className="max-w-3xl mx-auto px-4 pt-6 pb-24">
         {/* 최상단(KEPCO READING CLUB 줄 + 책스초코 제목)은 스크롤해도 항상 화면 위에 고정 */}
-        <div ref={headerRef} className="sticky -mx-4 px-4" style={{ top: 0, zIndex: 40, background: PAPER_BG, paddingTop: 8, paddingBottom: 12, marginTop: -8, marginBottom: 12 }}>
+        <div ref={headerRef} className="sticky -mx-4 px-4" style={{ top: 0, zIndex: 40, background: PAPER_BG, paddingTop: 'max(8px, env(safe-area-inset-top))', paddingBottom: 12, marginTop: -8, marginBottom: 12 }}>
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[11px] tracking-[0.2em] uppercase" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>KEPCO Reading Club</span>
             <div className="flex items-center gap-1.5">
