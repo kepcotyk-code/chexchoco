@@ -148,7 +148,58 @@ const PAGE_TONES = [
   { light: '#EEE3CB', dark: '#DFD1AE' },
 ];
 // 페이지 단면에 아주 은은하게 얹는 종이 결 노이즈 텍스처 (외부 라이브러리 없이 SVG data URI로 생성)
-const PAGE_NOISE_BG = "url(\"data:image/svg+xml;utantml:parameter name=%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
+const PAGE_NOISE_BG = "url(\"data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
+// ---------- 북적북적: 완독한 책은 속지 대신 "표지(책등)" 모양으로 표시 ----------
+// 마음에 안 들면 아래 값을 false로 바꾸면 예전처럼 모든 책이 속지 모양으로 바로 돌아감 (다른 곳은 손댈 필요 없음)
+const DONE_BOOK_AS_COVER = false;
+const SPINE_FOIL = '#DCC082'; // 책등에 찍힌 금박 글씨·문양 색
+// 금박 광택 - 위쪽은 밝게 반짝이고 아래로 갈수록 짙어지는 금속 느낌 (제목·문양 공통)
+const SPINE_GILT_GRADIENT = 'linear-gradient(180deg, #F4E2B0 0%, #E2C585 40%, #C49B55 72%, #9A7438 100%)';
+// 고급 가죽 색: 회원이 고른 표지 색의 색조는 살리되, 명도는 깊게·채도는 보석처럼 진하게 맞춰 윤기 나는 가죽 느낌으로
+// (무채색에 가까운 색은 채도를 올리지 않아 차콜·블랙 가죽으로 남음)
+const spineLeatherColor = (hex) => {
+  const h = String(hex || '').replace('#', '');
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) return '#402621';
+  const r = parseInt(h.substr(0, 2), 16) / 255, g = parseInt(h.substr(2, 2), 16) / 255, b = parseInt(h.substr(4, 2), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  let hue = 0;
+  if (d !== 0) {
+    if (max === r) hue = ((g - b) / d) % 6; else if (max === g) hue = (b - r) / d + 2; else hue = (r - g) / d + 4;
+    hue *= 60; if (hue < 0) hue += 360;
+  }
+  const L = Math.min(Math.max(l, 0.14), 0.27);
+  const S = s < 0.1 ? s : Math.min(Math.max(s * 1.15, 0.3), 0.62);
+  const c = (1 - Math.abs(2 * L - 1)) * S, x = c * (1 - Math.abs(((hue / 60) % 2) - 1)), m = L - c / 2;
+  const [r1, g1, b1] = hue < 60 ? [c, x, 0] : hue < 120 ? [x, c, 0] : hue < 180 ? [0, c, x] : hue < 240 ? [0, x, c] : hue < 300 ? [x, 0, c] : [c, 0, x];
+  const WARM = [60, 40, 22], MIX = 0.06; // 가죽 특유의 따뜻한 기운을 아주 살짝
+  const to2 = (v, i) => Math.round((v + m) * 255 * (1 - MIX) + WARM[i] * MIX).toString(16).padStart(2, '0');
+  return `#${to2(r1, 0)}${to2(g1, 1)}${to2(b1, 2)}`;
+};
+// 책등 왼쪽 금박 문양 - 가운데 마름모 + 양옆 잎사귀 (양장본 책등에 찍는 전통 장식), 금속 광택 그라데이션 + 음각 그림자
+const SpineFleuron = ({ gid }) => (
+  <svg width="16" height="10" viewBox="0 0 16 10" aria-hidden="true" style={{ display: 'block', filter: 'drop-shadow(0 1px 0 rgba(0,0,0,0.6))' }}>
+    <defs>
+      <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#F4E2B0" /><stop offset="45%" stopColor="#E2C585" /><stop offset="100%" stopColor="#A57C3E" />
+      </linearGradient>
+    </defs>
+    <path d="M8 2 L10.2 5 L8 8 L5.8 5 Z" fill={`url(#${gid})`} />
+    <path d="M5.4 5 C4.2 3.4 2.4 3.2 0.8 4.3 C2.2 4.4 3.3 4.7 4.2 5 C3.3 5.3 2.2 5.6 0.8 5.7 C2.4 6.8 4.2 6.6 5.4 5 Z" fill={`url(#${gid})`} />
+    <path d="M10.6 5 C11.8 3.4 13.6 3.2 15.2 4.3 C13.8 4.4 12.7 4.7 11.8 5 C12.7 5.3 13.8 5.6 15.2 5.7 C13.6 6.8 11.8 6.6 10.6 5 Z" fill={`url(#${gid})`} />
+  </svg>
+);
+// 토론회 태그 옆에 붙는 금박 나뭇가지 장식
+const SpineSprig = ({ color }) => (
+  <svg width="24" height="10" viewBox="0 0 24 10" aria-hidden="true" style={{ display: 'block', flexShrink: 0 }}>
+    <path d="M1 8 C7 7.4 13 5.9 23 2.2" stroke={color} strokeWidth="0.8" fill="none" strokeLinecap="round" />
+    <path d="M5.5 7.6 C6 5.9 7.4 5.1 9 5.3 C8.2 6.5 7.1 7.4 5.5 7.6 Z" fill={color} />
+    <path d="M8.4 7 C9.6 8.2 11.1 8.6 12.5 8 C11.3 7 9.9 6.6 8.4 7 Z" fill={color} />
+    <path d="M11.6 6.1 C12.1 4.4 13.6 3.4 15.2 3.6 C14.4 4.8 13.2 5.8 11.6 6.1 Z" fill={color} />
+    <path d="M14.8 5.1 C16 6.2 17.5 6.5 18.9 5.8 C17.7 4.9 16.3 4.6 14.8 5.1 Z" fill={color} />
+    <path d="M18 3.9 C18.6 2.4 20 1.5 21.5 1.7 C20.7 2.8 19.5 3.7 18 3.9 Z" fill={color} />
+  </svg>
+);
 const roleMeta = (role) => ROLES.find((r) => r.key === role) || ROLES[3];
 const roleOrder = (role) => { const i = ROLES.findIndex((r) => r.key === role); return i === -1 ? 99 : i; };
 
@@ -912,6 +963,50 @@ function PushToggle({ currentMember, showToast }) {
       <span style={{ fontSize: 16 }} aria-hidden="true">{state === 'on' ? '🔔' : '🔕'}</span>
       <p className="flex-1 min-w-0 text-[12px] leading-snug" style={{ color: NEUTRAL_TEXT }}>{text}</p>
       {btn}
+    </div>
+  );
+}
+
+// ⏰ 독서 시작 알림 시각 설정 (회원별로 켜고 끄고, 시각도 직접 조정 - 기본 12:00 / 메시지: "곧 독서 시간이에요")
+// 종료 알림(오늘 체크인한 사람에게만 12:55에 발송)은 개별 설정 없이 서버(api/reading-reminders.js)에서 자동 처리됨
+function ReadingReminderToggle({ currentMember, reload, showToast }) {
+  const on = currentMember?.notify_reading_start !== false;
+  const time = currentMember?.notify_reading_start_time || '12:00';
+  const [draftTime, setDraftTime] = useState(time);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setDraftTime(time); }, [time]);
+
+  const toggle = async () => {
+    setSaving(true);
+    try {
+      await updateRow('members', 'id', currentMember.id, { notify_reading_start: !on });
+      await reload(['members']);
+      showToast?.(!on ? '독서 시작 알림을 켰어요.' : '독서 시작 알림을 껐어요.', 'success');
+    } catch (e) { showToast?.('설정을 저장하지 못했어요.', 'error'); } finally { setSaving(false); }
+  };
+  const saveTime = async () => {
+    if (!draftTime || draftTime === time) return;
+    setSaving(true);
+    try {
+      await updateRow('members', 'id', currentMember.id, { notify_reading_start_time: draftTime });
+      await reload(['members']);
+      showToast?.(`독서 시작 알림 시각을 ${draftTime}로 맞췄어요.`, 'success');
+    } catch (e) { showToast?.('설정을 저장하지 못했어요.', 'error'); } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 mb-3" style={{ background: on ? 'rgba(78,143,106,0.12)' : NEUTRAL_BG }}>
+      <span style={{ fontSize: 16 }} aria-hidden="true">📖</span>
+      <p className="flex-1 min-w-0 text-[12px] leading-snug" style={{ color: NEUTRAL_TEXT }}>
+        {on ? <>매일 <b style={{ color: INK }}>{time}</b>에 "곧 독서 시간이에요" 알림을 받아요.</> : '독서 시작 알림이 꺼져 있어요.'}
+      </p>
+      {on && (
+        <input type="time" value={draftTime} onChange={(e) => setDraftTime(e.target.value)} onBlur={saveTime} disabled={saving}
+          className="rounded-lg border px-1.5 py-1 text-xs outline-none" style={inputStyle} aria-label="독서 시작 알림 시각" />
+      )}
+      <button onClick={toggle} disabled={saving} className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold" style={{ background: on ? NEUTRAL_BG : BTN_BG, color: on ? NEUTRAL_TEXT : BTN_TEXT }}>
+        {on ? '끄기' : '켜기'}
+      </button>
     </div>
   );
 }
@@ -1805,6 +1900,7 @@ export default function App() {
                 </div>
               </div>
               <PushToggle currentMember={currentMember} showToast={showToast} />
+              <ReadingReminderToggle currentMember={currentMember} reload={reload} showToast={showToast} />
               {myNotifications.length === 0 ? (
                 <p className="text-sm text-center py-6 leading-relaxed" style={{ color: MUTE }}>새 알림이 없어요.<br /><span className="text-xs">대여신청·반납·벌칙·칭찬 소식이 여기로 와요.</span></p>
               ) : (
@@ -3223,48 +3319,101 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
                 const jitterX = t.shelf_offset != null ? t.shelf_offset : ((hash % 7) - 3) * 5;
                 const lengthInset = 6 + (hash % 3) * 4; // 책마다 길이(폭)도 살짝 다르게 - 항상 가운데 기준으로 좁아짐 (제목이 잘리지 않도록 여백을 좁게)
                 const microY = (hash % 3) - 1; // -1~1px, 실제로 쌓았을 때 생기는 미세한 높이 오차
-                const barH = [42, 47, 53, 58][hash % 4] + (t.event_tag ? 8 : 0); // 책마다 두께를 다르게, 태그 있으면 한 줄만큼만 여유
+                const barH = [42, 47, 53, 58][hash % 4] + (t.event_tag ? 8 : 0) + (DONE_BOOK_AS_COVER && isDone ? 6 : 0); // 책마다 두께를 다르게, 태그 있으면 한 줄만큼만 여유 (표지 모양은 라벨·이름 두 줄이라 6px 더 두껍게)
                 const ribbonH = Math.max(Math.round(barH * 0.62), 26); // 리본 세로 길이
                 const edgeH = Math.max(3, Math.round(barH * 0.112)); // 위아래 표지 두께 (기존의 70%)
                 const tone = PAGE_TONES[hash % PAGE_TONES.length];
+                // 완독한 책은 표지(책등) 모양, 그 외(읽는 중·잠시 멈춤·읽을 예정)는 지금처럼 속지 모양
+                const coverMode = DONE_BOOK_AS_COVER && isDone;
+                const spineColor = coverMode ? spineLeatherColor(edgeColor) : edgeColor;
+                const noteText = t.note_visible && t.note ? t.note : '';
+                const captionText = [t.event_tag, noteText].filter(Boolean).join(' · ');
+                const rowOwnerText = t.owner_name_override != null ? t.owner_name_override : (owner ? dispName(owner.name, isLoggedIn) : '');
                 return (
-                  <div key={t.id} onClick={() => setViewingTowerId(t.id)} role="button" tabIndex={0} style={{ height: barH, marginLeft: Math.max(2, lengthInset + jitterX), marginRight: Math.max(2, lengthInset - jitterX), transform: `translateY(${microY}px)`, borderRadius: 4, overflow: 'hidden', filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.45)) drop-shadow(0 1px 1px rgba(0,0,0,0.4))', cursor: 'pointer' }}>
+                  <div key={t.id} onClick={() => setViewingTowerId(t.id)} role="button" tabIndex={0} style={{ height: barH, marginLeft: Math.max(2, lengthInset + jitterX), marginRight: Math.max(2, lengthInset - jitterX), transform: `translateY(${microY}px)`, borderRadius: coverMode ? 6 : 4, overflow: 'hidden', filter: coverMode ? 'drop-shadow(0 4px 5px rgba(0,0,0,0.55)) drop-shadow(0 1px 1px rgba(0,0,0,0.55))' : 'drop-shadow(0 3px 4px rgba(0,0,0,0.45)) drop-shadow(0 1px 1px rgba(0,0,0,0.4))', cursor: 'pointer' }}>
                     <div className="relative w-full h-full">
-                      {/* 위/아래 - 실제 양장본 표지: 재질감 있는 그라데이션 + 페이지와 맞닿는 경계 그림자 */}
-                      <div className="absolute inset-x-0 top-0 pointer-events-none" style={{ height: edgeH, borderRadius: '4px 4px 2px 2px', background: `linear-gradient(180deg, rgba(255,255,255,0.30) 0%, ${edgeColor} 55%, rgba(0,0,0,0.15) 100%)`, boxShadow: 'inset 0 -2px 3px -1px rgba(0,0,0,0.35)' }} />
-                      <div className="absolute inset-x-0 bottom-0 pointer-events-none" style={{ height: edgeH, borderRadius: '2px 2px 4px 4px', background: `linear-gradient(0deg, rgba(0,0,0,0.35) 0%, ${edgeColor} 55%, rgba(255,255,255,0.10) 100%)`, boxShadow: 'inset 0 2px 3px -1px rgba(0,0,0,0.35)' }} />
-                      {/* 가운데 - 종이 페이지 단면: 촘촘한 결 + 은은한 볼륨감 + 종이 노이즈, 표지가 좌우로 1px 살짝 돌출 */}
-                      <div className="absolute pointer-events-none" style={{ top: edgeH, bottom: edgeH, left: PAGE_INSET, right: PAGE_INSET, borderRadius: 3,
-                        background: `linear-gradient(180deg, rgba(0,0,0,0.16) 0%, rgba(0,0,0,0) 18%, rgba(0,0,0,0) 82%, rgba(0,0,0,0.20) 100%),
-                          repeating-linear-gradient(180deg, ${tone.light} 0px, ${tone.light} 1.4px, ${tone.dark} 1.4px, ${tone.dark} 2.1px)` }} />
-                      <div className="absolute pointer-events-none" style={{ top: edgeH, bottom: edgeH, left: PAGE_INSET, right: PAGE_INSET, borderRadius: 3, backgroundImage: PAGE_NOISE_BG, backgroundSize: '60px 60px', opacity: 0.05, mixBlendMode: 'multiply' }} />
-                      {/* 좌우 끝 - 페이지 묶음이 표지 안쪽으로 둥글게 말려 들어가는 음영 (좌우 대칭) */}
-                      <div className="absolute pointer-events-none" style={{ top: edgeH, bottom: edgeH, left: PAGE_INSET, right: PAGE_INSET, borderRadius: 3,
-                        background: 'linear-gradient(90deg, rgba(0,0,0,0.28) 0px, rgba(0,0,0,0.08) 4px, rgba(0,0,0,0) 9px, rgba(0,0,0,0) calc(100% - 9px), rgba(0,0,0,0.08) calc(100% - 4px), rgba(0,0,0,0.28) 100%)',
-                        boxShadow: 'inset 1px 0 0 rgba(255,255,255,0.25), inset -1px 0 0 rgba(255,255,255,0.25)' }} />
+                      {coverMode ? (
+                        <>
+                          {/* 완독 - 고급 가죽 양장본 책등 */}
+                          {/* 1) 가죽 바탕 + 둥근 책등 입체감: 위쪽에 빛이 맺히는 하이라이트 띠, 아래로 갈수록 깊어지는 그늘 */}
+                          <div className="absolute inset-0 pointer-events-none" style={{ borderRadius: 6,
+                            background: `linear-gradient(180deg, rgba(0,0,0,0.38) 0%, rgba(255,244,222,0.06) 7%, rgba(255,246,228,0.20) 19%, rgba(255,244,222,0.07) 33%, rgba(0,0,0,0) 52%, rgba(0,0,0,0.22) 78%, rgba(0,0,0,0.48) 94%, rgba(0,0,0,0.6) 100%), ${spineColor}`,
+                            boxShadow: 'inset 0 0 6px rgba(0,0,0,0.35)' }} />
+                          {/* 2) 광택 - 윤기 나는 가죽 위를 비스듬히 스치는 빛 (책마다 위치 조금씩 다르게) */}
+                          <div className="absolute inset-0 pointer-events-none" style={{ borderRadius: 6, background: `linear-gradient(100deg, rgba(255,255,255,0) ${18 + (hash % 20)}%, rgba(255,250,238,0.07) ${30 + (hash % 20)}%, rgba(255,255,255,0) ${44 + (hash % 20)}%)` }} />
+                          {/* 3) 가죽 결 */}
+                          <div className="absolute inset-0 pointer-events-none" style={{ borderRadius: 6, backgroundImage: PAGE_NOISE_BG, backgroundSize: '40px 40px', opacity: 0.2, mixBlendMode: 'overlay' }} />
+                          {/* 4) 양쪽 끝 - 책등 머리·꼬리가 둥글게 말리는 음영 */}
+                          <div className="absolute inset-y-0 left-0 pointer-events-none" style={{ width: 9, borderRadius: '6px 0 0 6px', background: 'linear-gradient(90deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.12) 60%, rgba(0,0,0,0) 100%)' }} />
+                          <div className="absolute inset-y-0 right-0 pointer-events-none" style={{ width: 9, borderRadius: '0 6px 6px 0', background: 'linear-gradient(270deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.12) 60%, rgba(0,0,0,0) 100%)' }} />
+                          {/* 5) 도드라진 띠(레이즈드 밴드) 4개 - 왼쪽은 문양 칸, 오른쪽은 리본 칸을 나눔. 띠 양옆엔 금박 선 */}
+                          {[{ left: 6 }, { left: 30 }, { right: 12 + ribbonW + 2 }, { right: 5 }].map((pos, bi) => (
+                            <div key={bi} className="absolute inset-y-0 pointer-events-none" style={{ ...pos, width: 5,
+                              background: 'linear-gradient(90deg, rgba(0,0,0,0.5) 0%, rgba(255,240,212,0.30) 30%, rgba(255,240,212,0.10) 55%, rgba(0,0,0,0.28) 80%, rgba(0,0,0,0.55) 100%)',
+                              boxShadow: '-1px 0 0 rgba(220,192,130,0.55), 1px 0 0 rgba(220,192,130,0.55)' }} />
+                          ))}
+                          {/* 6) 제목 칸 위아래 금박 선 */}
+                          <div className="absolute pointer-events-none" style={{ top: 3, left: 38, right: 12 + ribbonW + 10, height: 1, background: 'rgba(220,192,130,0.36)' }} />
+                          <div className="absolute pointer-events-none" style={{ bottom: 3, left: 38, right: 12 + ribbonW + 10, height: 1, background: 'rgba(220,192,130,0.28)' }} />
+                        </>
+                      ) : (
+                        <>
+                          {/* 위/아래 - 실제 양장본 표지: 재질감 있는 그라데이션 + 페이지와 맞닿는 경계 그림자 */}
+                          <div className="absolute inset-x-0 top-0 pointer-events-none" style={{ height: edgeH, borderRadius: '4px 4px 2px 2px', background: `linear-gradient(180deg, rgba(255,255,255,0.30) 0%, ${edgeColor} 55%, rgba(0,0,0,0.15) 100%)`, boxShadow: 'inset 0 -2px 3px -1px rgba(0,0,0,0.35)' }} />
+                          <div className="absolute inset-x-0 bottom-0 pointer-events-none" style={{ height: edgeH, borderRadius: '2px 2px 4px 4px', background: `linear-gradient(0deg, rgba(0,0,0,0.35) 0%, ${edgeColor} 55%, rgba(255,255,255,0.10) 100%)`, boxShadow: 'inset 0 2px 3px -1px rgba(0,0,0,0.35)' }} />
+                          {/* 가운데 - 종이 페이지 단면: 촘촘한 결 + 은은한 볼륨감 + 종이 노이즈, 표지가 좌우로 1px 살짝 돌출 */}
+                          <div className="absolute pointer-events-none" style={{ top: edgeH, bottom: edgeH, left: PAGE_INSET, right: PAGE_INSET, borderRadius: 3,
+                            background: `linear-gradient(180deg, rgba(0,0,0,0.16) 0%, rgba(0,0,0,0) 18%, rgba(0,0,0,0) 82%, rgba(0,0,0,0.20) 100%),
+                              repeating-linear-gradient(180deg, ${tone.light} 0px, ${tone.light} 1.4px, ${tone.dark} 1.4px, ${tone.dark} 2.1px)` }} />
+                          <div className="absolute pointer-events-none" style={{ top: edgeH, bottom: edgeH, left: PAGE_INSET, right: PAGE_INSET, borderRadius: 3, backgroundImage: PAGE_NOISE_BG, backgroundSize: '60px 60px', opacity: 0.05, mixBlendMode: 'multiply' }} />
+                          {/* 좌우 끝 - 페이지 묶음이 표지 안쪽으로 둥글게 말려 들어가는 음영 (좌우 대칭) */}
+                          <div className="absolute pointer-events-none" style={{ top: edgeH, bottom: edgeH, left: PAGE_INSET, right: PAGE_INSET, borderRadius: 3,
+                            background: 'linear-gradient(90deg, rgba(0,0,0,0.28) 0px, rgba(0,0,0,0.08) 4px, rgba(0,0,0,0) 9px, rgba(0,0,0,0) calc(100% - 9px), rgba(0,0,0,0.08) calc(100% - 4px), rgba(0,0,0,0.28) 100%)',
+                            boxShadow: 'inset 1px 0 0 rgba(255,255,255,0.25), inset -1px 0 0 rgba(255,255,255,0.25)' }} />
+                        </>
+                      )}
                       {/* 오른쪽 끝 - 상태 리본 (완독=버건디 / 읽는 중=포레스트그린 / 잠시 멈춤=카멜 / 읽을 예정=차콜) */}
-                      {/* 오른쪽 끝 - 상태 리본: 글자(완독·읽는 중 등)를 흰색 한 줄로 리본 안에 넣고, 리본 가로폭은 글자 길이에 맞춤 */}
-                      <div className="absolute pointer-events-none flex items-center justify-center" style={{ top: -1, right: 12, width: ribbonW, height: ribbonH, paddingBottom: 5, background: `linear-gradient(90deg, ${ribbonStatusColor} 0%, ${ribbonStatusColor}dd 100%)`, clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 5px), 0 100%)', boxShadow: '1px 1px 2px rgba(0,0,0,0.3)' }}>
-                        <span style={{ fontSize: 9, lineHeight: '10px', fontWeight: 700, color: '#FFFFFF', letterSpacing: '-0.2px', whiteSpace: 'nowrap', textShadow: '0 1px 1px rgba(0,0,0,0.35)', marginTop: 2 }}>{ribbonLabel}</span>
+                      {/* 글자(완독·읽는 중 등)를 한 줄로 리본 안에 넣고, 리본 가로폭은 글자 길이에 맞춤. 표지 모양일 땐 표지색과 구분되도록 그림자를 더함 */}
+                      <div className="absolute pointer-events-none" style={{ top: -1, right: 12, filter: coverMode ? 'drop-shadow(0 2px 2px rgba(0,0,0,0.6))' : undefined }}>
+                        <div className="flex items-center justify-center" style={{ width: ribbonW, height: ribbonH, paddingBottom: 5, background: coverMode ? 'linear-gradient(90deg, #4E0F16 0%, #8A1F2C 22%, #B8404D 48%, #8A1F2C 74%, #4E0F16 100%)' : `linear-gradient(90deg, ${ribbonStatusColor} 0%, ${ribbonStatusColor}dd 100%)`, clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 5px), 0 100%)', boxShadow: '1px 1px 2px rgba(0,0,0,0.3)' }}>
+                          <span style={{ fontSize: 9, lineHeight: '10px', fontWeight: 700, color: coverMode ? '#F3DFAA' : '#FFFFFF', letterSpacing: '-0.2px', whiteSpace: 'nowrap', textShadow: '0 1px 1px rgba(0,0,0,0.35)', marginTop: 2 }}>{ribbonLabel}</span>
+                        </div>
                       </div>
-                      <div className="relative h-full flex items-center justify-between gap-1.5" style={{ paddingLeft: 18, paddingRight: 12 + ribbonW + 14 }}>
-                        {/* 왼쪽 - 캡션(행사 태그·비고) 위, 제목·등록자 아래로 한 덩어리 */}
-                        <div className="min-w-0 flex flex-col justify-center" style={{ gap: 2 }}>
-                          {(() => {
-                            const noteText = t.note_visible && t.note ? t.note : '';
-                            const captionParts = [t.event_tag, noteText].filter(Boolean);
-                            if (captionParts.length === 0) return null;
-                            return <span className="truncate" style={{ fontSize: 9, lineHeight: '11px', fontWeight: 600, color: '#6E5226', letterSpacing: '0.15px' }}>{captionParts.join(' · ')}</span>;
-                          })()}
-                          <div className="min-w-0 flex items-baseline gap-1">
-                            <span className="truncate min-w-0" style={{ fontFamily: BOOK_TITLE_FONT, fontSize: 13.5, fontWeight: 700, lineHeight: '17px', color: '#2A2015', letterSpacing: '0px', textShadow: '0 1px 0 rgba(255,255,255,0.3)' }}>{t.book_title}</span>
-                            {t.is_public === false && <Lock size={10} style={{ color: '#6B5B3E', alignSelf: 'center', flexShrink: 0 }} />}
-                            {(() => {
-                              const ownerText = t.owner_name_override != null ? t.owner_name_override : (owner ? dispName(owner.name, isLoggedIn) : '');
-                              if (!ownerText) return null;
-                              return <span className="text-[10px] truncate min-w-0" style={{ color: '#5E4A30', fontWeight: 500 }}>{ownerText}</span>;
-                            })()}
-                          </div>
+                      <div className="relative h-full flex items-center justify-between gap-1.5" style={{ paddingLeft: coverMode ? 42 : 18, paddingRight: coverMode ? 12 + ribbonW + 13 : 12 + ribbonW + 14 }}>
+                        {/* 표지 모양일 때 - 왼쪽 끝에 금박 문양 */}
+                        {coverMode && (
+                          <div className="absolute pointer-events-none" style={{ left: 12.5, top: '50%', transform: 'translateY(-50%)' }}><SpineFleuron gid={`gilt-${t.id}`} /></div>
+                        )}
+                        {/* 왼쪽 - 속지 모양: 캡션(토론회 태그·비고) 위, 제목·등록자 아래 / 표지 모양: 제목·등록자 위, 캡션은 아래에 금박 나뭇가지와 함께 */}
+                        <div className="min-w-0 flex flex-col justify-center" style={{ gap: coverMode ? 1 : 2 }}>
+                          {!coverMode && captionText && (
+                            <span className="truncate" style={{ fontSize: 9, lineHeight: '11px', fontWeight: 600, color: '#6E5226', letterSpacing: '0.15px' }}>{captionText}</span>
+                          )}
+                          {coverMode ? (
+                            <div className="min-w-0 flex items-center gap-1.5">
+                              {/* 제목 라벨 - 한 단 깊게 눌린 검은 가죽 라벨에 금박 테두리 두 줄 */}
+                              <span className="min-w-0 flex items-center" style={{ padding: '3px 7px', borderRadius: 2, background: 'linear-gradient(180deg, rgba(0,0,0,0.30), rgba(0,0,0,0.46))',
+                                boxShadow: 'inset 0 0 0 1px rgba(220,192,130,0.62), inset 0 0 0 2.5px rgba(0,0,0,0.35), inset 0 0 0 3px rgba(220,192,130,0.22), inset 0 2px 3px rgba(0,0,0,0.45), 0 1px 0 rgba(255,240,210,0.10)' }}>
+                                <span className="truncate min-w-0" style={{ fontFamily: BOOK_TITLE_FONT, fontSize: 13.5, fontWeight: 700, lineHeight: '17px', letterSpacing: '0.6px', color: SPINE_FOIL, backgroundImage: SPINE_GILT_GRADIENT, WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent', filter: 'drop-shadow(0 1px 0 rgba(0,0,0,0.7))' }}>{t.book_title}</span>
+                              </span>
+                              {t.is_public === false && <Lock size={10} style={{ color: SPINE_FOIL, opacity: 0.75, flexShrink: 0 }} />}
+                            </div>
+                          ) : (
+                            <div className="min-w-0 flex items-baseline gap-1">
+                              <span className="truncate min-w-0" style={{ fontFamily: BOOK_TITLE_FONT, fontSize: 13.5, fontWeight: 700, lineHeight: '17px', color: '#2A2015', letterSpacing: '0px', textShadow: '0 1px 0 rgba(255,255,255,0.3)' }}>{t.book_title}</span>
+                              {t.is_public === false && <Lock size={10} style={{ color: '#6B5B3E', alignSelf: 'center', flexShrink: 0 }} />}
+                              {rowOwnerText && (
+                                <span className="text-[10px] truncate min-w-0" style={{ color: '#5E4A30', fontWeight: 500 }}>{rowOwnerText}</span>
+                              )}
+                            </div>
+                          )}
+                          {/* 라벨 아래 - 등록자(책등 아래칸에 찍힌 저자 이름처럼) · 토론회 태그 + 금박 나뭇가지 */}
+                          {coverMode && (rowOwnerText || captionText) && (
+                            <div className="min-w-0 flex items-center gap-1" style={{ paddingLeft: 2 }}>
+                              <span className="truncate min-w-0" style={{ fontSize: 9.5, lineHeight: '12px', fontWeight: 600, color: SPINE_FOIL, opacity: 0.85, letterSpacing: '0.4px', textShadow: '0 1px 1px rgba(0,0,0,0.6)' }}>{[rowOwnerText, captionText].filter(Boolean).join(' · ')}</span>
+                              {t.event_tag && <span style={{ opacity: 0.8 }}><SpineSprig color={SPINE_FOIL} /></span>}
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
                           {/* 상태 글자는 리본 안에 흰색으로 표기 - 여기엔 읽는 중·잠시 멈춤일 때 쪽수만 표시 */}
@@ -3289,7 +3438,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
                             )}
                           </div>
                           {canReorder && towerSettingsOpen && (
-                            <div className="flex flex-col rounded-lg overflow-hidden" style={{ gap: 2, background: '#3A2C18' }}>
+                            <div className="flex flex-col rounded-lg overflow-hidden" style={{ gap: 2, background: '#3A2C18', border: coverMode ? '1px solid rgba(226,197,138,0.3)' : undefined }}>
                               <button onClick={(e) => { e.stopPropagation(); moveTowerItem(list, t, 'up'); }} disabled={!canMoveUp} className="flex items-center justify-center" style={{ width: 34, height: 19, opacity: canMoveUp ? 1 : 0.4 }} aria-label="위로 이동"><ChevronUp size={14} style={{ color: '#F2EAD6' }} /></button>
                               <button onClick={(e) => { e.stopPropagation(); moveTowerItem(list, t, 'down'); }} disabled={!canMoveDown} className="flex items-center justify-center" style={{ width: 34, height: 19, opacity: canMoveDown ? 1 : 0.4 }} aria-label="아래로 이동"><ChevronDown size={14} style={{ color: '#F2EAD6' }} /></button>
                             </div>
