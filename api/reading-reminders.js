@@ -28,7 +28,8 @@ export default async function handler(req, res) {
     const meetingToday = days.some((d) => ATTENDANCE_DAY_TYPES.includes(d.type));
 
     const out = [];
-    const add = (id, memberId, message) => out.push({ id, member_id: memberId, message, link_id: 'tab:qr', created_at: nowIso });
+    // silent: true → 휴대폰 푸시는 그대로 가지만, 알림함(앱 안 알림 목록)에는 안 쌓이고 안읽음 배지에도 안 잡힘 (매일 자동 발송이라 계속 쌓이는 걸 방지)
+    const add = (id, memberId, message) => out.push({ id, member_id: memberId, message, link_id: 'tab:qr', created_at: nowIso, silent: true });
 
     if (meetingToday) {
       // 1) 독서 시작 알림 - 회원별 설정 시각을 지금 시각이 지났으면 (같은 날 한 번만, id 고정으로 자동 중복방지)
