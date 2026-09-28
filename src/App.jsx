@@ -481,12 +481,17 @@ const triggerPushFlush = () => {
   clearTimeout(pushFlushTimer);
   pushFlushTimer = setTimeout(() => { fetch('/api/send-push', { method: 'POST' }).catch(() => {}); }, 800);
 };
+// 푸시 구독도 (기존 site_visits와 같은) 이 브라우저의 device_id 기준으로 저장함.
+// 아이폰(iOS Safari)은 가끔 endpoint가 자동으로 바뀌는데, endpoint 기준으로만 저장하면 그때마다 새 구독행이 쌓여서
+// 예전 것까지 계속 살아있는 것처럼 남아 한 알림이 여러 번(기기 수만큼) 발송되는 문제가 생김 → device_id로 "같은 기기"를 식별해서 덮어씀
 async function savePushSubscription(sub, memberId) {
   const j = sub.toJSON();
+  let deviceId = null;
+  try { deviceId = getDeviceId(); } catch (e) { /* localStorage 접근 불가한 환경 - endpoint로만 구분 */ }
   const { error } = await supabase.from('push_subscriptions').upsert({
-    endpoint: j.endpoint, member_id: memberId, p256dh: j.keys?.p256dh, auth: j.keys?.auth,
+    device_id: deviceId, endpoint: j.endpoint, member_id: memberId, p256dh: j.keys?.p256dh, auth: j.keys?.auth,
     user_agent: envUA().slice(0, 200), updated_at: new Date().toISOString(),
-  }, { onConflict: 'endpoint' });
+  }, { onConflict: deviceId ? 'device_id' : 'endpoint' });
   if (error) throw error;
 }
 async function currentPushSubscription() {
