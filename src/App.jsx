@@ -5,7 +5,7 @@ import {
   Crown, Shield, Wallet, User, Plus, Pencil, Trash2, Check, X, Lock, AlertCircle, Mail,
   Megaphone, QrCode, BarChart3, Users, Settings2, Settings, Download, Upload, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Briefcase, Coffee,
   LogIn, LogOut, Cake, PartyPopper, Archive, Paperclip, FileText, Eye, Pin, Gavel, BookOpen, Search,
-  Image as ImageIcon, Trophy, Plane, Library,
+  Image as ImageIcon, Trophy, Plane, Library, Smartphone,
 } from 'lucide-react';
 
 /* ---------- design tokens (dark) ---------- */
@@ -1677,6 +1677,11 @@ export default function App() {
       else if (!currentUserId) supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint).then(() => {}, () => {});
     }).catch(() => {});
   }, [currentUserId]);
+  // 로그인한 상태로 "홈 화면에 추가"된 앱(standalone)으로 접속하면, 간사가 설치 현황을 볼 수 있게 회원별 설치 여부를 기록
+  useEffect(() => {
+    if (!currentUserId || !isStandaloneApp()) return;
+    supabase.from('home_installs').upsert({ member_id: currentUserId, installed_at: new Date().toISOString() }, { onConflict: 'member_id' }).then(() => {}, () => {});
+  }, [currentUserId]);
 
   // 인원은 탭 목록에서 빼고, 상단 이름 버튼 눌렀을 때 뜨는 선택창(인원 보기/로그아웃)으로 이동
   // (되돌리고 싶으면 이 배열 마지막에 { key: 'users', label: '인원', icon: Users } 한 줄만 다시 추가하면 원래대로 복구됨)
@@ -2837,7 +2842,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
 
   // 북적북적 책 정보 수정 폼 - 책을 눌러 여는 상세보기 창 안에서 보여줌
   const renderTowerEditForm = (t) => (
-        <div className="rounded-2xl p-3 space-y-2" style={{ background: FORM_PANEL_BG, border: `1.5px solid ${FORM_PANEL_BORDER}`, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)' }}>
+        <div className="rounded-2xl p-3 space-y-3" style={{ background: FORM_PANEL_BG, border: `1.5px solid ${FORM_PANEL_BORDER}`, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)' }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-xs font-bold" style={{ color: MUTE }}><Pencil size={11} /> 책 정보 수정</div>
             <label className="flex items-center gap-1.5 text-[11px]" style={{ color: MUTE }}>
@@ -3340,7 +3345,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
           </div>
         </div>
         {showTowerAdd && (
-          <div className="rounded-2xl p-3 mb-3 space-y-2" style={{ background: FORM_PANEL_BG, border: `1.5px solid ${FORM_PANEL_BORDER}`, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)' }}>
+          <div className="rounded-2xl p-3 mb-3 space-y-3" style={{ background: FORM_PANEL_BG, border: `1.5px solid ${FORM_PANEL_BORDER}`, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)' }}>
             <div className="flex items-center justify-between mb-0.5">
               <div className="flex items-center gap-1.5 text-xs font-bold" style={{ color: MUTE }}><Pencil size={11} /> 새 책 추가</div>
               <label className="flex items-center gap-1.5 text-[11px]" style={{ color: MUTE }}>
@@ -5597,17 +5602,31 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
   const [editingRule, setEditingRule] = useState(false); const [ruleInput, setRuleInput] = useState(penaltyRule || '');
   const [expandedPenaltyId, setExpandedPenaltyId] = useState(null);
   const [visitDetailsOpen, setVisitDetailsOpen] = useState(false);
+  const [deviceStatusOpen, setDeviceStatusOpen] = useState(false);
 
   // 접속자수 조회 — 간사만 볼 수 있음, site_visits 테이블에서 별도 조회(전체 reload 사이클과 무관). 날짜를 골라서 조회 가능
   const isSecretary = currentMember?.role === '간사';
+  // 회원별 홈 화면 설치(home_installs) / 알림 설정(push_subscriptions) 현황 — 간사만 조회
+  const [installedIds, setInstalledIds] = useState(null); // Set<member_id>
+  const [alarmIds, setAlarmIds] = useState(null); // Set<member_id>
+  useEffect(() => {
+    if (!isSecretary) return;
+    supabase.from('home_installs').select('member_id')
+      .then(({ data }) => setInstalledIds(new Set((data || []).map((r) => r.member_id))))
+      .catch(() => setInstalledIds(null));
+    supabase.from('push_subscriptions').select('member_id')
+      .then(({ data }) => setAlarmIds(new Set((data || []).map((r) => r.member_id))))
+      .catch(() => setAlarmIds(null));
+  }, [isSecretary]);
   const [visitQueryDate, setVisitQueryDate] = useState(todayStr());
   const [visitQueryCount, setVisitQueryCount] = useState(null);
   const [visitQueryLog, setVisitQueryLog] = useState(null); // [{name, time}, ...] 해당 날짜에 로그인 상태로 접속한 기록(시각 포함), 최신순
   const [visitHistory, setVisitHistory] = useState(null); // [{date, count}, ...] 최근 7일
   useEffect(() => {
     if (!isSecretary) return;
-    const start = `${visitQueryDate}T00:00:00`;
-    const end = `${visitQueryDate}T23:59:59`;
+    // 저장은 UTC(new Date().toISOString())로 되지만 "오늘"의 기준은 한국 시간(KST, UTC+9)이어야 해서, 여기서 +09:00을 명시해 한국 기준 00시~24시로 걸러냄
+    const start = `${visitQueryDate}T00:00:00+09:00`;
+    const end = `${visitQueryDate}T23:59:59.999+09:00`;
     supabase.from('site_visits').select('member_id, visited_at').gte('visited_at', start).lte('visited_at', end)
       .then(({ data }) => {
         setVisitQueryCount(data?.length ?? 0);
@@ -5626,7 +5645,8 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
     supabase.from('site_visits').select('visited_at').gte('visited_at', since.toISOString())
       .then(({ data }) => {
         const counts = {};
-        (data || []).forEach((row) => { const d = row.visited_at.slice(0, 10); counts[d] = (counts[d] || 0) + 1; });
+        // visited_at은 UTC로 저장돼있어서 그냥 앞 10자리만 자르면 새벽 시간대 방문이 하루 전 날짜로 잘못 잡힘 → 한국시간(KST) 기준 날짜로 변환해서 집계
+        (data || []).forEach((row) => { const d = new Date(row.visited_at).toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }); counts[d] = (counts[d] || 0) + 1; });
         const days = Array.from({ length: 7 }).map((_, i) => {
           const d = new Date(since); d.setDate(d.getDate() + i);
           const key = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -5903,6 +5923,42 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
                 </div>
               )}
               <p className="text-[11px] mt-2" style={{ color: MUTE }}>앱이 열린 횟수예요 (같은 사람이 여러 번 들어오면 중복 집계될 수 있어요). 간사에게만 보여요.</p>
+            </>
+          )}
+        </Card>
+      )}
+      {isSecretary && (
+        <Card>
+          <button onClick={() => setDeviceStatusOpen((v) => !v)} className="flex items-center gap-1.5" aria-label={deviceStatusOpen ? '설치/알림 현황 접기' : '설치/알림 현황 펼치기'}>
+            <Smartphone size={18} style={{ color: MUTE }} />
+            <span className="text-sm font-semibold" style={{ color: INK }}>설치 · 알림 현황</span>
+            {deviceStatusOpen ? <ChevronUp size={14} style={{ color: MUTE }} /> : <ChevronDown size={14} style={{ color: MUTE }} />}
+          </button>
+          {deviceStatusOpen && (
+            <>
+              <div className="flex items-center justify-between mt-3 mb-2 text-[11px]" style={{ color: MUTE }}>
+                <span>회원</span>
+                <div className="flex items-center gap-4">
+                  <span>홈 화면 설치</span>
+                  <span>알림 설정</span>
+                </div>
+              </div>
+              <div className="space-y-1">
+                {members.filter((m) => m.role !== '탈퇴').map((m) => {
+                  const installed = installedIds?.has(m.id);
+                  const alarmOn = alarmIds?.has(m.id);
+                  return (
+                    <div key={m.id} className="flex items-center justify-between text-xs py-1" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
+                      <span style={{ color: NEUTRAL_TEXT }}>{m.name}</span>
+                      <div className="flex items-center gap-4">
+                        <span style={{ width: 60, textAlign: 'center' }}>{installedIds === null ? '—' : (installed ? <Check size={14} style={{ color: '#7FDCCF' }} /> : <X size={14} style={{ color: MUTE }} />)}</span>
+                        <span style={{ width: 60, textAlign: 'center' }}>{alarmIds === null ? '—' : (alarmOn ? <Check size={14} style={{ color: '#7FDCCF' }} /> : <X size={14} style={{ color: MUTE }} />)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] mt-2" style={{ color: MUTE }}>홈 화면 설치는 설치한 이후 접속부터 기록돼요(과거 설치는 소급 반영되지 않아요). 알림 설정은 이 기기에서 알림을 허용한 적이 있는지를 기준으로 해요. 간사에게만 보여요.</p>
             </>
           )}
         </Card>
