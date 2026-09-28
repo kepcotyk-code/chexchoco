@@ -25,6 +25,17 @@ self.addEventListener('push', (event) => {
   })());
 });
 
+// 앱 화면(App.jsx)에서 "안 읽은 알림 0개"가 되면 이걸 보내옴 - 아이콘 배지 계산과 별개로, 안드로이드 알림창에 아직 떠 있는 알림들도 같이 닫아줌
+// (일부 안드로이드 런처는 setAppBadge 숫자가 아니라 "안 닫힌 시스템 알림 개수"로 아이콘 배지를 표시해서, 알림창을 안 닫으면 앱 안에서 다 읽어도 배지가 안 사라짐)
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'clear-notifications') {
+    event.waitUntil((async () => {
+      const list = await self.registration.getNotifications();
+      list.forEach((n) => n.close());
+    })());
+  }
+});
+
 // 알림을 누르면: 열려 있는 책스초코 화면이 있으면 그 화면으로, 없으면 새로 열기
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
