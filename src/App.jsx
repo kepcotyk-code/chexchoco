@@ -2386,7 +2386,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
   const [editingCaption, setEditingCaption] = useState(false);
   const [captionInput, setCaptionInput] = useState('');
   const [photoPage, setPhotoPage] = useState(0);
-  const PHOTOS_PER_PAGE = 9;
+  const PHOTOS_PER_PAGE = 12;
   const isLoggedIn = !!currentMember;
   const sorted = [...photos].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
@@ -2919,18 +2919,17 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
     <div className="space-y-4">
       {section !== 'library' && (
       <Card>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: INK }}><ImageIcon size={16} style={{ color: '#7FDCCF' }} /> 사진</div>
-          {photos.length > 0 && (
-            <button onClick={() => setPhotoSearchOpen((v) => !v)} className="p-2 rounded-full" style={{ background: photoSearchOpen ? BTN_BG : NEUTRAL_BG, color: photoSearchOpen ? BTN_TEXT : NEUTRAL_TEXT }} aria-label="사진 검색"><Search size={14} /></button>
-          )}
-        </div>
-        <div>
-          <label className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 px-4 text-sm font-semibold cursor-pointer w-full"
+        <div className="flex items-center gap-2 mb-3">
+          <label className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 px-4 text-sm font-semibold cursor-pointer"
             style={{ background: currentMember ? NEUTRAL_BG : ROW_LINE, color: currentMember ? NEUTRAL_TEXT : MUTE, opacity: uploading ? 0.6 : 1 }}>
             <ImageIcon size={15} /> {uploading ? '업로드 중…' : '사진 추가'}
             <input type="file" accept="image/*" onChange={handleFile} className="hidden" disabled={!currentMember || uploading} />
           </label>
+          {photos.length > 0 && (
+            <button onClick={() => setPhotoSearchOpen((v) => !v)} className="p-2.5 rounded-full shrink-0" style={{ background: photoSearchOpen ? BTN_BG : NEUTRAL_BG, color: photoSearchOpen ? BTN_TEXT : NEUTRAL_TEXT }} aria-label="사진 검색"><Search size={14} /></button>
+          )}
+        </div>
+        <div>
           {!currentMember && <p className="text-xs mt-1.5" style={{ color: MUTE }}>상단에서 본인을 먼저 선택해야 업로드할 수 있어요.</p>}
           {error && <p className="text-xs mt-1.5" style={{ color: '#F0A87C' }}>{error}</p>}
         </div>
