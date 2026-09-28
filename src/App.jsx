@@ -1682,6 +1682,24 @@ export default function App() {
     if (!currentUserId || !isStandaloneApp()) return;
     supabase.from('home_installs').upsert({ member_id: currentUserId, installed_at: new Date().toISOString() }, { onConflict: 'member_id' }).then(() => {}, () => {});
   }, [currentUserId]);
+  // 홈 화면에 설치한 앱으로 로그인해서 접속했는데 알림을 아직 켜거나 끈 적이 없으면(기본 상태), 알림 설정이 기본으로 켜지도록 자동으로 알림을 요청/구독함
+  useEffect(() => {
+    if (!currentUserId || !isStandaloneApp() || !pushSupported()) return;
+    if (Notification.permission !== 'default') return; // 이미 허용했거나 차단했으면 그대로 둠(다시 묻지 않음)
+    if (localStorage.getItem('chex_push_auto_asked') === '1') return; // 이 기기에서 이미 한 번 자동으로 물어봤으면 매번 다시 묻지 않음
+    localStorage.setItem('chex_push_auto_asked', '1');
+    (async () => {
+      try {
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') return;
+        const reg = await navigator.serviceWorker.register('/sw.js');
+        await navigator.serviceWorker.ready;
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(VAPID_PUBLIC_KEY) });
+        await savePushSubscription(sub, currentUserId);
+      } catch (e) { /* 자동 알림 설정 실패 - 알림함 상단에서 수동으로 켤 수 있음 */ }
+    })();
+  }, [currentUserId]);
 
   // 인원은 탭 목록에서 빼고, 상단 이름 버튼 눌렀을 때 뜨는 선택창(인원 보기/로그아웃)으로 이동
   // (되돌리고 싶으면 이 배열 마지막에 { key: 'users', label: '인원', icon: Users } 한 줄만 다시 추가하면 원래대로 복구됨)
