@@ -1559,7 +1559,7 @@ export default function App() {
   };
 
   const currentMember = members.find((m) => m.id === currentUserId) || null;
-  const myNotifications = currentMember ? notifications.filter((n) => n.member_id === currentMember.id).sort((a, b) => b.created_at.localeCompare(a.created_at)) : [];
+  const myNotifications = currentMember ? notifications.filter((n) => n.member_id === currentMember.id && !n.silent).sort((a, b) => b.created_at.localeCompare(a.created_at)) : [];
   const openNotification = async (n) => {
     if (!n.read_at) await updateRow('notifications', 'id', n.id, { read_at: new Date().toISOString() });
     setShowNotifications(false);
@@ -1663,7 +1663,7 @@ export default function App() {
   // 안 읽은 알림 개수를 홈 화면 아이콘(바로가기)에 빨간 숫자 배지로 표시 (지원하는 기기에서만 - 안드로이드/최신 아이폰 홈 화면 설치 시)
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('setAppBadge' in navigator)) return;
-    const count = currentUserId ? notifications.filter((n) => n.member_id === currentUserId && !n.read_at).length : 0;
+    const count = currentUserId ? notifications.filter((n) => n.member_id === currentUserId && !n.read_at && !n.silent).length : 0;
     try {
       if (count > 0) navigator.setAppBadge(count).catch(() => {});
       else navigator.clearAppBadge().catch(() => {});
@@ -1854,9 +1854,9 @@ export default function App() {
               {currentMember && (
                 <button onClick={() => setShowNotifications(true)} aria-label="알림함" className="relative p-1.5 rounded-full" style={{ background: NEUTRAL_BG, color: MUTE }}>
                   <Mail size={15} />
-                  {notifications.filter((n) => n.member_id === currentMember.id && !n.read_at).length > 0 && (
+                  {notifications.filter((n) => n.member_id === currentMember.id && !n.read_at && !n.silent).length > 0 && (
                     <span className="absolute -top-0.5 -right-0.5 rounded-full flex items-center justify-center text-[9px] font-bold" style={{ width: 14, height: 14, background: '#E5484D', color: '#fff' }}>
-                      {notifications.filter((n) => n.member_id === currentMember.id && !n.read_at).length}
+                      {notifications.filter((n) => n.member_id === currentMember.id && !n.read_at && !n.silent).length}
                     </span>
                   )}
                 </button>
