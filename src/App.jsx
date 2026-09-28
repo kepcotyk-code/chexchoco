@@ -5625,15 +5625,42 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
   const isSecretary = currentMember?.role === '간사';
   // 회원별 홈 화면 설치(home_installs) / 알림 설정(push_subscriptions) 현황 — 간사만 조회
   const [installedIds, setInstalledIds] = useState(null); // Set<member_id>
-  const [alarmIds, setAlarmIds] = useState(null); // Set<member_id>
+  const [alarmIds, setAlarmIds] = useState(null); // Set<member_id> - 전체 알림(휴대폰 푸시)을 지금 켜둔 회원
   useEffect(() => {
     if (!isSecretary) return;
     supabase.from('home_installs').select('member_id')
       .then(({ data }) => setInstalledIds(new Set((data || []).map((r) => r.member_id))))
       .catch(() => setInstalledIds(null));
-    supabase.from('push_subscriptions').select('member_id')
-      .then(({ data }) => setAlarmIds(new Set((data || []).map((r) => r.member_id))))
-      .catch(() => setAlarmIds(null));
+    // 전체 알림(push_subscriptions)은 켜고 끌 때마다 바로 반영되게, 최초 조회 후 실시간 구독으로 계속 최신 상태 유지
+    const refreshAlarmIds = () => {
+      supabase.from('push_subscriptions').select('member_id')
+        .then(({ data }) => setAlarmIds(new Set((data || []).map((r) => r.member_id))))
+        .catch(() => setAlarmIds(null));
+    };
+    refreshAlarmIds();
+    const ch = supabase.channel('admin-push-subscriptions')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'push_subscriptions' }, refreshAlarmIds)
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [isSecretary]);
+  // 사전 알림(독서 시작 알림)은 회원 각자 자기 기기에서 켜고 끄니, 간사 화면을 열어둔 동안에도 실시간으로 반영되게 members 테이블을 직접 구독
+  const [readingAlarmMap, setReadingAlarmMap] = useState(null); // { [member_id]: boolean }
+  useEffect(() => {
+    if (!isSecretary) return;
+    const refreshReadingAlarm = () => {
+      supabase.from('members_public').select('id, notify_reading_start')
+        .then(({ data }) => {
+          const map = {};
+          (data || []).forEach((r) => { map[r.id] = r.notify_reading_start !== false; });
+          setReadingAlarmMap(map);
+        })
+        .catch(() => setReadingAlarmMap(null));
+    };
+    refreshReadingAlarm();
+    const ch = supabase.channel('admin-members-reading-alarm')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'members' }, refreshReadingAlarm)
+      .subscribe();
+    return () => supabase.removeChannel(ch);
   }, [isSecretary]);
   const [visitQueryDate, setVisitQueryDate] = useState(todayStr());
   const [visitQueryCount, setVisitQueryCount] = useState(null);
@@ -5955,27 +5982,30 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
             <>
               <div className="flex items-center justify-between mt-3 mb-2 text-[11px]" style={{ color: MUTE }}>
                 <span>회원</span>
-                <div className="flex items-center gap-4">
-                  <span>홈 화면 설치</span>
-                  <span>알림 설정</span>
+                <div className="flex items-center gap-3">
+                  <span style={{ width: 52, textAlign: 'center' }}>홈 화면<br />설치</span>
+                  <span style={{ width: 52, textAlign: 'center' }}>전체<br />알림</span>
+                  <span style={{ width: 52, textAlign: 'center' }}>사전<br />알림</span>
                 </div>
               </div>
               <div className="space-y-1">
                 {members.filter((m) => m.role !== '탈퇴').map((m) => {
                   const installed = installedIds?.has(m.id);
                   const alarmOn = alarmIds?.has(m.id);
+                  const readingOn = readingAlarmMap ? readingAlarmMap[m.id] !== false : null;
                   return (
                     <div key={m.id} className="flex items-center justify-between text-xs py-1" style={{ borderBottom: `1px solid ${ROW_LINE}` }}>
                       <span style={{ color: NEUTRAL_TEXT }}>{m.name}</span>
-                      <div className="flex items-center gap-4">
-                        <span style={{ width: 60, textAlign: 'center' }}>{installedIds === null ? '—' : (installed ? <Check size={14} style={{ color: '#7FDCCF' }} /> : <X size={14} style={{ color: MUTE }} />)}</span>
-                        <span style={{ width: 60, textAlign: 'center' }}>{alarmIds === null ? '—' : (alarmOn ? <Check size={14} style={{ color: '#7FDCCF' }} /> : <X size={14} style={{ color: MUTE }} />)}</span>
+                      <div className="flex items-center gap-3">
+                        <span style={{ width: 52, textAlign: 'center' }}>{installedIds === null ? '—' : (installed ? <Check size={14} style={{ color: '#7FDCCF' }} /> : <X size={14} style={{ color: MUTE }} />)}</span>
+                        <span style={{ width: 52, textAlign: 'center' }}>{alarmIds === null ? '—' : (alarmOn ? <Check size={14} style={{ color: '#7FDCCF' }} /> : <X size={14} style={{ color: MUTE }} />)}</span>
+                        <span style={{ width: 52, textAlign: 'center' }}>{readingAlarmMap === null ? '—' : (readingOn ? <Check size={14} style={{ color: '#7FDCCF' }} /> : <X size={14} style={{ color: MUTE }} />)}</span>
                       </div>
                     </div>
                   );
                 })}
               </div>
-              <p className="text-[11px] mt-2" style={{ color: MUTE }}>홈 화면 설치는 설치한 이후 접속부터 기록돼요(과거 설치는 소급 반영되지 않아요). 알림 설정은 이 기기에서 알림을 허용한 적이 있는지를 기준으로 해요. 간사에게만 보여요.</p>
+              <p className="text-[11px] mt-2 leading-snug" style={{ color: MUTE }}>홈 화면 설치는 설치한 이후 접속부터 기록되고(과거 설치는 소급 반영 안 됨), 전체 알림·사전 알림은 지금 이 순간의 실제 설정 상태를 실시간으로 보여줘요. 간사에게만 보여요.</p>
             </>
           )}
         </Card>
