@@ -1670,8 +1670,14 @@ export default function App() {
     if (typeof navigator === 'undefined' || !('setAppBadge' in navigator)) return;
     const count = currentUserId ? notifications.filter((n) => n.member_id === currentUserId && !n.read_at && !n.silent).length : 0;
     try {
-      if (count > 0) navigator.setAppBadge(count).catch(() => {});
-      else navigator.clearAppBadge().catch(() => {});
+      if (count > 0) {
+        navigator.setAppBadge(count).catch(() => {});
+      } else {
+        navigator.clearAppBadge().catch(() => {});
+        // 일부 안드로이드 런처는 setAppBadge 숫자가 아니라 "안 닫힌 시스템 알림 개수"로 앱 아이콘 배지를 표시해서,
+        // 다 읽었을 때 서비스워커한테도 알려서 알림창에 남아있는 알림들을 같이 닫아줌 (그래야 배지도 진짜로 사라짐)
+        navigator.serviceWorker?.getRegistration().then((reg) => reg?.active?.postMessage({ type: 'clear-notifications' })).catch(() => {});
+      }
     } catch (e) { /* 배지 기능을 지원하지 않는 기기 - 무시 */ }
   }, [notifications, currentUserId]);
   // 로그인하면 이 기기의 푸시 구독을 그 사람 것으로 연결, 로그아웃하면 연결 해제
