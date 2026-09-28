@@ -1,6 +1,7 @@
 // Vercel 서버 함수: /api/reading-reminders
 // 1) 독서 시작 알림: 회원이 각자 설정한 시각(기본 12:00)이 지나면 "📖 곧 독서 시간이에요" (켜둔 사람에게만, 모임 있는 날에만)
-// 2) 독서 종료 알림: 12:55 이후, 오늘 실제로 체크인한 사람에게만 "⏰ 오늘 독서 종료했어요, 수고하셨어요"
+// 2) 독서 종료 알림: 12:55 이후, 오늘 실제로 체크인한 사람에게만 "⏰ 독서 시간이 끝났어요, 여유로운 오후 되세요!"
+// 두 알림 모두 "홈 화면 설치(home_installs) + 전체 알림(push_subscriptions) 둘 다 돼있는 사람"에게만 보냄 - 설치 안 했거나 알림을 안 켠 사람은 어차피 못 받으니 애초에 대상에서 제외
 // daily-reminders.js와 달리 하루 한 번이 아니라 여러 번(예: 5분 간격) 호출되는 걸 전제로 함 - 매번 "지금이 그 시각을 지났는지"만
 // 확인하고, 알림 id를 고정해서(auto-read-start-회원-날짜 / auto-read-end-회원-날짜) 중복 생성은 항상 무시되므로 몇 번을 불러도 안전함.
 // ?dry=1 을 붙이면 보내지 않고 보낼 목록만 돌려줌
@@ -32,10 +33,16 @@ export default async function handler(req, res) {
     const add = (id, memberId, message) => out.push({ id, member_id: memberId, message, link_id: 'tab:qr', created_at: nowIso, silent: true });
 
     if (meetingToday) {
+      // 홈 화면 설치 + 전체 알림(푸시 구독) 둘 다 된 사람만 골라둠 (둘 중 하나라도 안 됐으면 애초에 알림을 받을 수 없으므로 대상에서 제외)
+      const installedIds = new Set(((await sb(env, 'GET', 'home_installs?select=member_id')) || []).map((r) => r.member_id));
+      const subscribedIds = new Set(((await sb(env, 'GET', 'push_subscriptions?select=member_id')) || []).map((r) => r.member_id));
+      const canReceive = (memberId) => installedIds.has(memberId) && subscribedIds.has(memberId);
+
       // 1) 독서 시작 알림 - 회원별 설정 시각을 지금 시각이 지났으면 (같은 날 한 번만, id 고정으로 자동 중복방지)
       const prefs = (await sb(env, 'GET', 'members_reading_prefs?select=id,notify_reading_start,notify_reading_start_time')) || [];
       for (const p of prefs) {
         if (p.notify_reading_start === false) continue;
+        if (!canReceive(p.id)) continue;
         const t = (p.notify_reading_start_time || '12:00').slice(0, 5);
         if (nowHM >= t) add(`auto-read-start-${p.id}-${today}`, p.id, '📖 곧 독서 시간이에요');
       }
@@ -46,8 +53,8 @@ export default async function handler(req, res) {
         if (sessions.length) {
           const ids = sessions.map((s) => `"${s.id}"`).join(',');
           const checkins = (await sb(env, 'GET', `checkins?session_id=in.(${ids})&check_in_at=not.is.null&select=member_id`)) || [];
-          const doneIds = [...new Set(checkins.map((c) => c.member_id))];
-          for (const mid of doneIds) add(`auto-read-end-${mid}-${today}`, mid, '⏰ 오늘 독서 종료했어요, 수고하셨어요');
+          const doneIds = [...new Set(checkins.map((c) => c.member_id))].filter(canReceive);
+          for (const mid of doneIds) add(`auto-read-end-${mid}-${today}`, mid, '⏰ 독서 시간이 끝났어요, 여유로운 오후 되세요!');
         }
       }
     }
