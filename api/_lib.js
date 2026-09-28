@@ -121,7 +121,8 @@ export async function flushPendingPushes(env, vapid) {
   // 회원 수만큼 쿼리를 따로 날리지 않고, 대상 회원들의 안 읽은 알림을 한 번에 받아와서 회원별로 세기만 함(쿼리 1번)
   const unreadCounts = {};
   memberIds.forEach((id) => { unreadCounts[id] = 0; }); // 안 읽은 알림이 하나도 없는 회원도 배지가 0으로 명확히 찍히도록 미리 채워둠
-  const unreadRows = await sb(env, 'GET', `notifications?member_id=in.(${memberIds.map((id) => `"${id}"`).join(',')})&read_at=is.null&select=member_id`);
+  // silent(알림함에 안 보이는 자동 알림)은 홈 화면 아이콘 배지 숫자에서도 제외 - 앱을 열어봐도 안 보이는 숫자가 배지에 잡히면 헷갈리므로
+  const unreadRows = await sb(env, 'GET', `notifications?member_id=in.(${memberIds.map((id) => `"${id}"`).join(',')})&read_at=is.null&silent=eq.false&select=member_id`);
   for (const row of (unreadRows || [])) unreadCounts[row.member_id] = (unreadCounts[row.member_id] || 0) + 1;
   let sent = 0;
   const goneEndpoints = [];
