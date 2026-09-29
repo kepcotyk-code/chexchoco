@@ -2709,6 +2709,21 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
   const [viewingTowerId, setViewingTowerId] = useState(null); // 책탑 항목 클릭 시 책 정보 조회용
   const [showAllTower, setShowAllTower] = useState(false); // 북적북적 목록 '더보기' 펼침 여부
   const [towerDisplayMode, setTowerDisplayMode] = useState('stack'); // 북적북적 보기 모드: 'stack'(책탑 쌓기, 기본) | 'poster'(표지 포스터, 3열 그리드)
+  // 로그인(계정 전환) 시에만 회원이 저장해둔 기본 모드를 불러옴 - 그 이후 수동으로 전환한 건 새로고침 전까지 유지됨
+  useEffect(() => {
+    if (!currentUserId) return;
+    const saved = members.find((m) => m.id === currentUserId)?.tower_default_mode;
+    setTowerDisplayMode(saved === 'poster' ? 'poster' : 'stack');
+  }, [currentUserId]);
+  const saveTowerDefaultMode = async (mode) => {
+    setTowerDisplayMode(mode);
+    if (!currentMember) return;
+    try {
+      await updateRow('members', 'id', currentMember.id, { tower_default_mode: mode });
+      await reload(['members']);
+      showToast?.(mode === 'poster' ? '표지모드를 기본으로 저장했어요.' : '책탑모드를 기본으로 저장했어요.', 'success');
+    } catch (e) { showToast?.('기본 모드를 저장하지 못했어요.', 'error'); }
+  };
   const [quickPageEditId, setQuickPageEditId] = useState(null); // 내 책장에서 쪽수만 빠르게 고칠 때, 지금 입력 중인 항목 id
   const [quickPageValue, setQuickPageValue] = useState('');
   // 출결에서 체크아웃하면, 내 책장으로 이동해서 지금 읽는 중인 책의 쪽수 입력칸이 바로 열리게 함
@@ -3375,9 +3390,18 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
           </div>
           <div className="flex items-center gap-1.5">
             {currentMember && <button onClick={() => { setShowTowerAdd((v) => !v); setEditingTowerId(null); }} className="text-xs rounded-full px-3 py-1.5 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{showTowerAdd ? '취소' : '+ 책 추가'}</button>}
-            <button onClick={() => setTowerSettingsOpen((v) => !v)} className="p-2 rounded-full" style={{ background: towerSettingsOpen ? BTN_BG : NEUTRAL_BG, color: towerSettingsOpen ? BTN_TEXT : NEUTRAL_TEXT }} aria-label="책탑 순서 변경"><Settings2 size={14} /></button>
+            <button onClick={() => setTowerSettingsOpen((v) => !v)} className="p-2 rounded-full" style={{ background: towerSettingsOpen ? BTN_BG : NEUTRAL_BG, color: towerSettingsOpen ? BTN_TEXT : NEUTRAL_TEXT }} aria-label="책탑 설정"><Settings2 size={14} /></button>
           </div>
         </div>
+        {towerSettingsOpen && currentMember && (
+          <div className="rounded-xl px-3 py-2.5 mb-3 flex items-center justify-between gap-2" style={{ background: NEUTRAL_BG }}>
+            <span className="text-[11px] font-semibold" style={{ color: MUTE }}>내 기본 보기 모드</span>
+            <div className="flex gap-1.5">
+              <button onClick={() => saveTowerDefaultMode('stack')} className="text-[11px] rounded-full px-2.5 py-1 font-semibold" style={{ background: (currentMember.tower_default_mode || 'stack') === 'stack' ? BTN_BG : CARD_BG, color: (currentMember.tower_default_mode || 'stack') === 'stack' ? BTN_TEXT : NEUTRAL_TEXT }}>책탑모드</button>
+              <button onClick={() => saveTowerDefaultMode('poster')} className="text-[11px] rounded-full px-2.5 py-1 font-semibold" style={{ background: currentMember.tower_default_mode === 'poster' ? BTN_BG : CARD_BG, color: currentMember.tower_default_mode === 'poster' ? BTN_TEXT : NEUTRAL_TEXT }}>표지모드</button>
+            </div>
+          </div>
+        )}
         {showTowerAdd && (
           <div className="rounded-2xl p-3 mb-3 space-y-3" style={{ background: FORM_PANEL_BG, border: `1.5px solid ${FORM_PANEL_BORDER}`, boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)' }}>
             <div className="flex items-center justify-between mb-0.5">
