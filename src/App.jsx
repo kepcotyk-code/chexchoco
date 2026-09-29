@@ -2711,10 +2711,9 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
   const [towerDisplayMode, setTowerDisplayMode] = useState('stack'); // 북적북적 보기 모드: 'stack'(책탑 쌓기, 기본) | 'poster'(표지 포스터, 3열 그리드)
   // 로그인(계정 전환) 시에만 회원이 저장해둔 기본 모드를 불러옴 - 그 이후 수동으로 전환한 건 새로고침 전까지 유지됨
   useEffect(() => {
-    if (!currentUserId) return;
-    const saved = members.find((m) => m.id === currentUserId)?.tower_default_mode;
-    setTowerDisplayMode(saved === 'poster' ? 'poster' : 'stack');
-  }, [currentUserId]);
+    if (!currentMember) return;
+    setTowerDisplayMode(currentMember.tower_default_mode === 'poster' ? 'poster' : 'stack');
+  }, [currentMember?.id]);
   const saveTowerDefaultMode = async (mode) => {
     setTowerDisplayMode(mode);
     if (!currentMember) return;
