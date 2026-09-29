@@ -57,7 +57,7 @@ const READ_STATUSES = [
 ];
 const readStatusMeta = (key) => READ_STATUSES.find((s) => s.key === key) || READ_STATUSES[1];
 const SHOW_PAGE_IN_GROUP = false;
-const TOWER_PREVIEW_COUNT = 10; // 북적북적 목록에서 처음에 보여줄 책 수 (나머지는 '더보기')
+const TOWER_PREVIEW_COUNT = 9; // 북적북적 목록에서 처음에 보여줄 책 수 (나머지는 '더보기')
 const PAGE_INSET = 5; // 책장: 표지보다 페이지 단면이 좌우로 들어간 깊이(px)
 const BOOK_TITLE_FONT = "'Gowun Batang', 'Nanum Myeongjo', serif"; // 책 제목용 한글 세리프 - 붓결이 살아있는 서체
 // 책 제목용 한글 명조 폰트 1회 로드
@@ -2708,6 +2708,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
   const [towerCoverUploading, setTowerCoverUploading] = useState(false);
   const [viewingTowerId, setViewingTowerId] = useState(null); // 책탑 항목 클릭 시 책 정보 조회용
   const [showAllTower, setShowAllTower] = useState(false); // 북적북적 목록 '더보기' 펼침 여부
+  const [towerDisplayMode, setTowerDisplayMode] = useState('stack'); // 북적북적 보기 모드: 'stack'(책탑 쌓기, 기본) | 'poster'(표지 포스터, 3열 그리드)
   const [quickPageEditId, setQuickPageEditId] = useState(null); // 내 책장에서 쪽수만 빠르게 고칠 때, 지금 입력 중인 항목 id
   const [quickPageValue, setQuickPageValue] = useState('');
   // 출결에서 체크아웃하면, 내 책장으로 이동해서 지금 읽는 중인 책의 쪽수 입력칸이 바로 열리게 함
@@ -3366,7 +3367,12 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
       {/* ---------- 책탑 ---------- */}
       <Card>
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: INK }}>📚 북적북적</div>
+          <div className="flex items-center gap-1.5">
+            <span className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: INK }}>📚 북적북적</span>
+            <button onClick={() => setTowerDisplayMode((v) => (v === 'stack' ? 'poster' : 'stack'))} className="text-[11px] rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>
+              {towerDisplayMode === 'stack' ? '표지모드' : '책탑모드'}
+            </button>
+          </div>
           <div className="flex items-center gap-1.5">
             {currentMember && <button onClick={() => { setShowTowerAdd((v) => !v); setEditingTowerId(null); }} className="text-xs rounded-full px-3 py-1.5 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{showTowerAdd ? '취소' : '+ 책 추가'}</button>}
             <button onClick={() => setTowerSettingsOpen((v) => !v)} className="p-2 rounded-full" style={{ background: towerSettingsOpen ? BTN_BG : NEUTRAL_BG, color: towerSettingsOpen ? BTN_TEXT : NEUTRAL_TEXT }} aria-label="책탑 순서 변경"><Settings2 size={14} /></button>
@@ -3489,8 +3495,35 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
           // 최근 10권만 먼저 보여주고, 나머지(오래된 책)는 '더보기'로 펼침 - 목록 안에 스크롤이 겹치지 않게 함
           const hiddenCount = showAllTower ? 0 : Math.max(0, list.length - TOWER_PREVIEW_COUNT);
           const visibleList = list.slice(hiddenCount);
+          const posterList = [...visibleList].reverse(); // 책탑과 똑같은 순서(최신이 맨 앞)로, 왼→오 위→아래 배치
           return (
             <>
+            {towerDisplayMode === 'poster' ? (
+              <div className="grid grid-cols-3 gap-2.5">
+                {posterList.map((t) => {
+                  const owner = towerView === 'group' ? members.find((m) => m.id === t.member_id) : null;
+                  const statusKey = t.read_status || (t.finished_date ? 'done' : 'reading');
+                  const statusMeta = readStatusMeta(statusKey);
+                  return (
+                    <button key={t.id} onClick={() => setViewingTowerId(t.id)} className="text-left" style={{ display: 'block' }}>
+                      <div className="relative rounded-lg overflow-hidden shadow-md" style={{ aspectRatio: '278 / 408', background: t.color || NEUTRAL_BG }}>
+                        {t.cover_url ? (
+                          <img src={t.cover_url} alt="" className="w-full h-full" style={{ objectFit: 'cover' }} />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center text-center px-1.5">
+                            <BookOpen size={22} style={{ color: 'rgba(255,255,255,0.55)' }} />
+                            <span className="mt-1 text-[10px] font-semibold leading-tight" style={{ color: 'rgba(255,255,255,0.85)', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{t.book_title}</span>
+                          </div>
+                        )}
+                        <span className="absolute top-1 left-1 text-[9px] rounded-full px-1.5 py-0.5 font-semibold" style={{ background: statusMeta.color, color: '#F2EEE3' }}>{statusMeta.label}</span>
+                      </div>
+                      <div className="mt-1 text-[11px] font-semibold truncate" style={{ color: INK }}>{t.book_title}</div>
+                      {towerView === 'group' && owner && <div className="text-[10px] truncate" style={{ color: MUTE }}>{dispName(owner.name, isLoggedIn)}</div>}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
             <div className="flex flex-col-reverse gap-1.5 pr-1">
               {visibleList.map((t, vIdx) => {
                 const idx = hiddenCount + vIdx; // 전체 목록 기준 위치 (순서 이동 계산용)
@@ -3648,9 +3681,10 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
                 );
               })}
             </div>
+            )}
             {list.length > TOWER_PREVIEW_COUNT && (
               <button onClick={() => setShowAllTower((v) => !v)} className="w-full mt-2 rounded-xl py-2 text-xs font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>
-                {showAllTower ? '최근 10권만 보기' : `이전 책 ${hiddenCount}권 더보기`}
+                {showAllTower ? `최근 ${TOWER_PREVIEW_COUNT}권만 보기` : `이전 책 ${hiddenCount}권 더보기`}
               </button>
             )}
             </>
