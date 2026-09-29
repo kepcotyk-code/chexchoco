@@ -5,7 +5,7 @@ import {
   Crown, Shield, Wallet, User, Plus, Pencil, Trash2, Check, X, Lock, AlertCircle, Mail,
   Megaphone, QrCode, BarChart3, Users, Settings2, Settings, Download, Upload, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Briefcase, Coffee,
   LogIn, LogOut, Cake, PartyPopper, Archive, Paperclip, FileText, Eye, Pin, Gavel, BookOpen, Search,
-  Image as ImageIcon, Trophy, Plane, Library, Smartphone,
+  Image as ImageIcon, Trophy, Plane, Library, Smartphone, Star,
 } from 'lucide-react';
 
 /* ---------- design tokens (dark) ---------- */
@@ -2699,6 +2699,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
   const [editingTowerColor, setEditingTowerColor] = useState(COVER_EDGE_COLORS[0]); // 수정 시 표지 색상
   const [towerStatusInput, setTowerStatusInput] = useState('reading'); // 완독/읽는 중/잠시 멈춤/읽을 예정
   const [editingTowerStatus, setEditingTowerStatus] = useState('reading');
+  const [editingTowerRating, setEditingTowerRating] = useState(0); // 내 책 별점 (0~5, 수정창에서 설정)
   const [towerAuthorInput, setTowerAuthorInput] = useState(''); // 도서 검색으로 채워지는 저자
   const [towerPublisherInput, setTowerPublisherInput] = useState(''); // 도서 검색으로 채워지는 출판사
   const [towerCoverUrlInput, setTowerCoverUrlInput] = useState(''); // 도서 검색/수기 등록으로 채워지는 표지 이미지
@@ -2751,6 +2752,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
   const towerDateRangeInvalid = !!(towerStartInput && towerFinishedInput && towerFinishedInput < towerStartInput);
   const [towerSaving, setTowerSaving] = useState(false); // 추가/저장 버튼이 눌리는 동안 로딩 표시 - 느린 네트워크에서 중복 클릭 방지
   const [borrowRequestingIds, setBorrowRequestingIds] = useState(() => new Set()); // 대여요청 버튼 연타/중복 클릭으로 같은 책이 두 번 등록되는 걸 막기 위한 진행 중 표시
+  const [lendOfferingIds, setLendOfferingIds] = useState(() => new Set()); // 빌려주기 버튼 연타/중복 클릭 방지용 진행 중 표시
   const addManualTowerEntry = async () => {
     if (!currentMember || !towerTitleInput.trim() || towerSaving) return;
     if (towerDateRangeInvalid) { showToast?.('독서 완료일이 독서 시작일보다 빠를 수 없어요. 날짜를 확인해주세요.', 'error'); return; }
@@ -2797,6 +2799,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
           note: editingTowerNote.trim() || null,
           note_visible: editingTowerNoteVisible,
           read_status: editingTowerStatus,
+          rating: editingTowerRating || null,
         })
         .eq('id', entry.id)
         .select();
@@ -2822,6 +2825,7 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
     setEditingTowerNote(entry.note || '');
     setEditingTowerNoteVisible(!!entry.note_visible);
     setEditingTowerStatus(entry.read_status || (entry.finished_date ? 'done' : 'reading'));
+    setEditingTowerRating(entry.rating || 0);
     setEditingTowerOwnerMemberId(''); // 비워두면 현재 등록자 그대로 유지 - 명단에서 새로 고를 때만 옮겨감
     setEditingTowerOffset(entry.shelf_offset != null ? entry.shelf_offset : null);
   };
@@ -2858,6 +2862,29 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
     } finally {
       setBorrowRequestingIds((prev) => { const next = new Set(prev); next.delete(entry.id); return next; });
     }
+  };
+  // 내 책장의 완독한 책을 도서 공유함 "빌려줄까요?"(kind:'offer') 목록에 바로 올림 - posted_by가 책 주인(나)이 됨
+  const offerLendFromTower = async (entry) => {
+    if (!currentMember || lendOfferingIds.has(entry.id)) return; // 연타 등 중복 등록 방지
+    if (activeShareForTowerBook(entry)) return; // 이미 진행 중인 공유 건이 있으면(화면이 아직 안 바뀌었어도) 한 번 더 막음
+    setLendOfferingIds((prev) => new Set(prev).add(entry.id));
+    try {
+      await insertRow('book_shares', {
+        id: uid('bs'), kind: 'offer', posted_by: currentMember.id,
+        book_title: entry.book_title, book_author: entry.book_author || null, book_publisher: entry.book_publisher || null,
+        cover_url: entry.cover_url || null, status: 'open', created_at: new Date().toISOString(),
+      });
+      await reload(['book_shares']);
+      showToast?.('도서 공유함 "빌려줄까요?" 목록에 올렸어요.', 'success');
+    } finally {
+      setLendOfferingIds((prev) => { const next = new Set(prev); next.delete(entry.id); return next; });
+    }
+  };
+  // 내 책 별점 - 정보 속성창에서 별을 누르면 바로 저장 (같은 별을 다시 누르면 취소)
+  const rateTowerEntry = async (entry, rating) => {
+    const next = entry.rating === rating ? null : rating;
+    await updateRow('book_tower_entries', 'id', entry.id, { rating: next });
+    await reload(['book_tower_entries']);
   };
   const towerSortKey = (t) => t.start_date || t.finished_date || t.created_at.slice(0, 10); // 기본 정렬 기준은 독서 시작일 (수동으로 순서를 바꾼 책은 sort_order가 우선 적용됨)
   // 순서를 손으로 바꾼 적이 있으면 sort_order를, 없으면 날짜를 기준으로 삼음 (둘 다 밀리초 단위 숫자라 섞여도 자연스럽게 정렬됨)
@@ -2927,6 +2954,17 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
                   {s.label}
                 </button>
               ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] mb-1" style={{ color: MUTE }}>별점</div>
+            <div className="flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button key={n} type="button" onClick={() => setEditingTowerRating((v) => (v === n ? 0 : n))} aria-label={`별점 ${n}점`} className="p-0.5">
+                  <Star size={20} fill={editingTowerRating >= n ? '#EFC94C' : 'none'} style={{ color: '#EFC94C' }} />
+                </button>
+              ))}
+              {editingTowerRating > 0 && <button type="button" onClick={() => setEditingTowerRating(0)} className="text-[11px] underline ml-1" style={{ color: MUTE }}>취소</button>}
             </div>
           </div>
           {isSecretary && (
@@ -3756,11 +3794,25 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
                       </div>
                     </div>
                   )}
-                  {/* 도서명(왼쪽) · 완독한 남의 책이면 오른쪽에 대여 요청 버튼 - 저자·출판사는 아래 속성 목록에 각각 한 줄로 표시(길어도 줄바꿈되지 않도록 말줄임 처리) */}
+                  {/* 도서명(왼쪽) · 완독한 남의 책이면 오른쪽에 대여 요청 버튼, 완독한 내 책이면 빌려주기 버튼 - 저자·출판사는 아래 속성 목록에 각각 한 줄로 표시(길어도 줄바꿈되지 않도록 말줄임 처리) */}
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-base font-semibold min-w-0 truncate" style={{ color: INK }}>{t.book_title}</div>
                     {(() => {
-                      if (!currentMember || isOwnEntry || statusKey !== 'done' || t.is_public === false) return null;
+                      if (!currentMember || statusKey !== 'done') return null;
+                      if (isOwnEntry) {
+                        const existingShare = activeShareForTowerBook(t);
+                        if (existingShare) {
+                          const label = existingShare.status === 'matched' ? '대여중' : (existingShare.kind === 'offer' ? '빌려줄까요? 등록됨' : '대여요청 받음');
+                          return <span className="text-[11px] rounded-full px-2.5 py-1 font-semibold shrink-0" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>{label}</span>;
+                        }
+                        const offering = lendOfferingIds.has(t.id);
+                        return (
+                          <button onClick={() => offerLendFromTower(t)} disabled={offering} className="text-[11px] rounded-full px-2.5 py-1.5 font-semibold shrink-0" style={{ background: NEUTRAL_BG, color: SHARE_OFFER_COLOR, opacity: offering ? 0.5 : 1 }}>
+                            {offering ? '등록 중…' : '빌려주기'}
+                          </button>
+                        );
+                      }
+                      if (t.is_public === false) return null;
                       const existingShare = activeShareForTowerBook(t);
                       if (existingShare) {
                         const mine = shareBorrowerId(existingShare) === currentMember.id;
@@ -3775,6 +3827,20 @@ function GalleryScreen({ section = 'both', photos, currentMember, canManage, rel
                       );
                     })()}
                   </div>
+                  {/* 별점 - 내 책이면 눌러서 바로 매길 수 있고, 남의 책은 매겨진 별점만 표시 */}
+                  {(isOwnEntry || t.rating > 0) && (
+                    <div className="flex items-center gap-1 mt-1.5">
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        isOwnEntry ? (
+                          <button key={n} onClick={() => rateTowerEntry(t, n)} aria-label={`별점 ${n}점`} className="p-0.5 -m-0.5">
+                            <Star size={16} fill={(t.rating || 0) >= n ? '#EFC94C' : 'none'} style={{ color: '#EFC94C' }} />
+                          </button>
+                        ) : (
+                          <Star key={n} size={14} fill={(t.rating || 0) >= n ? '#EFC94C' : 'none'} style={{ color: '#EFC94C' }} />
+                        )
+                      ))}
+                    </div>
+                  )}
                   <div className="space-y-1.5 text-xs mt-3" style={{ color: NEUTRAL_TEXT }}>
                     {t.book_author && <div className="flex justify-between gap-3 min-w-0"><span className="shrink-0" style={{ color: MUTE }}>저자</span><span className="text-right truncate min-w-0">{t.book_author}</span></div>}
                     {t.book_publisher && <div className="flex justify-between gap-3 min-w-0"><span className="shrink-0" style={{ color: MUTE }}>출판사</span><span className="text-right truncate min-w-0">{t.book_publisher}</span></div>}
