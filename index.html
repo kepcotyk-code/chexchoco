@@ -32,7 +32,10 @@
     <meta name="apple-mobile-web-app-title" content="책스초코" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- 글꼴 파일은 화면을 막지 않고 뒤에서 따로 불러옴 - 예전엔 이걸 다 받을 때까지 첫 화면(아이콘)이 안 그려져서 빈 화면이 더 오래 보였음 -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" media="print" onload="this.media='all'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" /></noscript>
   </head>
   <body>
     <!-- 앱을 켜자마자(JS가 뜨기 전)부터 보이는 로딩 화면. 아이콘을 파일로 따로 받아오지 않고 이 문서 안에 직접 넣어둬서
