@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>책스초코</title>
+    <!-- 홈 화면 설치(앱처럼 쓰기)용 아이콘·메타 - 원래 App.jsx에서 JS로 뒤늦게 추가했는데,
+         아이폰은 "홈 화면에 추가"할 때나 앱을 실행할 때 이 태그들을 처음부터(JS 실행 전에) 읽어야
+         로딩 중에도 아이콘이 바로 보임 - 그래서 index.html에 처음부터 넣어둠 (App.jsx의 JS 추가 코드는
+         혹시 몰라 그대로 둬도 안전함: 이미 있으면 중복으로 안 넣게 되어있음) -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/png" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preload" as="image" href="/icon-512.png" />
+    <style>html,body{background:#141310;margin:0}</style>
+    <meta name="theme-color" content="#141310" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="책스초코" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <!-- 앱 실행 직후(JS가 뜨기 전)부터 보이는 로딩 화면 - 아이폰은 안드로이드처럼 아이콘 스플래시를 자동으로 안 띄워줘서 직접 넣어둠.
+         React가 시작되면 #root 내용이 자동으로 교체됨 (App.jsx의 로딩 화면도 같은 모양) -->
+    <div id="root">
+      <div style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#141310;">
+        <img src="/icon-512.png" alt="" width="112" height="112" style="width:112px;height:112px;border-radius:26px;" />
+        <div style="color:#EDE6D6;font-size:15px;font-weight:600;letter-spacing:0.02em;font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;">책스초코</div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
