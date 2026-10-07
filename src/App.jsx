@@ -219,6 +219,9 @@ const dayTypeMeta = (key) => DAY_TYPES.find((d) => d.key === key) || null;
 const ATTENDANCE_DAY_TYPES = ['독서일', '토론회']; // 출석일자로 산정되는 유형
 const WEEKEND_BG = '#302C22'; // 금·토·일 기본(미지정) 배경 — 평일 미지정보다 살짝 밝은 톤
 const WEEKEND_TEXT = '#9A9382';
+const PREV_MONTH_HOLIDAY_COLOR = '#8C5A2B'; // 전월 휴무일 - 전월 출석(호박색)과 구분되는 짙은 갈색
+const PREV_MONTH_HATCH = 'repeating-linear-gradient(45deg, #D9A93A 0px, #D9A93A 2px, #7A5A14 2px, #7A5A14 3px)'; // 전월 출석 - 호박색 + 빗금
+const PREV_MONTH_DOT_COLOR = '#D9A93A'; // 이번 달 출석률 도트에서 "전월에서 끌어온 날짜(참고용, 집계 제외)"를 표시할 때만 쓰는 호박색 - 출석(파랑)·휴무일(분홍)과 뚜렷이 구분됨
 
 function Stamp({ role, size = 38, tilt = -5 }) {
   const meta = roleMeta(role);
@@ -439,6 +442,8 @@ const computeWeeklyPenalties = (sessions, checkins, calendarDays, members, absen
     .map(([wk, dateSet]) => {
       const datesSorted = [...dateSet].sort();
       const results = members.map((m) => {
+        // 신규 가입 회원은 가입한 주(가입일이 속한 주)까지는 벌칙에서 제외, 그 다음 주부터 카운트
+        if (m.joined_at && wk <= weekKeyOf(String(m.joined_at).slice(0, 10))) return { member: m, missedAll: false };
         // 출장/휴가/업무 사유가 있는 날만 그 멤버에 한해 판단 대상에서 제외 (개인일정은 제외 안 됨)
         const relevant = datesSorted.filter((ds) => !absenceExcuses.some((e) => e.date === ds && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason)));
         if (relevant.length === 0) return { member: m, missedAll: false }; // 4일 다 사유 있으면 벌칙 대상 아님
@@ -4299,26 +4304,32 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     const range = month1 !== month2 ? `${month1}.${day1}-${month2}.${day2}` : (day1 === day2 ? `${month1}.${day1}` : `${month1}.${day1}-${day2}`);
     return { main: `${wi + 1}주차`, sub: `(${range})` };
   });
-  // "이번 달" 뷰는 벌칙과 동일하게 주 단위 기준으로 통일 — 월 경계에 걸쳐 끌어온 날짜(예: 8/31)도 포함해서 계산
-  const totalDays = monthDayList.filter((d) => d.session).length;
+  // "이번 달" 출석률은 순수 달력 기준 월 단위로 집계 — 첫 주를 채우려고 화면에 끌어온 전월 날짜(prevMonthExtra)는
+  // 도트 행에는 계속 보여주되(연속성을 위한 참고용), 출석률 숫자(denom/present)에는 포함하지 않음.
+  // 벌칙(computeWeeklyPenalties)은 이 값과 무관하게 항상 별도로 주 단위로만 계산됨.
+  const totalDays = coreDayList.filter((d) => d.session).length;
   // 30분 이상: 정상 출석(1일), 15분 이상 30분 미만: 절반 인정(0.5일), 출장/휴가 사유: 별도 표시, 그 외: 결석
   const attendanceStatus = (dur) => (dur !== null && dur >= 30 ? 'full' : dur !== null && dur >= 15 ? 'half' : 'none');
   const rowsUnranked = members.map((m) => {
+    const joinedDate = m.joined_at ? String(m.joined_at).slice(0, 10) : null;
     const flags = monthDayList.map(({ date, session }) => {
       if (!session) return 'holiday'; // 휴무일
+      if (joinedDate && date < joinedDate) return 'prejoin'; // 가입 전 날짜 - 출석률 집계에서 제외 (가입일 당일부터 집계)
       const excuse = absenceExcuses.find((e) => e.date === date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason));
       if (excuse) return excuse.reason === '휴가' ? 'vacation' : 'trip'; // 출장/휴가만 구분 (업무는 더 이상 제외 대상이 아니라 여기 걸리지 않음)
       const c = checkins.find((ck) => ck.session_id === session.id && ck.member_id === m.id);
       const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
       return attendanceStatus(dur);
     });
-    let present = 0; let excusedCount = 0;
-    flags.forEach((f) => {
-      if (f === 'full') present += 1;
+    let present = 0; let excusedCount = 0; let prejoinCount = 0;
+    flags.forEach((f, i) => {
+      if (!monthDayList[i].inCurrentMonth) return; // 전월에서 끌어온 날짜는 표시만 하고 집계에서 제외
+      if (f === 'prejoin') prejoinCount += 1;
+      else if (f === 'full') present += 1;
       else if (f === 'half') present += 0.5;
       else if (f === 'trip' || f === 'vacation') excusedCount += 1;
     });
-    const denom = totalDays - excusedCount;
+    const denom = totalDays - excusedCount - prejoinCount;
     return { ...m, present, flags, excusedCount, denom, rate: denom > 0 ? Math.round((present / denom) * 100) : 0 };
   }).sort((a, b) => b.rate - a.rate);
   let lastRate = null; let lastRank = 0;
@@ -4693,10 +4704,12 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><svg width="11.7" height="11.7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>출장</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: INK }} />휴가</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: PREV_MONTH_HATCH }} />전월(참고, 집계 제외)</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-flex items-center justify-center" style={{ width: 8, height: 8 }}><span className="rounded-full" style={{ width: 3, height: 3, background: LINE }} /></span>가입 전(집계 제외)</span>
             </div>
             {/* 주차 수가 많은 달에도 화면 폭에 맞춰 칸 너비가 균등하게 줄어들 뿐, 가로 스크롤이나 두 줄 줄바꿈이 생기지 않도록 그리드로 구성 */}
             {weekChunkRanges.length > 0 && (
-              <div className="grid mb-1.5" style={{ paddingLeft: 34, gridTemplateColumns: `repeat(${weekChunkRanges.length}, minmax(0, 1fr))`, columnGap: 3 }}>
+              <div className="grid mb-1.5" style={{ paddingLeft: 34, gridTemplateColumns: `repeat(${weekChunkRanges.length}, minmax(0, 76px))`, columnGap: 3, justifyContent: 'start' /* 주차가 적을 땐 왼쪽부터 붙여서, 많아지면 칸이 균등하게 줄어들어 한 화면에 다 들어옴 */ }}>
                 {weekChunkRanges.map(([start, end], wi) => (
                   <div key={wi} className="min-w-0 flex flex-col items-center" style={{ borderRight: wi < weekChunkRanges.length - 1 ? `1px solid ${ROW_LINE}` : 'none' }}>
                     <span className="truncate max-w-full" style={{ fontSize: 'clamp(8px, 2.6vw, 10px)', lineHeight: '11px', color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{weekLabels[wi].main}</span>
@@ -4725,25 +4738,34 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       <span className="text-xs" style={{ color: MUTE, fontFamily: "'IBM Plex Mono', monospace" }}>{r.present}/{r.denom} · {r.rate}%</span>
                     </div>
                   </div>
-                  <div className="grid" style={{ paddingLeft: 34, gridTemplateColumns: `repeat(${weekChunkRanges.length}, minmax(0, 1fr))`, columnGap: 3 }}>
+                  <div className="grid" style={{ paddingLeft: 34, gridTemplateColumns: `repeat(${weekChunkRanges.length}, minmax(0, 76px))`, columnGap: 3, justifyContent: 'start' /* 주차가 적을 땐 왼쪽부터 붙여서, 많아지면 칸이 균등하게 줄어들어 한 화면에 다 들어옴 */ }}>
                     {weekChunkRanges.map(([start, end], wi) => (
                       <div key={wi} className="min-w-0 flex items-center justify-center overflow-hidden" style={{ gap: 'clamp(1px, 0.6vw, 3px)', borderRight: wi < weekChunkRanges.length - 1 ? `1px solid ${ROW_LINE}` : 'none' }}>
                           {r.flags.slice(start, end).map((status, i) => {
                             const fromPrevMonth = !monthDayList[start + i].inCurrentMonth;
+                            // 전월에서 끌어온 날짜(참고용, 출석률 집계 제외)는 상태와 무관하게 호박색 계열로 색을 완전히 다르게 표기
                             if (status === 'trip') {
-                              return <svg key={i} width="11.7" height="11.7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C', opacity: fromPrevMonth ? 0.6 : 1 }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>;
+                              return <svg key={i} width="11.7" height="11.7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: fromPrevMonth ? PREV_MONTH_DOT_COLOR : '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>;
                             }
                             if (status === 'vacation') {
-                              return <Plane key={i} size={9} style={{ color: INK, opacity: fromPrevMonth ? 0.6 : 1 }} />;
+                              return <Plane key={i} size={9} style={{ color: fromPrevMonth ? PREV_MONTH_DOT_COLOR : INK }} />;
+                            }
+                            if (status === 'prejoin') {
+                              // 가입 전 날짜: 집계 제외라 아주 작은 회색 점으로만 자리 표시
+                              return <span key={i} className="shrink-0 flex items-center justify-center" style={{ width: 'clamp(6px, 2vw, 9px)', height: 'clamp(6px, 2vw, 9px)' }} title="가입 전 (출석률 집계 제외)"><span className="rounded-full" style={{ width: 3, height: 3, background: LINE }} /></span>;
+                            }
+                            // 전월: 출석=호박색+빗금, 휴무일=짙은 갈색, 결석=호박색 테두리만 / 이번 달: 출석=파랑, 휴무일=분홍, 결석=회색 테두리
+                            const dotColor = status === 'full' ? (fromPrevMonth ? PREV_MONTH_DOT_COLOR : '#7FA8D9')
+                              : status === 'holiday' ? (fromPrevMonth ? PREV_MONTH_HOLIDAY_COLOR : '#E0958C') : null;
+                            if (fromPrevMonth && status === 'full') {
+                              return <span key={i} className="relative rounded-full shrink-0" style={{ width: 'clamp(6px, 2vw, 9px)', height: 'clamp(6px, 2vw, 9px)', background: PREV_MONTH_HATCH }} title="출석 (이전 달, 참고용 · 출석률 집계 제외)" />;
                             }
                             return (
                               <span key={i} className="relative rounded-full shrink-0" style={{
                                 width: 'clamp(6px, 2vw, 9px)', height: 'clamp(6px, 2vw, 9px)',
-                                background: status === 'full' ? '#7FA8D9' : status === 'half' ? 'linear-gradient(90deg, #7FA8D9 50%, transparent 50%)' : status === 'holiday' ? '#E0958C' : 'transparent',
-                                border: status === 'full' || status === 'holiday' ? 'none' : `1.5px solid ${LINE}`,
-                              }} title={(status === 'holiday' ? '휴무일' : '') + (fromPrevMonth ? ' (이전 달, 참고용)' : '')}>
-                                {fromPrevMonth && <span className="absolute inset-0 rounded-full pointer-events-none" style={{ background: 'repeating-linear-gradient(45deg, rgba(30,28,22,0.55) 0px, rgba(30,28,22,0.55) 1px, transparent 1px, transparent 2.5px)' }} />}
-                              </span>
+                                background: status === 'half' ? `linear-gradient(90deg, ${fromPrevMonth ? PREV_MONTH_DOT_COLOR : '#7FA8D9'} 50%, transparent 50%)` : (dotColor || 'transparent'),
+                                border: dotColor || status === 'half' ? 'none' : `1.5px solid ${fromPrevMonth ? PREV_MONTH_DOT_COLOR : LINE}`,
+                              }} title={(status === 'holiday' ? '휴무일' : '') + (fromPrevMonth ? ' (이전 달, 참고용 · 출석률 집계 제외)' : '')} />
                             );
                           })}
                       </div>
@@ -4753,7 +4775,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               ))}
             </div>
             <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가</p>
-            <p className="text-[10px] mt-1" style={{ color: MUTE }}>※ 출석률 산정기준 : 주 단위(월 경계에 걸친 경우, 전월분 포함 산정)</p>
+            <p className="text-[10px] mt-1" style={{ color: MUTE }}>※ 출석률 산정기준 : 월 단위(달력상 이번 달만 집계 · 첫 주를 채우려 표시된 전월 날짜는 참고용이며 집계 제외 · 신규 회원은 가입일부터 집계) / 벌칙은 별도로 항상 주 단위 집계</p>
           </Card>
           {penaltyRule && (penaltyEntries.length > 0 || warningMemberIds.size > 0) && (
             <Card>
@@ -4932,7 +4954,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
     const updatedVotes = [...membershipVotes, { application_id: app.id, member_id: currentUserId }];
     const allApproved = currentManagers.every((m) => updatedVotes.some((v) => v.application_id === app.id && v.member_id === m.id));
     if (allApproved) {
-      await insertRow('members', { id: uid('m'), name: app.name, role: '회원', birthday: app.birthday || null, department: app.department || null, job_type: app.job_type || null, book_genre: app.book_genre || null, note: app.note || null });
+      await insertRow('members', { id: uid('m'), name: app.name, role: '회원', birthday: app.birthday || null, department: app.department || null, job_type: app.job_type || null, book_genre: app.book_genre || null, note: app.note || null, joined_at: todayStr() /* 운영진 전원 승인된 바로 그날이 가입일자 */ });
       await updateRow('membership_applications', 'id', app.id, { status: 'approved' });
       showToast?.(`${app.name}님의 가입이 완료됐어요!`);
     }
