@@ -219,9 +219,9 @@ const dayTypeMeta = (key) => DAY_TYPES.find((d) => d.key === key) || null;
 const ATTENDANCE_DAY_TYPES = ['독서일', '토론회']; // 출석일자로 산정되는 유형
 const WEEKEND_BG = '#302C22'; // 금·토·일 기본(미지정) 배경 — 평일 미지정보다 살짝 밝은 톤
 const WEEKEND_TEXT = '#9A9382';
-const PREV_MONTH_HOLIDAY_COLOR = '#5E5285'; // 전월 휴무일 - 전월 출석(연보라색)과 구분되는 짙은 보라색
-const PREV_MONTH_HATCH = 'repeating-linear-gradient(45deg, #A99BE0 0px, #A99BE0 2px, #5A4C99 2px, #5A4C99 3px)'; // 전월 출석 - 연보라색 + 빗금
-const PREV_MONTH_DOT_COLOR = '#A99BE0'; // (연보라 - 가입일 별표(노랑)와 구분) // 이번 달 출석률 도트에서 "전월에서 끌어온 날짜(참고용, 집계 제외)"를 표시할 때만 쓰는 연보라색 - 출석(파랑)·휴무일(분홍)과 뚜렷이 구분됨
+const PREV_MONTH_HOLIDAY_COLOR = '#2E3A6B'; // 전월 휴무일 - 전월 출석(남색)과 구분되는 짙은 남색
+const PREV_MONTH_HATCH = 'repeating-linear-gradient(45deg, #4F66B8 0px, #4F66B8 2px, #232F63 2px, #232F63 3px)'; // 전월 출석 - 남색 + 빗금
+const PREV_MONTH_DOT_COLOR = '#4F66B8'; // (남색 - 가입일 별표(노랑)와 구분) // 이번 달 출석률 도트에서 "전월에서 끌어온 날짜(참고용, 집계 제외)"를 표시할 때만 쓰는 남색 - 출석(파랑)·휴무일(분홍)과 뚜렷이 구분됨
 
 function Stamp({ role, size = 38, tilt = -5 }) {
   const meta = roleMeta(role);
@@ -707,15 +707,10 @@ const localYmd = (iso) => { if (!iso) return ''; const d = new Date(iso); return
 const dayDiffStr = (a, b) => Math.round((new Date(`${a}T00:00:00`) - new Date(`${b}T00:00:00`)) / 86400000);
 const mdWeek = (ds) => { const d = new Date(`${ds}T00:00:00`); return `${d.getMonth() + 1}.${d.getDate()}(${'일월화수목금토'[d.getDay()]})`; };
 
-// 로딩 중 화면 - 앱 아이콘을 가운데에 띄움 (index.html의 #root 안에 미리 넣어둔 화면과 똑같은 모양이라,
-// 아이폰에서도 앱을 켜자마자 ~ 데이터가 다 불러와질 때까지 아이콘이 끊김 없이 보임)
+// 로딩 중 화면 - 아이콘 화면은 index.html의 #splash 덮개가 계속 보여주고 있으므로 여기선 같은 배경색만 깔아둠
+// (같은 화면을 React가 다시 그리면 그 순간 한 번 깜빡여서, 덮개 하나만 쓰고 로딩이 끝나면 그걸 부드럽게 걷어냄)
 function SkeletonScreen() {
-  return (
-    <div aria-busy="true" aria-label="불러오는 중" style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, background: '#141310' }}>
-      <img src="/icon-512.png" alt="" width="112" height="112" style={{ width: 112, height: 112, borderRadius: 26 }} />
-      <div style={{ color: '#EDE6D6', fontSize: 15, fontWeight: 600, letterSpacing: '0.02em' }}>책스초코</div>
-    </div>
-  );
+  return <div aria-busy="true" aria-label="불러오는 중" style={{ position: 'fixed', inset: 0, background: '#141310' }} />;
 }
 
 // 켜고 끄는 스위치 한 줄
@@ -1331,6 +1326,8 @@ function publicUrl(bucket, path) {
 /* ============================================================= */
 export default function App() {
   const [loaded, setLoaded] = useState(false);
+  // 데이터 로딩이 끝나면 index.html의 아이콘 덮개(#splash)를 부드럽게 걷어냄
+  useEffect(() => { if (loaded && typeof window !== 'undefined') window.__hideSplash?.(); }, [loaded]);
   const [error, setError] = useState('');
   const [members, setMembers] = useState([]);
   const [notices, setNotices] = useState([]);
@@ -4483,6 +4480,8 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const hasWork = absenceExcuses.some((e) => e.date === date && e.reason === '업무');
                 const hasPersonal = absenceExcuses.some((e) => e.date === date && e.reason === '개인일정');
                 const hasDiscussion = types.includes('토론회');
+                // 가입자 표기: 회원 정보의 가입일자가 이 날이거나, 간사가 이 날을 '가입일' 사유로 지정한 경우
+                const hasJoin = members.some((m) => m.joined_at && String(m.joined_at).slice(0, 10) === date) || absenceExcuses.some((e) => e.date === date && e.reason === '가입일');
                 const dayPenaltyFolks = penaltyEntries.filter((e) => e.completion?.performed_date === date); // 회원 누구든 이 날짜에 벌칙을 수행하면 커피 아이콘 표기
                 const birthdayFolks = members.filter((m) => m.birthday && mdOf(m.birthday) === date.slice(5, 10));
                 const hasBirthday = birthdayFolks.length > 0;
@@ -4492,9 +4491,10 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                   <button key={date} onClick={() => setSelectedDate(date === selectedDate ? null : date)}
                     className="relative aspect-square rounded-lg flex flex-col items-center justify-center text-xs leading-none"
                     style={{ background: bgStyle, color: textColor, border: borderStyle }}>
-                    {(hasDiscussion || hasBirthday || dayPenaltyFolks.length > 0) && (
+                    {(hasDiscussion || hasBirthday || hasJoin || dayPenaltyFolks.length > 0) && (
                       <span className="absolute top-0.5 flex items-center gap-0.5">
                         {hasDiscussion && <BookOpen size={8} style={{ color: '#D9C24C' }} />}
+                        {hasJoin && <Star size={8} fill="#EFC94C" style={{ color: '#EFC94C' }} />}
                         {dayPenaltyFolks.length > 0 && <Coffee size={8} style={{ color: '#EFC94C', opacity: dayPenaltyFolks.some((e) => e.completion?.confirmed) ? 1 : 0.55 }} />}
                         {hasBirthday && (
                           <svg width="9" height="9" viewBox="0 0 24 24" fill="none">
@@ -4548,6 +4548,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><Plane size={11} /> 휴가</span>
               <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><Briefcase size={11} style={{ color: '#D9A93A' }} /> 업무</span>
               <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><User size={11} style={{ color: '#7FDCCF' }} /> 개인일정</span>
+              <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><Star size={11} fill="#EFC94C" style={{ color: '#EFC94C' }} /> 신규가입</span>
             </div>
             {(() => {
               const todayExcuses = absenceExcuses.filter((e) => e.date === todayStr());
@@ -4733,7 +4734,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       <div key={wi} className="min-w-0 flex items-center justify-center overflow-hidden" style={{ gap: 'clamp(1px, 0.6vw, 3px)', borderRight: wi < weekChunkRanges.length - 1 ? `1px solid ${ROW_LINE}` : 'none' }}>
                           {r.flags.slice(start, end).map((status, i) => {
                             const fromPrevMonth = !monthDayList[start + i].inCurrentMonth;
-                            // 전월에서 끌어온 날짜(참고용, 출석률 집계 제외)는 상태와 무관하게 연보라색 계열로 색을 완전히 다르게 표기
+                            // 전월에서 끌어온 날짜(참고용, 출석률 집계 제외)는 상태와 무관하게 남색 계열로 색을 완전히 다르게 표기
                             if (status === 'trip') {
                               return <svg key={i} width="11.7" height="11.7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: fromPrevMonth ? PREV_MONTH_DOT_COLOR : '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>;
                             }
@@ -4748,7 +4749,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                               // 가입 전 날짜: 집계 제외라 아주 작은 회색 점으로만 자리 표시
                               return <span key={i} className="shrink-0 flex items-center justify-center" style={{ width: 'clamp(6px, 2vw, 9px)', height: 'clamp(6px, 2vw, 9px)' }} title={status === 'excluded' ? '간사 지정 제외 (출석률·벌칙 집계 제외)' : '가입 전 (출석률 집계 제외)'}><span className="rounded-full" style={{ width: 3, height: 3, background: LINE }} /></span>;
                             }
-                            // 전월: 출석=연보라색+빗금, 휴무일=짙은 보라색, 결석=연보라색 테두리만 / 이번 달: 출석=파랑, 휴무일=분홍, 결석=회색 테두리
+                            // 전월: 출석=남색+빗금, 휴무일=짙은 남색, 결석=남색 테두리만 / 이번 달: 출석=파랑, 휴무일=분홍, 결석=회색 테두리
                             const dotColor = status === 'full' ? (fromPrevMonth ? PREV_MONTH_DOT_COLOR : '#7FA8D9')
                               : status === 'holiday' ? (fromPrevMonth ? PREV_MONTH_HOLIDAY_COLOR : '#E0958C') : null;
                             if (fromPrevMonth && status === 'full') {
