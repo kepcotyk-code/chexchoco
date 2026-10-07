@@ -4300,7 +4300,8 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     const joinedDate = m.joined_at ? String(m.joined_at).slice(0, 10) : null;
     const flags = monthDayList.map(({ date, session }) => {
       if (!session) return 'holiday'; // 휴무일
-      if (joinedDate && date < joinedDate) return 'prejoin'; // 가입 전 날짜 - 출석률 집계에서 제외 (가입일 당일부터 집계)
+      if (joinedDate && date < joinedDate) return 'prejoin'; // 가입 전 날짜 - 출석률 집계에서 제외
+      if (joinedDate && date === joinedDate) return 'joinday'; // 가입 당일 - 별표로 표시하고 집계에서 제외 (가입 다음 날부터 집계)
       const excuse = absenceExcuses.find((e) => e.date === date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason));
       if (excuse) return excuse.reason === '휴가' ? 'vacation' : excuse.reason === '제외' ? 'excluded' : excuse.reason === '가입일' ? 'joinday' : 'trip'; // 출장/휴가만 구분 (업무는 더 이상 제외 대상이 아니라 여기 걸리지 않음)
       const c = checkins.find((ck) => ck.session_id === session.id && ck.member_id === m.id);
@@ -4736,14 +4737,14 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                             const fromPrevMonth = !monthDayList[start + i].inCurrentMonth;
                             // 전월에서 끌어온 날짜(참고용, 출석률 집계 제외)는 상태와 무관하게 남색 계열로 색을 완전히 다르게 표기
                             if (status === 'trip') {
-                              return <svg key={i} width="11.7" height="11.7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: fromPrevMonth ? PREV_MONTH_DOT_COLOR : '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>;
+                              return <svg key={i} width="11.7" height="11.7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>;
                             }
                             if (status === 'vacation') {
-                              return <Plane key={i} size={9} style={{ color: fromPrevMonth ? PREV_MONTH_DOT_COLOR : INK }} />;
+                              return <Plane key={i} size={9} style={{ color: INK }} />;
                             }
                             if (status === 'joinday') {
                               // 가입일(집계 제외)은 별표로 표시
-                              return <Star key={i} size={10} fill={fromPrevMonth ? PREV_MONTH_DOT_COLOR : '#EFC94C'} style={{ color: fromPrevMonth ? PREV_MONTH_DOT_COLOR : '#EFC94C', flexShrink: 0 }} aria-label="가입일 (출석률·벌칙 집계 제외)" />;
+                              return <Star key={i} size={10} fill="#EFC94C" style={{ color: '#EFC94C', flexShrink: 0 }} aria-label="가입일 (출석률·벌칙 집계 제외)" />;
                             }
                             if (status === 'prejoin' || status === 'excluded') {
                               // 가입 전 날짜: 집계 제외라 아주 작은 회색 점으로만 자리 표시
@@ -4751,7 +4752,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                             }
                             // 전월: 출석=남색+빗금, 휴무일=짙은 남색, 결석=남색 테두리만 / 이번 달: 출석=파랑, 휴무일=분홍, 결석=회색 테두리
                             const dotColor = status === 'full' ? (fromPrevMonth ? PREV_MONTH_DOT_COLOR : '#7FA8D9')
-                              : status === 'holiday' ? (fromPrevMonth ? PREV_MONTH_HOLIDAY_COLOR : '#E0958C') : null;
+                              : status === 'holiday' ? '#E0958C' : null;
                             if (fromPrevMonth && status === 'full') {
                               return <span key={i} className="relative rounded-full shrink-0" style={{ width: 'clamp(6px, 2vw, 9px)', height: 'clamp(6px, 2vw, 9px)', background: PREV_MONTH_HATCH }} title="출석 (이전 달, 참고용 · 출석률 집계 제외)" />;
                             }
@@ -4759,7 +4760,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                               <span key={i} className="relative rounded-full shrink-0" style={{
                                 width: 'clamp(6px, 2vw, 9px)', height: 'clamp(6px, 2vw, 9px)',
                                 background: status === 'half' ? `linear-gradient(90deg, ${fromPrevMonth ? PREV_MONTH_DOT_COLOR : '#7FA8D9'} 50%, transparent 50%)` : (dotColor || 'transparent'),
-                                border: dotColor || status === 'half' ? 'none' : `1.5px solid ${fromPrevMonth ? PREV_MONTH_DOT_COLOR : LINE}`,
+                                border: dotColor || status === 'half' ? 'none' : `1.5px solid ${LINE}`,
                               }} title={(status === 'holiday' ? '휴무일' : '') + (fromPrevMonth ? ' (이전 달, 참고용 · 출석률 집계 제외)' : '')} />
                             );
                           })}
