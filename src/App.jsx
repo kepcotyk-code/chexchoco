@@ -219,9 +219,9 @@ const dayTypeMeta = (key) => DAY_TYPES.find((d) => d.key === key) || null;
 const ATTENDANCE_DAY_TYPES = ['독서일', '토론회']; // 출석일자로 산정되는 유형
 const WEEKEND_BG = '#302C22'; // 금·토·일 기본(미지정) 배경 — 평일 미지정보다 살짝 밝은 톤
 const WEEKEND_TEXT = '#9A9382';
-const PREV_MONTH_HOLIDAY_COLOR = '#8C5A2B'; // 전월 휴무일 - 전월 출석(호박색)과 구분되는 짙은 갈색
-const PREV_MONTH_HATCH = 'repeating-linear-gradient(45deg, #D9A93A 0px, #D9A93A 2px, #7A5A14 2px, #7A5A14 3px)'; // 전월 출석 - 호박색 + 빗금
-const PREV_MONTH_DOT_COLOR = '#D9A93A'; // 이번 달 출석률 도트에서 "전월에서 끌어온 날짜(참고용, 집계 제외)"를 표시할 때만 쓰는 호박색 - 출석(파랑)·휴무일(분홍)과 뚜렷이 구분됨
+const PREV_MONTH_HOLIDAY_COLOR = '#5E5285'; // 전월 휴무일 - 전월 출석(연보라색)과 구분되는 짙은 보라색
+const PREV_MONTH_HATCH = 'repeating-linear-gradient(45deg, #A99BE0 0px, #A99BE0 2px, #5A4C99 2px, #5A4C99 3px)'; // 전월 출석 - 연보라색 + 빗금
+const PREV_MONTH_DOT_COLOR = '#A99BE0'; // (연보라 - 가입일 별표(노랑)와 구분) // 이번 달 출석률 도트에서 "전월에서 끌어온 날짜(참고용, 집계 제외)"를 표시할 때만 쓰는 연보라색 - 출석(파랑)·휴무일(분홍)과 뚜렷이 구분됨
 
 function Stamp({ role, size = 38, tilt = -5 }) {
   const meta = roleMeta(role);
@@ -417,7 +417,8 @@ const monthWeekLabelOf = (dateStr) => {
   const week = Math.max(1, Math.floor(Math.round((sunday - firstFullSunday) / 86400000) / 7) + 1);
   return `${mo + 1}월 ${week}주차`;
 };
-const EXEMPT_EXCUSE_REASONS = ['출장', '휴가']; // 벌칙·출석률 계산에서 제외되는 사유 (업무·개인일정은 제외 안 됨 — 결석으로 그대로 집계)
+const EXEMPT_EXCUSE_REASONS = ['출장', '휴가', '제외', '가입일']; // '제외'는 간사가 설정 탭에서 회원·날짜별로 직접 지정하는 집계 제외
+// // 벌칙·출석률 계산에서 제외되는 사유 (업무·개인일정은 제외 안 됨 — 결석으로 그대로 집계)
 
 // 주 단위 벌칙 계산: 월~목 4일이 모두 독서일이고 이미 다 지난 "완결된 주"에서,
 // 4일간 출석 환산 합계가 1일 미만(= 30분 이상 출석이 하나도 없고, 15~29분 출석도 2회 미만)인 멤버만 그 주의 벌칙 대상이 됨.
@@ -706,25 +707,13 @@ const localYmd = (iso) => { if (!iso) return ''; const d = new Date(iso); return
 const dayDiffStr = (a, b) => Math.round((new Date(`${a}T00:00:00`) - new Date(`${b}T00:00:00`)) / 86400000);
 const mdWeek = (ds) => { const d = new Date(`${ds}T00:00:00`); return `${d.getMonth() + 1}.${d.getDate()}(${'일월화수목금토'[d.getDay()]})`; };
 
-// 로딩 중 뼈대 화면 - 글자만 떠 있는 것보다 실제 화면 모양이 먼저 보여서 덜 기다리는 느낌
+// 로딩 중 화면 - 앱 아이콘을 가운데에 띄움 (index.html의 #root 안에 미리 넣어둔 화면과 똑같은 모양이라,
+// 아이폰에서도 앱을 켜자마자 ~ 데이터가 다 불러와질 때까지 아이콘이 끊김 없이 보임)
 function SkeletonScreen() {
   return (
-    <div className="min-h-screen" style={{ background: PAPER_BG }}>
-      <style>{`
-        @keyframes chexShimmer { 0% { background-position: -320px 0; } 100% { background-position: 320px 0; } }
-        .chex-sk { background: linear-gradient(90deg, #1E1C16 0px, #2B2820 90px, #1E1C16 180px); background-size: 640px 100%; animation: chexShimmer 1.3s linear infinite; border-radius: 12px; }
-        @media (prefers-reduced-motion: reduce) { .chex-sk { animation: none; } }
-      `}</style>
-      <div className="max-w-3xl mx-auto px-4 pt-6" aria-busy="true" aria-label="불러오는 중">
-        <div className="flex items-center justify-between mb-3">
-          <div className="chex-sk" style={{ width: 150, height: 12 }} />
-          <div className="chex-sk" style={{ width: 90, height: 30, borderRadius: 999 }} />
-        </div>
-        <div className="chex-sk mx-auto mb-5" style={{ width: 140, height: 36 }} />
-        <div className="grid grid-cols-6 gap-1.5 mb-4">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="chex-sk aspect-square" />)}</div>
-        <div className="flex mb-4" style={{ gap: 4 }}>{Array.from({ length: 5 }).map((_, i) => <div key={i} className="chex-sk flex-1" style={{ height: 36, borderRadius: 999 }} />)}</div>
-        {[150, 96, 190].map((h, i) => <div key={i} className="chex-sk mb-3" style={{ height: h, borderRadius: 16 }} />)}
-      </div>
+    <div aria-busy="true" aria-label="불러오는 중" style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, background: '#141310' }}>
+      <img src="/icon-512.png" alt="" width="112" height="112" style={{ width: 112, height: 112, borderRadius: 26 }} />
+      <div style={{ color: '#EDE6D6', fontSize: 15, fontWeight: 600, letterSpacing: '0.02em' }}>책스초코</div>
     </div>
   );
 }
@@ -4316,7 +4305,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
       if (!session) return 'holiday'; // 휴무일
       if (joinedDate && date < joinedDate) return 'prejoin'; // 가입 전 날짜 - 출석률 집계에서 제외 (가입일 당일부터 집계)
       const excuse = absenceExcuses.find((e) => e.date === date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason));
-      if (excuse) return excuse.reason === '휴가' ? 'vacation' : 'trip'; // 출장/휴가만 구분 (업무는 더 이상 제외 대상이 아니라 여기 걸리지 않음)
+      if (excuse) return excuse.reason === '휴가' ? 'vacation' : excuse.reason === '제외' ? 'excluded' : excuse.reason === '가입일' ? 'joinday' : 'trip'; // 출장/휴가만 구분 (업무는 더 이상 제외 대상이 아니라 여기 걸리지 않음)
       const c = checkins.find((ck) => ck.session_id === session.id && ck.member_id === m.id);
       const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
       return attendanceStatus(dur);
@@ -4327,7 +4316,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
       if (f === 'prejoin') prejoinCount += 1;
       else if (f === 'full') present += 1;
       else if (f === 'half') present += 0.5;
-      else if (f === 'trip' || f === 'vacation') excusedCount += 1;
+      else if (f === 'trip' || f === 'vacation' || f === 'excluded' || f === 'joinday') excusedCount += 1;
     });
     const denom = totalDays - excusedCount - prejoinCount;
     return { ...m, present, flags, excusedCount, denom, rate: denom > 0 ? Math.round((present / denom) * 100) : 0 };
@@ -4705,7 +4694,8 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: INK }} />휴가</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: PREV_MONTH_HATCH }} />전월(참고, 집계 제외)</span>
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-flex items-center justify-center" style={{ width: 8, height: 8 }}><span className="rounded-full" style={{ width: 3, height: 3, background: LINE }} /></span>가입 전(집계 제외)</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-flex items-center justify-center" style={{ width: 8, height: 8 }}><span className="rounded-full" style={{ width: 3, height: 3, background: LINE }} /></span>가입 전·제외(집계 제외)</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Star size={9} fill="#EFC94C" style={{ color: '#EFC94C' }} />가입일</span>
             </div>
             {/* 주차 수가 많은 달에도 화면 폭에 맞춰 칸 너비가 균등하게 줄어들 뿐, 가로 스크롤이나 두 줄 줄바꿈이 생기지 않도록 그리드로 구성 */}
             {weekChunkRanges.length > 0 && (
@@ -4743,18 +4733,22 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       <div key={wi} className="min-w-0 flex items-center justify-center overflow-hidden" style={{ gap: 'clamp(1px, 0.6vw, 3px)', borderRight: wi < weekChunkRanges.length - 1 ? `1px solid ${ROW_LINE}` : 'none' }}>
                           {r.flags.slice(start, end).map((status, i) => {
                             const fromPrevMonth = !monthDayList[start + i].inCurrentMonth;
-                            // 전월에서 끌어온 날짜(참고용, 출석률 집계 제외)는 상태와 무관하게 호박색 계열로 색을 완전히 다르게 표기
+                            // 전월에서 끌어온 날짜(참고용, 출석률 집계 제외)는 상태와 무관하게 연보라색 계열로 색을 완전히 다르게 표기
                             if (status === 'trip') {
                               return <svg key={i} width="11.7" height="11.7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: fromPrevMonth ? PREV_MONTH_DOT_COLOR : '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>;
                             }
                             if (status === 'vacation') {
                               return <Plane key={i} size={9} style={{ color: fromPrevMonth ? PREV_MONTH_DOT_COLOR : INK }} />;
                             }
-                            if (status === 'prejoin') {
-                              // 가입 전 날짜: 집계 제외라 아주 작은 회색 점으로만 자리 표시
-                              return <span key={i} className="shrink-0 flex items-center justify-center" style={{ width: 'clamp(6px, 2vw, 9px)', height: 'clamp(6px, 2vw, 9px)' }} title="가입 전 (출석률 집계 제외)"><span className="rounded-full" style={{ width: 3, height: 3, background: LINE }} /></span>;
+                            if (status === 'joinday') {
+                              // 가입일(집계 제외)은 별표로 표시
+                              return <Star key={i} size={10} fill={fromPrevMonth ? PREV_MONTH_DOT_COLOR : '#EFC94C'} style={{ color: fromPrevMonth ? PREV_MONTH_DOT_COLOR : '#EFC94C', flexShrink: 0 }} aria-label="가입일 (출석률·벌칙 집계 제외)" />;
                             }
-                            // 전월: 출석=호박색+빗금, 휴무일=짙은 갈색, 결석=호박색 테두리만 / 이번 달: 출석=파랑, 휴무일=분홍, 결석=회색 테두리
+                            if (status === 'prejoin' || status === 'excluded') {
+                              // 가입 전 날짜: 집계 제외라 아주 작은 회색 점으로만 자리 표시
+                              return <span key={i} className="shrink-0 flex items-center justify-center" style={{ width: 'clamp(6px, 2vw, 9px)', height: 'clamp(6px, 2vw, 9px)' }} title={status === 'excluded' ? '간사 지정 제외 (출석률·벌칙 집계 제외)' : '가입 전 (출석률 집계 제외)'}><span className="rounded-full" style={{ width: 3, height: 3, background: LINE }} /></span>;
+                            }
+                            // 전월: 출석=연보라색+빗금, 휴무일=짙은 보라색, 결석=연보라색 테두리만 / 이번 달: 출석=파랑, 휴무일=분홍, 결석=회색 테두리
                             const dotColor = status === 'full' ? (fromPrevMonth ? PREV_MONTH_DOT_COLOR : '#7FA8D9')
                               : status === 'holiday' ? (fromPrevMonth ? PREV_MONTH_HOLIDAY_COLOR : '#E0958C') : null;
                             if (fromPrevMonth && status === 'full') {
@@ -4775,7 +4769,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               ))}
             </div>
             <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가</p>
-            <p className="text-[10px] mt-1" style={{ color: MUTE }}>※ 출석률 산정기준 : 월 단위(달력상 이번 달만 집계 · 첫 주를 채우려 표시된 전월 날짜는 참고용이며 집계 제외 · 신규 회원은 가입일부터 집계) / 벌칙은 별도로 항상 주 단위 집계</p>
+            <p className="text-[10px] mt-1" style={{ color: MUTE }}>※ 산정기준 : 출석률은 월 단위, 벌칙은 주 단위</p>
           </Card>
           {penaltyRule && (penaltyEntries.length > 0 || warningMemberIds.size > 0) && (
             <Card>
@@ -5949,7 +5943,7 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
       </Card>
       <Card>
         <div className="text-sm font-semibold mb-1" style={{ color: INK }}>불참 사유 ({fmtDate(date)})</div>
-        <p className="text-xs mb-3" style={{ color: MUTE }}>출장·휴가는 그 날 벌칙 판단에서 제외돼요. 개인일정은 사전 파악용으로만 기록되고 결석으로 그대로 집계돼요.</p>
+        <p className="text-xs mb-3" style={{ color: MUTE }}>출장·휴가는 그 날 출석률·벌칙 집계에서 제외돼요. 업무·개인일정은 사전 파악용으로만 기록되고 결석으로 그대로 집계돼요.{isSecretary ? ' [제외]·[가입일]은 간사 전용 — 그 회원의 그 날짜를 집계에서 빼요(가입일은 현황에 ★로 표시).' : ''}</p>
         <div className="space-y-2">
           {members.map((m) => {
             const excuse = absenceExcuses.find((e) => e.date === date && e.member_id === m.id);
@@ -5967,6 +5961,8 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
                     <button onClick={() => addExcuse(m.id, '휴가')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>휴가</button>
                     <button onClick={() => addExcuse(m.id, '업무')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>업무</button>
                     <button onClick={() => addExcuse(m.id, '개인일정')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>개인일정</button>
+                    {isSecretary && <button onClick={() => addExcuse(m.id, '제외')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}>제외</button>}
+                    {isSecretary && <button onClick={() => addExcuse(m.id, '가입일')} className="text-xs rounded-full px-2.5 py-1 font-semibold inline-flex items-center gap-1" style={{ background: '#33290F', color: '#EFC94C' }}><Star size={10} fill="#EFC94C" />가입일</button>}
                   </div>
                 )}
               </div>
