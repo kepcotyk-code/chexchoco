@@ -4943,6 +4943,18 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
     await reload(['membership_applications', 'notifications']);
     showToast?.('가입 신청이 접수됐어요. 운영진 전원이 승인하면 가입이 완료돼요.');
   };
+  // ---------- 회원 등록 기록 ----------
+  // 회원이 어떤 경로로(승인 절차 / 멤버 추가 버튼 / 엑셀 업로드), 누구 손으로 등록됐는지 member_add_logs 테이블에 남김.
+  // 기록 저장이 실패해도(테이블 미생성 등) 회원 등록 자체는 막지 않음.
+  const logMemberAdd = async (entries, method, detail = null) => {
+    try {
+      const by = members.find((m) => m.id === currentUserId);
+      const now = new Date().toISOString();
+      const rows = entries.map((e) => ({ id: uid('mal'), member_id: e.id, member_name: e.name, method, added_by: currentUserId || null, added_by_name: by?.name || null, detail, created_at: now }));
+      const { error } = await supabase.from('member_add_logs').insert(rows);
+      if (error) console.error('member_add_logs insert failed:', error);
+    } catch (e) { console.error('member_add_logs insert failed:', e); }
+  };
   // ---------- 가입 신청 승인 (운영진용) ----------
   const approveApplication = async (app) => {
     if (!currentUserId) return;
@@ -4950,8 +4962,10 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
     const updatedVotes = [...membershipVotes, { application_id: app.id, member_id: currentUserId }];
     const allApproved = currentManagers.every((m) => updatedVotes.some((v) => v.application_id === app.id && v.member_id === m.id));
     if (allApproved) {
-      await insertRow('members', { id: uid('m'), name: app.name, role: '회원', birthday: app.birthday || null, department: app.department || null, job_type: app.job_type || null, book_genre: app.book_genre || null, note: app.note || null, joined_at: todayStr() /* 운영진 전원 승인된 바로 그날이 가입일자 */ });
+      const newMemberId = uid('m');
+      await insertRow('members', { id: newMemberId, name: app.name, role: '회원', birthday: app.birthday || null, department: app.department || null, job_type: app.job_type || null, book_genre: app.book_genre || null, note: app.note || null, joined_at: todayStr() /* 운영진 전원 승인된 바로 그날이 가입일자 */ });
       await updateRow('membership_applications', 'id', app.id, { status: 'approved' });
+      await logMemberAdd([{ id: newMemberId, name: app.name }], '승인절차', `가입신청 ${app.id} · 마지막 승인자가 기록됨`);
       showToast?.(`${app.name}님의 가입이 완료됐어요!`);
     }
     await reload(['members', 'membership_applications', 'membership_votes']);
@@ -4979,6 +4993,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
     const id = uid('m');
     const isFirst = members.length === 0;
     await insertRow('members', { id, name: newName.trim(), role: newRole, birthday: newBirthday || null, pin: newPin || null, department: newDept || null, job_type: newJobType || null, joined_at: newJoinedAt || null, book_genre: newGenre || null, note: newNote || null });
+    await logMemberAdd([{ id, name: newName.trim() }], '멤버추가(직접등록)');
     if (isFirst) setIdentity(id);
     await reload(['members']);
     setNewName(''); setNewRole('회원'); setNewBirthday(''); setNewPin(''); setNewDept(''); setNewJobType(''); setNewJoinedAt(''); setNewGenre(''); setNewNote(''); setShowAddForm(false);
@@ -5030,7 +5045,7 @@ function UsersScreen({ members, sortedMembers, currentUserId, setIdentity, canMa
           book_genre: r['선호 도서 종류'] || r['선호도서'] ? String(r['선호 도서 종류'] || r['선호도서']) : null,
           note: r['비고'] ? String(r['비고']) : null,
         }));
-        if (additions.length) { await supabase.from('members').insert(additions); await reload(['members']); }
+        if (additions.length) { const { error: addErr } = await supabase.from('members').insert(additions); if (!addErr) await logMemberAdd(additions, '엑셀업로드'); await reload(['members']); }
       } catch (err) {}
     };
     reader.readAsBinaryString(file); e.target.value = '';
