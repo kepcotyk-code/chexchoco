@@ -2136,6 +2136,14 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
     return bOrder - aOrder;
   });
 
+  // 공지는 한 페이지에 3개씩만 보여주고 아래 페이지 번호로 넘김 (고정글이 맨 앞이라 1페이지에 먼저 나옴)
+  const NOTICE_PAGE_SIZE = 3;
+  const [noticePage, setNoticePage] = useState(1);
+  const noticePageCount = Math.max(1, Math.ceil(sorted.length / NOTICE_PAGE_SIZE));
+  const curNoticePage = Math.min(noticePage, noticePageCount); // 글이 삭제돼 페이지 수가 줄어도 빈 페이지가 안 보이게
+  const pagedNotices = sorted.slice((curNoticePage - 1) * NOTICE_PAGE_SIZE, curNoticePage * NOTICE_PAGE_SIZE);
+  const goNoticePage = (pg) => { setNoticePage(pg); setExpandedViewsId(null); if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' }); };
+
   const isPdfSignature = (buf) => { const b = new Uint8Array(buf); return b.length >= 4 && b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46; };
   const extFromType = (type) => {
     if (type === 'application/pdf') return 'pdf';
@@ -2178,7 +2186,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
       if (editingId) {
         await updateRow('notices', 'id', editingId, { title: title.trim(), content: content.trim(), pinned, ...fileMeta });
       } else {
-        await insertRow('notices', { id, title: title.trim(), content: content.trim(), author_name: currentMember?.name || '익명', created_at: new Date().toISOString(), pinned, sort_order: Date.now(), ...fileMeta });
+        setNoticePage(1); await insertRow('notices', { id, title: title.trim(), content: content.trim(), author_name: currentMember?.name || '익명', created_at: new Date().toISOString(), pinned, sort_order: Date.now(), ...fileMeta });
       }
       await reload(['notices']);
       setTitle(''); setContent(''); setShowForm(false); setEditingId(null); setAttachedFile(null); setPinned(false);
@@ -2290,7 +2298,7 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
           </div>
         </Card>
       )}
-      {sorted.map((n) => {
+      {pagedNotices.map((n) => {
         const views = noticeViews.filter((v) => v.notice_id === n.id);
         const expanded = expandedViewsId === n.id;
         const isImage = n.file_type && n.file_type.startsWith('image/');
@@ -2347,6 +2355,21 @@ function NoticeScreen({ notices, noticeViews, currentMember, canManage, reload, 
           </Card>
         );
       })}
+      {noticePageCount > 1 && (
+        <nav className="flex items-center justify-center flex-wrap gap-1.5 pt-1" aria-label="공지 페이지">
+          <button onClick={() => goNoticePage(curNoticePage - 1)} disabled={curNoticePage === 1} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT, opacity: curNoticePage === 1 ? 0.35 : 1 }} aria-label="이전 페이지"><ChevronLeft size={16} /></button>
+          {Array.from({ length: noticePageCount }, (_, i) => i + 1)
+            .filter((pg) => noticePageCount <= 7 || pg === 1 || pg === noticePageCount || Math.abs(pg - curNoticePage) <= 1)
+            .map((pg, i, arr) => (
+              <React.Fragment key={pg}>
+                {i > 0 && pg - arr[i - 1] > 1 && <span className="text-xs px-0.5" style={{ color: MUTE }}>…</span>}
+                <button onClick={() => goNoticePage(pg)} aria-current={pg === curNoticePage ? 'page' : undefined} className="h-9 px-2 rounded-full text-sm font-semibold"
+                  style={{ minWidth: 36, background: pg === curNoticePage ? BTN_BG : NEUTRAL_BG, color: pg === curNoticePage ? BTN_TEXT : NEUTRAL_TEXT, fontFamily: "'IBM Plex Mono', monospace" }}>{pg}</button>
+              </React.Fragment>
+            ))}
+          <button onClick={() => goNoticePage(curNoticePage + 1)} disabled={curNoticePage === noticePageCount} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT, opacity: curNoticePage === noticePageCount ? 0.35 : 1 }} aria-label="다음 페이지"><ChevronRight size={16} /></button>
+        </nav>
+      )}
     </div>
   );
 }
