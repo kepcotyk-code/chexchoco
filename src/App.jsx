@@ -4355,14 +4355,18 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     });
   };
   const totalSessions = sessions.filter((s) => s.date <= todayStr()).length;
+  // 전체 누적 출석률은 회원별 가입일자 기준 — 가입일 다음 날부터 오늘까지의 출결만 집계 (가입일자가 없으면 전체 기간)
+  // (이번 달 출석률과 같은 기준: 가입 전·가입 당일은 집계 제외)
   const allTimeRows = withRank(members.map((m) => {
     let present = 0; let excusedCount = 0;
-    sessions.forEach((s) => {
+    const joinedDate = m.joined_at ? String(m.joined_at).slice(0, 10) : null;
+    const memberSessions = sessions.filter((s) => s.date <= todayStr() && (!joinedDate || s.date > joinedDate));
+    memberSessions.forEach((s) => {
       const excused = absenceExcuses.some((e) => e.date === s.date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason));
       if (excused) { excusedCount += 1; return; }
       const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id); const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null; const st = attendanceStatus(dur); present += st === 'full' ? 1 : st === 'half' ? 0.5 : 0;
     });
-    const denom = totalSessions - excusedCount;
+    const denom = memberSessions.length - excusedCount;
     return { ...m, present, excusedCount, denom, rate: denom > 0 ? Math.round((present / denom) * 100) : 0 };
   }).sort((a, b) => b.rate - a.rate), 'rate');
 
@@ -4932,7 +4936,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 );
               })}
             </div>
-            <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가</p>
+            <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가 / 회원별 가입일 다음 날부터 집계</p>
           </Card>
         </>
       )}
