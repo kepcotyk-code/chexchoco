@@ -5,7 +5,7 @@ import {
   Crown, Shield, Wallet, User, Plus, Pencil, Trash2, Check, X, Lock, AlertCircle, Mail,
   Megaphone, QrCode, BarChart3, Users, Settings2, Settings, Download, Upload, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Briefcase, Coffee,
   LogIn, LogOut, Cake, PartyPopper, Archive, Paperclip, FileText, Eye, Pin, Gavel, BookOpen, Search,
-  Image as ImageIcon, Trophy, Plane, Library, Smartphone, Star,
+  Image as ImageIcon, Trophy, Plane, Library, Smartphone, Star, GraduationCap,
 } from 'lucide-react';
 
 /* ---------- design tokens (dark) ---------- */
@@ -417,7 +417,7 @@ const monthWeekLabelOf = (dateStr) => {
   const week = Math.max(1, Math.floor(Math.round((sunday - firstFullSunday) / 86400000) / 7) + 1);
   return `${mo + 1}월 ${week}주차`;
 };
-const EXEMPT_EXCUSE_REASONS = ['출장', '휴가', '제외', '가입일']; // '제외'는 간사가 설정 탭에서 회원·날짜별로 직접 지정하는 집계 제외
+const EXEMPT_EXCUSE_REASONS = ['출장', '휴가', '교육', '제외', '가입일']; // '제외'는 간사가 설정 탭에서 회원·날짜별로 직접 지정하는 집계 제외
 // // 벌칙·출석률 계산에서 제외되는 사유 (업무·개인일정은 제외 안 됨 — 결석으로 그대로 집계)
 
 // 주 단위 벌칙 계산: 월~목 4일이 모두 독서일이고 이미 다 지난 "완결된 주"에서,
@@ -445,7 +445,7 @@ const computeWeeklyPenalties = (sessions, checkins, calendarDays, members, absen
       const results = members.map((m) => {
         // 신규 가입 회원은 가입한 주(가입일이 속한 주)까지는 벌칙에서 제외, 그 다음 주부터 카운트
         if (m.joined_at && wk <= weekKeyOf(String(m.joined_at).slice(0, 10))) return { member: m, missedAll: false };
-        // 출장/휴가/업무 사유가 있는 날만 그 멤버에 한해 판단 대상에서 제외 (개인일정은 제외 안 됨)
+        // 출장/휴가/교육 사유가 있는 날만 그 멤버에 한해 판단 대상에서 제외 (업무·개인일정은 제외 안 됨)
         const relevant = datesSorted.filter((ds) => !absenceExcuses.some((e) => e.date === ds && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason)));
         if (relevant.length === 0) return { member: m, missedAll: false }; // 4일 다 사유 있으면 벌칙 대상 아님
         const totalEquivalent = relevant.reduce((sum, ds) => {
@@ -4142,6 +4142,7 @@ function QrScreen({ members, currentMember, sessions, checkins, canManage, canMa
                     <span className="text-xs" style={{ color: MUTE }}>오늘 못 오시나요?</span>
                     <button onClick={() => setMyExcuse('출장')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>출장</button>
                     <button onClick={() => setMyExcuse('휴가')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>휴가</button>
+                    <button onClick={() => setMyExcuse('교육')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>교육</button>
                     <button onClick={() => setMyExcuse('업무')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>업무</button>
                     <button onClick={() => setMyExcuse('개인일정')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>개인일정</button>
                   </div>
@@ -4326,7 +4327,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
       if (joinedDate && date < joinedDate) return 'prejoin'; // 가입 전 날짜 - 출석률 집계에서 제외
       if (joinedDate && date === joinedDate) return 'joinday'; // 가입 당일 - 별표로 표시하고 집계에서 제외 (가입 다음 날부터 집계)
       const excuse = absenceExcuses.find((e) => e.date === date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason));
-      if (excuse) return excuse.reason === '휴가' ? 'vacation' : excuse.reason === '제외' ? 'excluded' : excuse.reason === '가입일' ? 'joinday' : 'trip'; // 출장/휴가만 구분 (업무는 더 이상 제외 대상이 아니라 여기 걸리지 않음)
+      if (excuse) return excuse.reason === '휴가' ? 'vacation' : excuse.reason === '교육' ? 'edu' : excuse.reason === '제외' ? 'excluded' : excuse.reason === '가입일' ? 'joinday' : 'trip'; // 출장/휴가만 구분 (업무는 더 이상 제외 대상이 아니라 여기 걸리지 않음)
       const c = checkins.find((ck) => ck.session_id === session.id && ck.member_id === m.id);
       const dur = c ? durationMin(c.check_in_at, c.check_out_at) : null;
       return attendanceStatus(dur);
@@ -4337,7 +4338,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
       if (f === 'prejoin') prejoinCount += 1;
       else if (f === 'full') present += 1;
       else if (f === 'half') present += 0.5;
-      else if (f === 'trip' || f === 'vacation' || f === 'excluded' || f === 'joinday') excusedCount += 1;
+      else if (f === 'trip' || f === 'vacation' || f === 'edu' || f === 'excluded' || f === 'joinday') excusedCount += 1;
     });
     const denom = totalDays - excusedCount - prejoinCount;
     return { ...m, present, flags, excusedCount, denom, rate: denom > 0 ? Math.round((present / denom) * 100) : 0 };
@@ -4379,7 +4380,10 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
     const perMember = {};
     members.forEach((m) => {
       let present = 0; let excusedCount = 0;
-      monthSessions.forEach((s) => {
+      // 회원별 가입일자 기준 — 가입일 다음 날부터만 집계 (가입 전 달은 null → 그래프에서 빈칸)
+      const joinedDate = m.joined_at ? String(m.joined_at).slice(0, 10) : null;
+      const memberMonthSessions = joinedDate ? monthSessions.filter((s) => s.date > joinedDate) : monthSessions;
+      memberMonthSessions.forEach((s) => {
         const excused = absenceExcuses.some((e) => e.date === s.date && e.member_id === m.id && EXEMPT_EXCUSE_REASONS.includes(e.reason));
         if (excused) { excusedCount += 1; return; }
         const c = checkins.find((ck) => ck.session_id === s.id && ck.member_id === m.id);
@@ -4387,7 +4391,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
         const st = attendanceStatus(dur);
         present += st === 'full' ? 1 : st === 'half' ? 0.5 : 0;
       });
-      const denom = totalDaysM - excusedCount;
+      const denom = memberMonthSessions.length - excusedCount;
       perMember[m.id] = denom > 0 ? Math.round((present / denom) * 100) : null; // null = 해당 월에 데이터 없음(휴가로 다 빠졌거나 세션 자체가 없음)
       if (denom > 0) { totalPresent += present; totalDenom += denom; }
     });
@@ -4505,6 +4509,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 const textColor = metas.length > 0 ? metas[0].color : (hasFeast ? dayTypeMeta('회식일').color : (isWeekendDefault ? WEEKEND_TEXT : MUTE));
                 const hasBusinessTrip = absenceExcuses.some((e) => e.date === date && e.reason === '출장');
                 const hasVacation = absenceExcuses.some((e) => e.date === date && e.reason === '휴가');
+                const hasEducation = absenceExcuses.some((e) => e.date === date && e.reason === '교육');
                 const hasWork = absenceExcuses.some((e) => e.date === date && e.reason === '업무');
                 const hasPersonal = absenceExcuses.some((e) => e.date === date && e.reason === '개인일정');
                 const hasDiscussion = types.includes('토론회');
@@ -4539,10 +4544,11 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       </span>
                     )}
                     <span>{day}</span>
-                    {(hasBusinessTrip || hasVacation || hasWork || hasPersonal) && (
+                    {(hasBusinessTrip || hasVacation || hasEducation || hasWork || hasPersonal) && (
                       <span className="absolute bottom-0.5 flex items-center gap-0.5">
                         {hasBusinessTrip && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>}
                         {hasVacation && <Plane size={8} style={{ color: INK }} />}
+                        {hasEducation && <GraduationCap size={9} style={{ color: '#8FD0A0' }} />}
                         {hasWork && <Briefcase size={8} style={{ color: '#D9A93A' }} />}
                         {hasPersonal && <User size={8} style={{ color: '#7FDCCF' }} />}
                       </span>
@@ -4574,6 +4580,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               </span>
               <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg> 출장</span>
               <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><Plane size={11} /> 휴가</span>
+              <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><GraduationCap size={12} style={{ color: '#8FD0A0' }} /> 교육</span>
               <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><Briefcase size={11} style={{ color: '#D9A93A' }} /> 업무</span>
               <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><User size={11} style={{ color: '#7FDCCF' }} /> 개인일정</span>
               <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><Star size={11} fill="#EFC94C" style={{ color: '#EFC94C' }} /> 신규가입</span>
@@ -4581,7 +4588,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
             {(() => {
               const todayExcuses = absenceExcuses.filter((e) => e.date === todayStr());
               if (todayExcuses.length === 0) return null;
-              const reasonOrder = ['출장', '휴가', '업무', '개인일정'];
+              const reasonOrder = ['출장', '휴가', '교육', '업무', '개인일정'];
               const groups = reasonOrder.map((reason) => ({
                 reason,
                 names: todayExcuses.filter((e) => e.reason === reason).map((e) => members.find((m) => m.id === e.member_id)).filter(Boolean).map((m) => dispName(m.name, isLoggedIn)),
@@ -4665,6 +4672,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                         <div className="flex gap-1.5 flex-wrap">
                           <button onClick={() => setMyExcuseForDate('출장')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>출장</button>
                           <button onClick={() => setMyExcuseForDate('휴가')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>휴가</button>
+                          <button onClick={() => setMyExcuseForDate('교육')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>교육</button>
                           <button onClick={() => setMyExcuseForDate('업무')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>업무</button>
                           <button onClick={() => setMyExcuseForDate('개인일정')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>개인일정</button>
                         </div>
@@ -4707,7 +4715,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       </div>
                     </div>
                   )}
-                  {!canManage && excusedMembers.length === 0 && <p className="text-xs" style={{ color: MUTE }}>이 날짜에 등록된 출장·휴가가 없어요.</p>}
+                  {!canManage && excusedMembers.length === 0 && <p className="text-xs" style={{ color: MUTE }}>이 날짜에 등록된 불참 사유가 없어요.</p>}
                 </div>
               );
             })()}
@@ -4721,6 +4729,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#E0958C' }} />휴무일</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><svg width="11.7" height="11.7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>출장</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: INK }} />휴가</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><GraduationCap size={10} style={{ color: '#8FD0A0' }} />교육</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: PREV_MONTH_HATCH }} />전월(참고, 집계 제외)</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-flex items-center justify-center" style={{ width: 8, height: 8 }}><span className="rounded-full" style={{ width: 3, height: 3, background: LINE }} /></span>가입 전·제외(집계 제외)</span>
@@ -4769,6 +4778,9 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                             if (status === 'vacation') {
                               return <Plane key={i} size={9} style={{ color: INK }} />;
                             }
+                            if (status === 'edu') {
+                              return <GraduationCap key={i} size={10} style={{ color: '#8FD0A0', flexShrink: 0 }} aria-label="교육 (출석률 집계 제외)" />;
+                            }
                             if (status === 'joinday') {
                               // 가입일(집계 제외)은 별표로 표시
                               return <Star key={i} size={10} fill="#EFC94C" style={{ color: '#EFC94C', flexShrink: 0 }} aria-label="가입일 (출석률·벌칙 집계 제외)" />;
@@ -4797,7 +4809,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 </div>
               ))}
             </div>
-            <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가</p>
+            <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가, 교육</p>
             <p className="text-[10px] mt-1" style={{ color: MUTE }}>※ 산정기준 : 출석률은 월 단위, 벌칙은 주 단위</p>
           </Card>
           {penaltyRule && (penaltyEntries.length > 0 || warningMemberIds.size > 0) && (
@@ -4912,7 +4924,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 </table>
               </div>
             </div>
-            <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 산정기준 : 월 단위</p>
+            <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 산정기준 : 월 단위 · 회원별 가입일 다음 날부터 집계 (가입 전은 –)</p>
           </Card>
           <Card>
             <div className="text-sm font-semibold mb-1" style={{ color: INK }}>전체 누적 출석률</div>
@@ -4936,7 +4948,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                 );
               })}
             </div>
-            <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가 / 회원별 가입일 다음 날부터 집계</p>
+            <p className="text-[10px] mt-3 pt-2" style={{ color: MUTE, borderTop: `1px solid ${ROW_LINE}` }}>※ 출석률 산정제외 : 출장, 휴가, 교육 / 회원별 가입일 다음 날부터 집계</p>
           </Card>
         </>
       )}
@@ -5987,7 +5999,7 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
       </Card>
       <Card>
         <div className="text-sm font-semibold mb-1" style={{ color: INK }}>불참 사유 ({fmtDate(date)})</div>
-        <p className="text-xs mb-3" style={{ color: MUTE }}>출장·휴가는 그 날 출석률·벌칙 집계에서 제외돼요. 업무·개인일정은 사전 파악용으로만 기록되고 결석으로 그대로 집계돼요.{isSecretary ? ' [제외]·[가입일]은 간사 전용 — 그 회원의 그 날짜를 집계에서 빼요(가입일은 현황에 ★로 표시).' : ''}</p>
+        <p className="text-xs mb-3" style={{ color: MUTE }}>출장·휴가·교육은 그 날 출석률·벌칙 집계에서 제외돼요. 업무·개인일정은 사전 파악용으로만 기록되고 결석으로 그대로 집계돼요.{isSecretary ? ' [제외]·[가입일]은 간사 전용 — 그 회원의 그 날짜를 집계에서 빼요(가입일은 현황에 ★로 표시).' : ''}</p>
         <div className="space-y-2">
           {members.map((m) => {
             const excuse = absenceExcuses.find((e) => e.date === date && e.member_id === m.id);
@@ -6003,6 +6015,7 @@ function AdminScreen({ members, sessions, checkins, penaltyRule, setPenaltyRule,
                   <div className="flex gap-1.5 shrink-0 flex-wrap justify-end">
                     <button onClick={() => addExcuse(m.id, '출장')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>출장</button>
                     <button onClick={() => addExcuse(m.id, '휴가')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>휴가</button>
+                    <button onClick={() => addExcuse(m.id, '교육')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>교육</button>
                     <button onClick={() => addExcuse(m.id, '업무')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>업무</button>
                     <button onClick={() => addExcuse(m.id, '개인일정')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: NEUTRAL_BG, color: NEUTRAL_TEXT }}>개인일정</button>
                     {isSecretary && <button onClick={() => addExcuse(m.id, '제외')} className="text-xs rounded-full px-2.5 py-1 font-semibold" style={{ background: '#3A2213', color: '#F0A87C' }}>제외</button>}
