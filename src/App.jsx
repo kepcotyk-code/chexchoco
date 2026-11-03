@@ -4548,7 +4548,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                       <span className="absolute bottom-0.5 flex items-center gap-0.5">
                         {hasBusinessTrip && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>}
                         {hasVacation && <Plane size={8} style={{ color: INK }} />}
-                        {hasEducation && <GraduationCap size={9} style={{ color: '#8FD0A0' }} />}
+                        {hasEducation && <GraduationCap size={9} style={{ color: '#C79BF2' }} />}
                         {hasWork && <Briefcase size={8} style={{ color: '#D9A93A' }} />}
                         {hasPersonal && <User size={8} style={{ color: '#7FDCCF' }} />}
                       </span>
@@ -4580,7 +4580,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               </span>
               <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg> 출장</span>
               <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><Plane size={11} /> 휴가</span>
-              <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><GraduationCap size={12} style={{ color: '#8FD0A0' }} /> 교육</span>
+              <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><GraduationCap size={12} style={{ color: '#C79BF2' }} /> 교육</span>
               <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><Briefcase size={11} style={{ color: '#D9A93A' }} /> 업무</span>
               <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><User size={11} style={{ color: '#7FDCCF' }} /> 개인일정</span>
               <span className="inline-flex items-center gap-1 shrink-0" style={{ color: MUTE, fontSize: 'clamp(8.5px, 2.4vw, 11px)' }}><Star size={11} fill="#EFC94C" style={{ color: '#EFC94C' }} /> 신규가입</span>
@@ -4729,7 +4729,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: '#E0958C' }} />휴무일</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><svg width="11.7" height="11.7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#F0A87C' }}><path d="M2 15V10L6 6H21V15Z" /><rect x="9" y="8" width="4" height="3.5" /><rect x="15" y="8" width="4" height="3.5" /><line x1="2" y1="15" x2="21" y2="15" /></svg>출장</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><Plane size={9} style={{ color: INK }} />휴가</span>
-              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><GraduationCap size={10} style={{ color: '#8FD0A0' }} />교육</span>
+              <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><GraduationCap size={10} style={{ color: '#C79BF2' }} />교육</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, border: `1px solid ${LINE}` }} />결석</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-block rounded-full" style={{ width: 8, height: 8, background: PREV_MONTH_HATCH }} />전월(참고, 집계 제외)</span>
               <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: MUTE }}><span className="inline-flex items-center justify-center" style={{ width: 8, height: 8 }}><span className="rounded-full" style={{ width: 3, height: 3, background: LINE }} /></span>가입 전·제외(집계 제외)</span>
@@ -4779,7 +4779,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                               return <Plane key={i} size={9} style={{ color: INK }} />;
                             }
                             if (status === 'edu') {
-                              return <GraduationCap key={i} size={10} style={{ color: '#8FD0A0', flexShrink: 0 }} aria-label="교육 (출석률 집계 제외)" />;
+                              return <GraduationCap key={i} size={10} style={{ color: '#C79BF2', flexShrink: 0 }} aria-label="교육 (출석률 집계 제외)" />;
                             }
                             if (status === 'joinday') {
                               // 가입일(집계 제외)은 별표로 표시
