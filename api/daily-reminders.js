@@ -11,7 +11,7 @@ const DAY = 86400000;
 const ymdUTC = (d) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 const dayDiff = (a, b) => Math.round((Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / DAY);
 const md = (s) => `${parseInt(s.slice(5, 7), 10)}/${parseInt(s.slice(8, 10), 10)}`;
-const EXEMPT_EXCUSE_REASONS = ['출장', '휴가'];
+const EXEMPT_EXCUSE_REASONS = ['출장', '휴가', '교육', '제외', '가입일']; // App.jsx와 동일하게 유지
 const durationMin = (a, b) => (a && b ? Math.round((new Date(b) - new Date(a)) / 60000) : null);
 const attendanceEquivalent = (dur) => (dur !== null && dur >= 30 ? 1 : dur !== null && dur >= 15 ? 0.5 : 0);
 
