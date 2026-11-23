@@ -4416,8 +4416,11 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
   const penaltyEntriesRecent = penaltyEntries.slice(0, 10); // 대시보드엔 최근 것만 — 전체 이력은 설정 탭에서 확인
   // 벌칙 대상자 목록은 기본으로 접어두고, 미완료(완료 확정 전)인 사람만 기본으로 보여줌. 펼치면 최근 10건 전체
   const [penaltyListOpen, setPenaltyListOpen] = useState(false);
-  const penaltyPending = penaltyEntriesRecent.filter((e) => !e.completion?.confirmed);
-  const penaltyShown = penaltyListOpen ? penaltyEntriesRecent : penaltyPending;
+  // 미완료는 기간과 상관없이 전부 보여줌 — 출석률 카드의 '벌칙 대상 N'(전체 기간 미완료 수)과 숫자가 맞도록
+  const penaltyPending = penaltyEntries.filter((e) => !e.completion?.confirmed);
+  // 펼치면 최근 10건 + 그보다 오래된 미완료까지 함께 (최근 주가 위로)
+  const penaltyExpanded = [...penaltyEntriesRecent, ...penaltyPending.filter((e) => !penaltyEntriesRecent.includes(e))].sort((a, b) => b.weekKey.localeCompare(a.weekKey));
+  const penaltyShown = penaltyListOpen ? penaltyExpanded : penaltyPending;
 
   // 이번 주(진행 중) 지금까지 열린 독서일을 전부 결석한 경우 → 벌칙 예상 경고
   // (하루라도 출석/사유 있으면 그 시점에 바로 해제되어야 하므로, 월·화만 보지 않고 오늘까지의 모든 세션을 확인한다)
@@ -4821,7 +4824,7 @@ function DashboardScreen({ members, sessions, checkins, penaltyRule, penaltyComp
                   <div className={`flex items-center justify-between ${penaltyShown.length > 0 ? 'mb-2' : ''}`}>
                     <button onClick={() => setPenaltyListOpen((v) => !v)} className="flex items-center gap-1 text-xs" style={{ color: MUTE }} aria-expanded={penaltyListOpen}>
                       {penaltyListOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                      {penaltyListOpen ? '벌칙 대상자 (최근 10건)' : penaltyPending.length > 0 ? `미완료 ${penaltyPending.length}건 · 전체 목록 펼치기` : `벌칙 대상자 목록 펼치기 (최근 ${penaltyEntriesRecent.length}건 모두 완료)`}
+                      {penaltyListOpen ? (penaltyExpanded.length > penaltyEntriesRecent.length ? '벌칙 대상자 (최근 10건 + 이전 미완료)' : '벌칙 대상자 (최근 10건)') : penaltyPending.length > 0 ? `미완료 ${penaltyPending.length}건 · 전체 목록 펼치기` : `벌칙 대상자 목록 펼치기 (최근 ${penaltyEntriesRecent.length}건 모두 완료)`}
                     </button>
                     {penaltyShown.length > 0 && <span className="text-[10px]" style={{ color: MUTE }}>완료 여부</span>}
                   </div>
